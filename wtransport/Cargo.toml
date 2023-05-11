@@ -1,0 +1,28 @@
+[package]
+name = "wtransport"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+authors = ["Biagio Festa"]
+description = "Implementation of the WebTransport (over HTTP3) protocol"
+repository = "https://github.com/BiagioFesta/wtransport"
+keywords = ["webtransport"]
+categories = [ "network-programming", "asynchronous" ]
+edition = "2021"
+readme = "../README.md"
+workspace = ".."
+
+[dependencies]
+quinn = "0.10.1"
+quinn-proto = "0.10.1"
+rustls = { version = "0.21.1", features = ["dangerous_configuration"] }
+rustls-native-certs = "0.6.2"
+rustls-pemfile = "1.0.2"
+tokio = { version = "1.28.1", default-features = false }
+wtransport-proto = { version = "0.1.0", path = "../wtransport-proto", features = ["async"] }
+
+[dev-dependencies]
+base64 = "0.21.0"
+rcgen = "0.10.0"
+ring = "0.16.20"
+time = "0.3.21"
+tokio = { version = "1.28.1", features = ["rt", "rt-multi-thread", "macros"] }

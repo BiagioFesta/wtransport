@@ -1,0 +1,28 @@
+[package]
+name = "wtransport-proto"
+version = "0.1.0"
+license = "MIT OR Apache-2.0"
+authors = ["Biagio Festa"]
+description = "Implementation of the WebTransport (over HTTP3) protocol"
+repository = "https://github.com/BiagioFesta/wtransport"
+keywords = ["webtransport"]
+categories = [ "network-programming", "asynchronous" ]
+edition = "2021"
+readme = "../README.md"
+workspace = ".."
+
+[dependencies]
+ls-qpack = "0.1.0-alpha"
+octets = "0.2.0"
+
+[dev-dependencies]
+test-case = "3.1.0"
+tokio = { version = "1.28.1", default-features = false}
+
+[features]
+default = []
+async = []
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
