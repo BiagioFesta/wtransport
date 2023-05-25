@@ -3,6 +3,7 @@
 </p>
 
 [![RustCI](https://github.com/BiagioFesta/wtransport/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/BiagioFesta/wtransport/actions/workflows/rust.yml)
+[![Crates.io](https://img.shields.io/crates/v/wtransport.svg)](https://crates.io/crates/wtransport)
 
 # WTransport
 [WebTransport](https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-http3/) protocol, pure-*rust*, *async*-friendly.
