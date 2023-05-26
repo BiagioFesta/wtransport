@@ -129,6 +129,7 @@ impl ClientConfigBuilder<WantsRootStore> {
 
     /// Skip certificate server validation.
     #[cfg(feature = "dangerous_configuration")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous_configuration")))]
     pub fn with_no_cert_validation(self) -> ClientConfig {
         let mut tls_config = Self::build_tls_config(RootCertStore::empty());
         tls_config
