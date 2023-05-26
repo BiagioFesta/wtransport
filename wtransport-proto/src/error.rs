@@ -20,14 +20,14 @@ pub enum Error {
     /// H3_SETTINGS_ERROR
     Settings,
 
-    /// QPACK_DECOMPRESSION_FAILED
-    Decompression,
-
     /// H3_MISSING_SETTINGS
     MissingSettings,
 
     /// H3_MESSAGE_ERROR
     Message,
+
+    /// QPACK_DECOMPRESSION_FAILED
+    Decompression,
 }
 
 impl Error {
@@ -38,9 +38,9 @@ impl Error {
             Error::FrameUnexpected => h3_error_codes::H3_FRAME_UNEXPECTED,
             Error::Frame => h3_error_codes::H3_FRAME_ERROR,
             Error::Settings => h3_error_codes::H3_SETTINGS_ERROR,
-            Error::Decompression => qpack_error_codes::QPACK_DECOMPRESSION_FAILED,
             Error::MissingSettings => h3_error_codes::H3_MISSING_SETTINGS,
             Error::Message => h3_error_codes::H3_MESSAGE_ERROR,
+            Error::Decompression => qpack_error_codes::QPACK_DECOMPRESSION_FAILED,
         }
     }
 }
@@ -59,9 +59,9 @@ impl Display for Error {
             Error::FrameUnexpected => write!(f, "FrameUnexpectedError"),
             Error::Frame => write!(f, "FrameError"),
             Error::Settings => write!(f, "SettingsError"),
-            Error::Decompression => write!(f, "DecompressionError"),
             Error::MissingSettings => write!(f, "MissingSettingsError"),
             Error::Message => write!(f, "MessageError"),
+            Error::Decompression => write!(f, "DecompressionError"),
         }
     }
 }
