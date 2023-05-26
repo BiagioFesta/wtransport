@@ -45,8 +45,8 @@ impl Stream<BiRemote, Raw> {
         }
     }
 
-    pub(crate) fn stop(mut self, code: u32) {
-        let _ = self.kind.1 .0.stop(VarInt::from_u32(code));
+    pub(crate) fn stop(mut self, code: u64) -> Result<(), VarIntBoundsExceeded> {
+        self.kind.1.stop(code)
     }
 
     fn bi_remote_raw(stream: (QuicSendStream, QuicRecvStream)) -> Self {
@@ -95,8 +95,8 @@ impl Stream<UniRemote, Raw> {
         })
     }
 
-    pub(crate) fn stop(mut self, code: u32) {
-        let _ = self.kind.0 .0.stop(VarInt::from_u32(code));
+    pub(crate) fn stop(mut self, code: u64) -> Result<(), VarIntBoundsExceeded> {
+        self.kind.0.stop(code)
     }
 
     fn uni_remote_raw(stream: QuicRecvStream) -> Self {
@@ -154,8 +154,8 @@ impl Stream<BiRemote, H3> {
         self.kind.0 .0.id().0
     }
 
-    pub(crate) fn stop(mut self, code: u32) {
-        let _ = self.kind.1 .0.stop(VarInt::from_u32(code));
+    pub(crate) fn stop(mut self, code: u64) -> Result<(), VarIntBoundsExceeded> {
+        self.kind.1.stop(code)
     }
 
     pub(crate) fn normalize(self) -> Stream<Bi, Raw> {
@@ -330,6 +330,14 @@ impl QuicRecvStream {
             None => Ok(None),
         }
     }
+
+    pub(crate) fn stop(&mut self, error_code: u64) -> Result<(), VarIntBoundsExceeded> {
+        let _ = self.0.stop(
+            VarInt::from_u64(error_code)
+                .map_err(|quinn_proto::VarIntBoundsExceeded| VarIntBoundsExceeded)?,
+        );
+        Ok(())
+    }
 }
 
 impl AsyncRead for QuicRecvStream {
@@ -415,3 +423,6 @@ impl From<IoError> for FrameWriteError {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct VarIntBoundsExceeded;
