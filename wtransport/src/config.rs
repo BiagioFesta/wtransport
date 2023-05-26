@@ -167,7 +167,7 @@ pub struct WantsBindAddress {}
 
 /// Config builder state where the caller must supply TLS certificate.
 pub struct WantsCertificate {
-    pub(super) bind_address: SocketAddr,
+    bind_address: SocketAddr,
 }
 
 struct NoServerVerification;
