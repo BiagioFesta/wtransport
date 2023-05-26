@@ -196,8 +196,9 @@ impl Worker {
                 let slot = match self.inc_sessions_channel.try_reserve() {
                     Ok(slot) => slot,
                     Err(_) => {
-                        // TODO(bfesta): move this code into a const
-                        stream.stop(0x3994bd84);
+                        stream
+                            .stop(H3Code::BufferedStreamRejected.to_code())
+                            .expect("Error code is expected to fit varint");
                         return Ok(());
                     }
                 };
@@ -230,8 +231,9 @@ impl Worker {
             let h3slot = match h3_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    // TODO(bfesta): move this code into a const
-                    stream.stop(0x3994bd84);
+                    stream
+                        .stop(H3Code::BufferedStreamRejected.to_code())
+                        .expect("Error code is expected to fit varint");
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => unreachable!(),
@@ -240,8 +242,9 @@ impl Worker {
             let w3slot = match self.inc_uni_wt_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    // TODO(bfesta): move this code into a const
-                    stream.stop(0x3994bd84);
+                    stream
+                        .stop(H3Code::BufferedStreamRejected.to_code())
+                        .expect("Error code is expected to fit varint");
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -269,8 +272,9 @@ impl Worker {
             let h3slot = match h3_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    // TODO(bfesta): move this code into a const
-                    stream.stop(0x3994bd84);
+                    stream
+                        .stop(H3Code::BufferedStreamRejected.to_code())
+                        .expect("Error code is expected to fit varint");
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => unreachable!(),
@@ -279,8 +283,9 @@ impl Worker {
             let w3slot = match self.inc_bi_wt_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    // TODO(bfesta): move this code into a const
-                    stream.stop(0x3994bd84);
+                    stream
+                        .stop(H3Code::BufferedStreamRejected.to_code())
+                        .expect("Error code is expected to fit varint");
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
