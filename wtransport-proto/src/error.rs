@@ -28,6 +28,12 @@ pub enum Error {
 
     /// QPACK_DECOMPRESSION_FAILED
     Decompression,
+
+    /// WEBTRANSPORT_BUFFERED_STREAM_REJECTED
+    BufferedStreamRejected,
+
+    /// WEBTRANSPORT_SESSION_GONE
+    SessionGone,
 }
 
 impl Error {
@@ -41,6 +47,8 @@ impl Error {
             Error::MissingSettings => h3_error_codes::H3_MISSING_SETTINGS,
             Error::Message => h3_error_codes::H3_MESSAGE_ERROR,
             Error::Decompression => qpack_error_codes::QPACK_DECOMPRESSION_FAILED,
+            Error::BufferedStreamRejected => wt_error_codes::WEBTRANSPORT_BUFFERED_STREAM_REJECTED,
+            Error::SessionGone => wt_error_codes::WEBTRANSPORT_SESSION_GONE,
         }
     }
 }
@@ -62,6 +70,8 @@ impl Display for Error {
             Error::MissingSettings => write!(f, "MissingSettingsError"),
             Error::Message => write!(f, "MessageError"),
             Error::Decompression => write!(f, "DecompressionError"),
+            Error::BufferedStreamRejected => write!(f, "BufferedStreamRejected"),
+            Error::SessionGone => write!(f, "SessionGone"),
         }
     }
 }
@@ -80,4 +90,9 @@ mod h3_error_codes {
 
 mod qpack_error_codes {
     pub const QPACK_DECOMPRESSION_FAILED: u64 = 0x0200;
+}
+
+mod wt_error_codes {
+    pub const WEBTRANSPORT_BUFFERED_STREAM_REJECTED: u64 = 0x3994bd84;
+    pub const WEBTRANSPORT_SESSION_GONE: u64 = 0x170d7b68;
 }
