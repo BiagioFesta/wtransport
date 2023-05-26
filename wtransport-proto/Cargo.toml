@@ -12,7 +12,7 @@ readme = "../README.md"
 workspace = ".."
 
 [dependencies]
-ls-qpack = "0.1.0-alpha"
+ls-qpack = "0.1.1"
 octets = "0.2.0"
 
 [dev-dependencies]
