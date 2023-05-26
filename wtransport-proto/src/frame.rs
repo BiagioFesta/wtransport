@@ -77,7 +77,6 @@ impl FrameKind {
 }
 
 /// An HTTP3 frame.
-#[derive(Debug)] // TODO(bfesta): u want this debug?
 pub struct Frame<'a> {
     kind: FrameKind,
     payload: Cow<'a, [u8]>,
@@ -300,20 +299,4 @@ mod frame_kind_ids {
     pub const HEADERS: u64 = 0x01;
     pub const SETTINGS: u64 = 0x04;
     pub const WEBTRANSPORT_STREAM: u64 = 0x41;
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[tokio::test]
-    async fn foo() {
-        let buffer = [0x40, 0x41, 0x1, 0x42];
-        let mut reader = &buffer[..];
-
-        let frame = Frame::read_async(&mut reader).await.unwrap();
-
-        dbg!(frame);
-        dbg!(reader);
-    }
 }
