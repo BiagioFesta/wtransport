@@ -5,8 +5,9 @@ use wtransport::Endpoint;
 
 #[tokio::main]
 async fn main() {
-    let config =
-        ClientConfig::builder().with_bind_address(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0));
+    let config = ClientConfig::builder()
+        .with_bind_address(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0))
+        .with_no_cert_validation();
 
     let connection = Endpoint::client(config)
         .unwrap()

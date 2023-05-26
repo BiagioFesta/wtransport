@@ -1,8 +1,6 @@
 use crate::tls::Certificate;
 use quinn::ClientConfig as QuicClientConfig;
 use quinn::ServerConfig as QuicServerConfig;
-use rustls::client::ServerCertVerified;
-use rustls::client::ServerCertVerifier;
 use rustls::ClientConfig as TlsClientConfig;
 use rustls::RootCertStore;
 use rustls::ServerConfig as TlsServerConfig;
@@ -57,7 +55,7 @@ impl ServerConfigBuilder<WantsCertificate> {
     /// WebTransport connections.
     pub fn with_certificate(self, certificate: Certificate) -> ServerConfig {
         let tls_config = Self::build_tls_config(certificate);
-        let quic_config = QuicServerConfig::with_crypto(tls_config);
+        let quic_config = QuicServerConfig::with_crypto(Arc::new(tls_config));
 
         ServerConfig {
             quic_config,
@@ -65,7 +63,7 @@ impl ServerConfigBuilder<WantsCertificate> {
         }
     }
 
-    fn build_tls_config(certificate: Certificate) -> Arc<TlsServerConfig> {
+    fn build_tls_config(certificate: Certificate) -> TlsServerConfig {
         let mut config = TlsServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
@@ -73,8 +71,7 @@ impl ServerConfigBuilder<WantsCertificate> {
             .unwrap(); // TODO(bfesta): handle this error
 
         config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
-
-        Arc::new(config)
+        config
     }
 }
 
@@ -111,18 +108,44 @@ pub struct ClientConfigBuilder<State>(State);
 
 impl ClientConfigBuilder<WantsBindAddress> {
     /// Sets the binding (local) socket address for the endpoint.
-    pub fn with_bind_address(self, address: SocketAddr) -> ClientConfig {
-        let tls_config = Self::build_tls_config();
-        let quic_config = QuicClientConfig::new(tls_config);
+    pub fn with_bind_address(self, address: SocketAddr) -> ClientConfigBuilder<WantsRootStore> {
+        ClientConfigBuilder(WantsRootStore {
+            bind_address: address,
+        })
+    }
+}
+
+impl ClientConfigBuilder<WantsRootStore> {
+    /// Loads local (native) root certificate for server validation.
+    pub fn with_native_certs(self) -> ClientConfig {
+        let tls_config = Self::build_tls_config(Self::native_cert_store());
+        let quic_config = QuicClientConfig::new(Arc::new(tls_config));
 
         ClientConfig {
             quic_config,
-            bind_address: address,
+            bind_address: self.0.bind_address,
         }
     }
 
-    fn build_tls_config() -> Arc<TlsClientConfig> {
+    /// Skip certificate server validation.
+    #[cfg(feature = "dangerous_configuration")]
+    pub fn with_no_cert_validation(self) -> ClientConfig {
+        let mut tls_config = Self::build_tls_config(RootCertStore::empty());
+        tls_config
+            .dangerous()
+            .set_certificate_verifier(Arc::new(dangerous_configuration::NoServerVerification));
+
+        let quic_config = QuicClientConfig::new(Arc::new(tls_config));
+
+        ClientConfig {
+            quic_config,
+            bind_address: self.0.bind_address,
+        }
+    }
+
+    fn native_cert_store() -> RootCertStore {
         let mut root_store = RootCertStore::empty();
+
         match rustls_native_certs::load_native_certs() {
             Ok(certs) => {
                 for c in certs {
@@ -132,6 +155,10 @@ impl ClientConfigBuilder<WantsBindAddress> {
             Err(_error) => {}
         }
 
+        root_store
+    }
+
+    fn build_tls_config(root_store: RootCertStore) -> TlsClientConfig {
         let mut config = TlsClientConfig::builder()
             .with_safe_default_cipher_suites()
             .with_safe_default_kx_groups()
@@ -141,12 +168,7 @@ impl ClientConfigBuilder<WantsBindAddress> {
             .with_no_client_auth();
 
         config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
-
         config
-            .dangerous()
-            .set_certificate_verifier(Arc::new(NoServerVerification));
-
-        Arc::new(config)
     }
 }
 
@@ -170,18 +192,29 @@ pub struct WantsCertificate {
     bind_address: SocketAddr,
 }
 
-struct NoServerVerification;
+/// Config builder state where the caller must supply TLS root store.
+pub struct WantsRootStore {
+    bind_address: SocketAddr,
+}
 
-impl ServerCertVerifier for NoServerVerification {
-    fn verify_server_cert(
-        &self,
-        _end_entity: &rustls::Certificate,
-        _intermediates: &[rustls::Certificate],
-        _server_name: &rustls::ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
-        _ocsp_response: &[u8],
-        _now: std::time::SystemTime,
-    ) -> Result<ServerCertVerified, rustls::Error> {
-        Ok(ServerCertVerified::assertion())
+#[cfg(feature = "dangerous_configuration")]
+mod dangerous_configuration {
+    use rustls::client::ServerCertVerified;
+    use rustls::client::ServerCertVerifier;
+
+    pub(super) struct NoServerVerification;
+
+    impl ServerCertVerifier for NoServerVerification {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &rustls::Certificate,
+            _intermediates: &[rustls::Certificate],
+            _server_name: &rustls::ServerName,
+            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _ocsp_response: &[u8],
+            _now: std::time::SystemTime,
+        ) -> Result<ServerCertVerified, rustls::Error> {
+            Ok(ServerCertVerified::assertion())
+        }
     }
 }
