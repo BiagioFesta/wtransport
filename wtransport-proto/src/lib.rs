@@ -1,6 +1,7 @@
 #![cfg_attr(docsrs, feature(doc_cfg))]
 
 pub mod bytes;
+pub mod datagram;
 pub mod error;
 pub mod frame;
 pub mod headers;
