@@ -153,11 +153,7 @@ impl Engine {
         }
     }
 
-    pub async fn send_datagram(
-        &self,
-        data: &[u8],
-        session_id: SessionId,
-    ) -> Result<(), DatagramError> {
+    pub fn send_datagram(&self, data: &[u8], session_id: SessionId) -> Result<(), DatagramError> {
         let dgram = Datagram::write(data, session_id);
 
         self.quic_connection

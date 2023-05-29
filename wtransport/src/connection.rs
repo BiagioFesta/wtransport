@@ -177,13 +177,11 @@ impl Connection {
     }
 
     /// Sends an application datagram.
-    pub async fn send_datagram<D>(&self, data: D) -> Result<(), DatagramError>
+    pub fn send_datagram<D>(&self, data: D) -> Result<(), DatagramError>
     where
         D: AsRef<[u8]>,
     {
-        self.engine
-            .send_datagram(data.as_ref(), self.session.id())
-            .await
+        self.engine.send_datagram(data.as_ref(), self.session.id())
     }
 
     /// Returns the WebTransport session identifier.

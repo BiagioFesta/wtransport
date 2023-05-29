@@ -50,7 +50,7 @@ async fn main() {
 
                     println!("Received (dgram) '{str_data}' from client");
 
-                    connection.send_datagram(b"ACK").await.unwrap();
+                    connection.send_datagram(b"ACK").unwrap();
                 }
             }
         }
