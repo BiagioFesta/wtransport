@@ -36,6 +36,9 @@ pub mod stream;
 /// TLS specific configurations.
 pub mod tls;
 
+/// Datagrams module.
+pub mod datagram;
+
 #[doc(inline)]
 pub use config::ClientConfig;
 

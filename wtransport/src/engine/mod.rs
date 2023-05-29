@@ -1,3 +1,5 @@
+use crate::datagram::Datagram;
+use crate::datagram::DgramError;
 use crate::engine::session::SessionLocalRequest;
 use crate::engine::session::SessionRemoteRequest;
 use crate::engine::stream::BiLocal;
@@ -9,6 +11,9 @@ use crate::engine::stream::Wt;
 use crate::engine::worker::Worker;
 use crate::engine::worker::WorkerError;
 use crate::engine::worker::WorkerHandler;
+use crate::error::DatagramError;
+use crate::error::H3Code;
+use crate::error::H3Error;
 use quinn::VarInt;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
@@ -131,6 +136,33 @@ impl Engine {
             Ok(stream) => Ok(stream.upgrade()),
             Err(_) => Err(self.worker_result().await),
         }
+    }
+
+    pub async fn receive_datagram(&self, session_id: SessionId) -> Result<Datagram, WorkerError> {
+        loop {
+            let quic_dgram = match self.quic_connection.read_datagram().await {
+                Ok(quic_dgram) => quic_dgram,
+                Err(_) => return Err(self.worker_result().await),
+            };
+
+            if let Some(dgram) = Datagram::read(quic_dgram, session_id).map_err(|DgramError| {
+                WorkerError::LocalClosed(H3Error::new(H3Code::Datagram, "Error reading datagram"))
+            })? {
+                return Ok(dgram);
+            }
+        }
+    }
+
+    pub async fn send_datagram(
+        &self,
+        data: &[u8],
+        session_id: SessionId,
+    ) -> Result<(), DatagramError> {
+        let dgram = Datagram::write(data, session_id);
+
+        self.quic_connection
+            .send_datagram(dgram.into_quic_bytes())?;
+        Ok(())
     }
 
     async fn worker_result(&self) -> WorkerError {

@@ -1,6 +1,8 @@
+use crate::datagram::Datagram;
 use crate::engine::session::Session;
 use crate::engine::Engine;
 use crate::error::ConnectionError;
+use crate::error::DatagramError;
 use crate::stream::RecvStream;
 use crate::stream::SendStream;
 use std::future::Future;
@@ -159,6 +161,27 @@ impl Connection {
         let raw_stream = wtstream.raw();
 
         Ok(SendStream::new(raw_stream))
+    }
+
+    /// Receives an application datagram.
+    pub async fn receive_datagram(&self) -> Result<Datagram, DatagramError> {
+        self.engine
+            .receive_datagram(self.session.id())
+            .await
+            .map_err(|worker_error| {
+                ConnectionError::close_worker_error(worker_error, &self.quic_connection);
+                DatagramError::ConnectionClosed
+            })
+    }
+
+    /// Sends an application datagram.
+    pub async fn send_datagram<D>(&self, data: D) -> Result<(), DatagramError>
+    where
+        D: AsRef<[u8]>,
+    {
+        self.engine
+            .send_datagram(data.as_ref(), self.session.id())
+            .await
     }
 
     /// Returns the WebTransport session identifier.

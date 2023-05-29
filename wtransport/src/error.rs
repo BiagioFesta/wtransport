@@ -140,6 +140,19 @@ pub enum StreamError {
     Stopped,
 }
 
+/// Error when dealing with application datagrams.
+#[derive(Debug)]
+pub enum DatagramError {
+    /// The connection has been closed.
+    ConnectionClosed,
+
+    /// Datagrams are not supported by peer.
+    UnsupportedByPeer,
+
+    /// Error at QUIC protocol layer.
+    Protocol,
+}
+
 impl From<quinn::ConnectionError> for ConnectionError {
     fn from(error: quinn::ConnectionError) -> Self {
         match error {
@@ -216,6 +229,17 @@ impl From<quinn::StoppedError> for StreamError {
             quinn::StoppedError::ConnectionLost(_) => StreamError::ConnectionClosed,
             quinn::StoppedError::UnknownStream => StreamError::Stopped,
             quinn::StoppedError::ZeroRttRejected => StreamError::Stopped,
+        }
+    }
+}
+
+impl From<quinn::SendDatagramError> for DatagramError {
+    fn from(error: quinn::SendDatagramError) -> Self {
+        match error {
+            quinn::SendDatagramError::UnsupportedByPeer => DatagramError::UnsupportedByPeer,
+            quinn::SendDatagramError::Disabled => Self::Protocol,
+            quinn::SendDatagramError::TooLarge => Self::Protocol,
+            quinn::SendDatagramError::ConnectionLost(_) => DatagramError::ConnectionClosed,
         }
     }
 }

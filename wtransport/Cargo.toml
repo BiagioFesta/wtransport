@@ -16,6 +16,7 @@ name = "client"
 required-features = ["dangerous_configuration"]
 
 [dependencies]
+bytes = "1.4.0"
 quinn = "0.10.1"
 quinn-proto = "0.10.1"
 rustls = "0.21.1"
