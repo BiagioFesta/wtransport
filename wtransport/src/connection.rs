@@ -187,6 +187,7 @@ impl Connection {
     }
 
     /// Returns the WebTransport session identifier.
+    #[inline(always)]
     pub fn session_id(&self) -> SessionId {
         self.session.id()
     }
