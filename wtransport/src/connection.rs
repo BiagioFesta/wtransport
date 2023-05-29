@@ -12,7 +12,9 @@ use std::task::Poll;
 use wtransport_proto::frame::SessionId;
 
 /// [`Future`] for an in-progress connection attempt.
-pub struct Connecting(Pin<Box<dyn Future<Output = Result<Connection, ConnectionError>>>>);
+pub struct Connecting(
+    Pin<Box<dyn Future<Output = Result<Connection, ConnectionError>> + Send + Sync>>,
+);
 
 impl Connecting {
     pub(crate) fn new(is_server: bool, quic_connecting: quinn::Connecting) -> Self {
