@@ -5,6 +5,9 @@ use std::fmt::Formatter;
 /// HTTP3 protocol errors.
 #[derive(Clone, Copy)]
 pub enum Error {
+    /// H3_DATAGRAM_ERROR
+    Datagram,
+
     /// H3_STREAM_CREATION_ERROR
     StreamCreation,
 
@@ -39,6 +42,7 @@ pub enum Error {
 impl Error {
     pub fn to_code(self) -> u64 {
         match self {
+            Error::Datagram => h3_error_codes::H3_DATAGRAM_ERROR,
             Error::StreamCreation => h3_error_codes::H3_STREAM_CREATION_ERROR,
             Error::ClosedCriticalStream => h3_error_codes::H3_CLOSED_CRITICAL_STREAM,
             Error::FrameUnexpected => h3_error_codes::H3_FRAME_UNEXPECTED,
@@ -62,6 +66,7 @@ impl Debug for Error {
 impl Display for Error {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Error::Datagram => write!(f, "DatagramError"),
             Error::StreamCreation => write!(f, "StreamCreationError"),
             Error::ClosedCriticalStream => write!(f, "ClosedCriticalStreamError"),
             Error::FrameUnexpected => write!(f, "FrameUnexpectedError"),
@@ -79,6 +84,7 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 mod h3_error_codes {
+    pub const H3_DATAGRAM_ERROR: u64 = 0x33;
     pub const H3_STREAM_CREATION_ERROR: u64 = 0x0103;
     pub const H3_CLOSED_CRITICAL_STREAM: u64 = 0x0104;
     pub const H3_FRAME_UNEXPECTED: u64 = 0x0105;
