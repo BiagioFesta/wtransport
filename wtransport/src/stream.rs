@@ -10,6 +10,15 @@ impl SendStream {
         Self(stream)
     }
 
+    /// Writes bytes to the stream.
+    ///
+    /// On success, returns the number of bytes written.
+    /// Congestion and flow control may cause this to be shorter than `buf.len()`,
+    /// indicating that only a prefix of `buf` was written.
+    pub async fn write(&mut self, buf: &[u8]) -> Result<usize, StreamError> {
+        self.0.write(buf).await
+    }
+
     /// Convenience method to write an entire buffer to the stream.
     pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), StreamError> {
         self.0.write_all(buf).await

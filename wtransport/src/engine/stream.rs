@@ -295,6 +295,11 @@ impl Stream<Bi, Raw> {
 pub(crate) struct QuicSendStream(quinn::SendStream);
 
 impl QuicSendStream {
+    pub(crate) async fn write(&mut self, buf: &[u8]) -> Result<usize, StreamError> {
+        let written = self.0.write(buf).await?;
+        Ok(written)
+    }
+
     pub(crate) async fn write_all(&mut self, buf: &[u8]) -> Result<(), StreamError> {
         self.0.write_all(buf).await?;
         Ok(())
