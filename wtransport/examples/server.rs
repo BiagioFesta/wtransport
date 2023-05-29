@@ -44,6 +44,14 @@ async fn main() {
                     let mut stream = connection.open_uni().await.unwrap();
                     stream.write_all(b"ACK").await.unwrap();
                 }
+                dgram = connection.receive_datagram() => {
+                    let dgram = dgram.unwrap();
+                    let str_data = std::str::from_utf8(&dgram).unwrap();
+
+                    println!("Received (dgram) '{str_data}' from client");
+
+                    connection.send_datagram(b"ACK").await.unwrap();
+                }
             }
         }
     }
