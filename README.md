@@ -70,7 +70,7 @@ Certificate generated
 Fingerprint: OjyqTe//WoGnvBrgiO37tkOQJyuN1r7hhyBzwX0gotg=
 ```
 
-*Take note* of the fingerprint: you will need it for making the client verify the certificate.
+Please take note of the fingerprint, as you will need it to verify the certificate on the client side.
 
 ### 2. Run Example Server
 ```bash
@@ -81,18 +81,18 @@ cargo run --example server
 [Latest versions](https://chromestatus.com/feature/4854144902889472) of *Google Chrome* started 
 supporting some implementations of the protocol.
 
-Generated certificate is *self-signed* and it cannot be directly accepted via browser at the moment. 
-In order to allow the local certificate you need to launch Google Chrome with two additional options.
-
+Since the generated certificate is self-signed, it cannot be directly accepted by the browser at the moment. 
+In order to allow the local certificate, you need to launch Google Chrome with two additional options:
 ```
 google-chrome \
   --origin-to-force-quic-on=localhost:4433 \
   --ignore-certificate-errors-spki-list=FINGERPRINT
 ```
 
-Where `FINGERPRINT` is the value obtained at *step 1*. For instance, `OjyqTe//WoGnvBrgiO37tkOQJyuN1r7hhyBzwX0gotg=`.
+Replace `FINGERPRINT` with the value obtained in *step 1*. 
+For example, `OjyqTe//WoGnvBrgiO37tkOQJyuN1r7hhyBzwX0gotg=`.
 
 ### 4. Connect to the Server
 Open the website https://webtransport.day/ on Google Chrome instace. Use the *URL*: `https://localhost:4433`, and click on *Connect*.
 
-Enjoy.
+Enjoy!
