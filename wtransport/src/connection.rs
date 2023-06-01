@@ -184,6 +184,11 @@ impl Connection {
         self.engine.send_datagram(data.as_ref(), self.session.id())
     }
 
+    /// Waits for the connection to be closed for any reason.
+    pub async fn closed(&self) {
+        let _ = self.quic_connection.closed().await;
+    }
+
     /// Returns the WebTransport session identifier.
     #[inline(always)]
     pub fn session_id(&self) -> SessionId {
