@@ -661,6 +661,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "async")]
     #[tokio::test]
     async fn parse_varint_tokio() {
         for (varint_buffer, value_expect) in utils::VARINT_TEST_CASES {
@@ -670,6 +671,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "async")]
     #[tokio::test]
     async fn write_varint_tokio() {
         for (varint_buffer, value) in utils::VARINT_TEST_CASES {
@@ -732,6 +734,7 @@ mod tests {
         assert!(buffer_writer.put_bytes(&[0x0]).is_err());
     }
 
+    #[cfg(feature = "async")]
     #[tokio::test]
     async fn none_tokio() {
         let mut reader = utils::StepReader::new(vec![]);
@@ -744,11 +747,6 @@ mod tests {
     }
 
     mod utils {
-        use super::*;
-        use std::pin::Pin;
-        use std::task::Context;
-        use std::task::Poll;
-
         pub const VARINT_TEST_CASES: [(&[u8], u64); 4] = [
             (
                 &[0xc2, 0x19, 0x7c, 0x5e, 0xff, 0x14, 0xe8, 0x8c],
@@ -759,98 +757,114 @@ mod tests {
             (&[0x25], 37),
         ];
 
-        pub struct StepReader {
-            data: Box<[u8]>,
-            offset: usize,
-            to_pending: bool,
-        }
+        #[cfg(feature = "async")]
+        #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+        pub mod r#async {
+            use super::super::AsyncRead;
+            use super::super::AsyncWrite;
+            use std::pin::Pin;
+            use std::task::Context;
+            use std::task::Poll;
 
-        impl StepReader {
-            pub fn new<T>(data: T) -> Self
-            where
-                T: Into<Box<[u8]>>,
-            {
-                Self {
-                    data: data.into(),
-                    offset: 0,
-                    to_pending: true,
+            pub struct StepReader {
+                data: Box<[u8]>,
+                offset: usize,
+                to_pending: bool,
+            }
+
+            impl StepReader {
+                pub fn new<T>(data: T) -> Self
+                where
+                    T: Into<Box<[u8]>>,
+                {
+                    Self {
+                        data: data.into(),
+                        offset: 0,
+                        to_pending: true,
+                    }
+                }
+            }
+
+            impl AsyncRead for StepReader {
+                fn poll_read(
+                    mut self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                    buf: &mut [u8],
+                ) -> Poll<std::io::Result<usize>> {
+                    let new_pending = !self.to_pending;
+                    let to_pending = std::mem::replace(&mut self.to_pending, new_pending);
+
+                    if buf.is_empty() {
+                        return Poll::Ready(Ok(0));
+                    }
+
+                    if to_pending {
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    } else if let Some(&byte) = self.data.get(self.offset) {
+                        buf[0] = byte;
+                        self.offset += 1;
+                        Poll::Ready(Ok(1))
+                    } else {
+                        Poll::Ready(Ok(0))
+                    }
+                }
+            }
+
+            pub struct StepWriter {
+                buffer: Vec<u8>,
+                max_len: Option<usize>,
+                to_pending: bool,
+            }
+
+            impl StepWriter {
+                pub fn new(max_len: Option<usize>) -> Self {
+                    Self {
+                        buffer: Vec::new(),
+                        max_len,
+                        to_pending: true,
+                    }
+                }
+
+                pub fn written(&self) -> &[u8] {
+                    &self.buffer
+                }
+            }
+
+            impl AsyncWrite for StepWriter {
+                fn poll_write(
+                    mut self: Pin<&mut Self>,
+                    cx: &mut Context<'_>,
+                    buf: &[u8],
+                ) -> Poll<Result<usize, std::io::Error>> {
+                    let new_pending = !self.to_pending;
+                    let to_pending = std::mem::replace(&mut self.to_pending, new_pending);
+
+                    if buf.is_empty() {
+                        return Poll::Ready(Ok(0));
+                    }
+
+                    if to_pending {
+                        cx.waker().wake_by_ref();
+                        Poll::Pending
+                    } else if self.buffer.len() < self.max_len.unwrap_or(usize::MAX) {
+                        let byte = buf[0];
+                        self.buffer.push(byte);
+                        Poll::Ready(Ok(1))
+                    } else {
+                        Poll::Ready(Err(std::io::Error::new(
+                            std::io::ErrorKind::ConnectionReset,
+                            "Reached max len",
+                        )))
+                    }
                 }
             }
         }
 
-        impl AsyncRead for StepReader {
-            fn poll_read(
-                mut self: Pin<&mut Self>,
-                cx: &mut Context<'_>,
-                buf: &mut [u8],
-            ) -> Poll<std::io::Result<usize>> {
-                let new_pending = !self.to_pending;
-                let to_pending = std::mem::replace(&mut self.to_pending, new_pending);
+        #[cfg(feature = "async")]
+        pub use r#async::StepReader;
 
-                if buf.is_empty() {
-                    return Poll::Ready(Ok(0));
-                }
-
-                if to_pending {
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
-                } else if let Some(&byte) = self.data.get(self.offset) {
-                    buf[0] = byte;
-                    self.offset += 1;
-                    Poll::Ready(Ok(1))
-                } else {
-                    Poll::Ready(Ok(0))
-                }
-            }
-        }
-
-        pub struct StepWriter {
-            buffer: Vec<u8>,
-            max_len: Option<usize>,
-            to_pending: bool,
-        }
-
-        impl StepWriter {
-            pub fn new(max_len: Option<usize>) -> Self {
-                Self {
-                    buffer: Vec::new(),
-                    max_len,
-                    to_pending: true,
-                }
-            }
-
-            pub fn written(&self) -> &[u8] {
-                &self.buffer
-            }
-        }
-
-        impl AsyncWrite for StepWriter {
-            fn poll_write(
-                mut self: Pin<&mut Self>,
-                cx: &mut Context<'_>,
-                buf: &[u8],
-            ) -> Poll<Result<usize, std::io::Error>> {
-                let new_pending = !self.to_pending;
-                let to_pending = std::mem::replace(&mut self.to_pending, new_pending);
-
-                if buf.is_empty() {
-                    return Poll::Ready(Ok(0));
-                }
-
-                if to_pending {
-                    cx.waker().wake_by_ref();
-                    Poll::Pending
-                } else if self.buffer.len() < self.max_len.unwrap_or(usize::MAX) {
-                    let byte = buf[0];
-                    self.buffer.push(byte);
-                    Poll::Ready(Ok(1))
-                } else {
-                    Poll::Ready(Err(std::io::Error::new(
-                        std::io::ErrorKind::ConnectionReset,
-                        "Reached max len",
-                    )))
-                }
-            }
-        }
+        #[cfg(feature = "async")]
+        pub use r#async::StepWriter;
     }
 }
