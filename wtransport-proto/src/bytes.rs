@@ -111,12 +111,11 @@ impl<'a> BufferReader<'a> {
     }
 
     /// Advances the offset.
-    ///
-    /// **Note**: the behavior is unspecified if `len` is greater than the capacity.
     #[inline(always)]
-    pub fn skip(&mut self, len: usize) {
-        debug_assert!(len <= self.capacity());
-        let _ = self.0.skip(len);
+    pub fn skip(&mut self, len: usize) -> Result<(), EndOfBuffer> {
+        self.0
+            .skip(len)
+            .map_err(|octets::BufferTooShortError| EndOfBuffer)
     }
 
     /// Returns a reference to the internal buffer.
@@ -169,8 +168,9 @@ impl<'a, 'b> BufferReaderChild<'a, 'b> {
     /// Advances the parent [`BufferReader`] offset of the amount read on this child.
     #[inline(always)]
     pub fn commit(self) {
-        debug_assert!(self.reader.offset() <= self.parent.capacity());
-        self.parent.skip(self.reader.offset())
+        self.parent
+            .skip(self.reader.offset())
+            .expect("Child offset is bounded to parent")
     }
 
     #[inline(always)]
@@ -687,7 +687,7 @@ mod tests {
     fn child_commit() {
         let mut buffer_reader = BufferReader::new(&[0x1, 0x2]);
 
-        buffer_reader.skip(1);
+        buffer_reader.skip(1).unwrap();
         assert_eq!(buffer_reader.offset(), 1);
         assert_eq!(buffer_reader.capacity(), 1);
 
@@ -708,7 +708,7 @@ mod tests {
     fn child_drop() {
         let mut buffer_reader = BufferReader::new(&[0x1, 0x2]);
 
-        buffer_reader.skip(1);
+        buffer_reader.skip(1).unwrap();
         assert_eq!(buffer_reader.offset(), 1);
         assert_eq!(buffer_reader.capacity(), 1);
 
