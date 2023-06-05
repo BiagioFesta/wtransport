@@ -121,7 +121,7 @@ impl<'a> BufferReader<'a> {
 
     /// Returns a reference to the internal buffer.
     ///
-    /// Note: this is the entire buffer (despite offset).
+    /// **Note**: this is the entire buffer (despite offset).
     #[inline(always)]
     pub fn buffer(&self) -> &'a [u8] {
         self.0.buf()
