@@ -58,7 +58,7 @@ pub trait BytesWriter {
     /// behavior is unspecified.
     fn put_varint(&mut self, value: u64) -> Result<(), EndOfBuffer>;
 
-    /// Writes (by copy) the entire `bytes` at the current offset and advanceds the offset.
+    /// Writes (by **copy**) all `bytes` at the current offset and advances it.
     ///
     /// Returns [`Err`] if source is exhausted and no space is available.
     fn put_bytes(&mut self, bytes: &[u8]) -> Result<(), EndOfBuffer>;
