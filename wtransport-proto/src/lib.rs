@@ -7,6 +7,7 @@ pub mod frame;
 pub mod headers;
 pub mod settings;
 pub mod stream;
+pub mod varint;
 
 /// Application Layer Protocol Negotiation for WebTransport connections.
 pub const WEBTRANSPORT_ALPN: &[u8; 2] = b"h3";
