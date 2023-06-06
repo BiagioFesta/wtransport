@@ -6,6 +6,7 @@ use crate::error::DatagramError;
 use crate::stream::RecvStream;
 use crate::stream::SendStream;
 use std::future::Future;
+use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
@@ -193,5 +194,14 @@ impl Connection {
     #[inline(always)]
     pub fn session_id(&self) -> SessionId {
         self.session.id()
+    }
+
+    /// Returns the peer's UDP address.
+    ///
+    /// **Note**: as QUIC supports migration, remote address may change
+    /// during connection.
+    #[inline(always)]
+    pub fn remote_address(&self) -> SocketAddr {
+        self.quic_connection.remote_address()
     }
 }
