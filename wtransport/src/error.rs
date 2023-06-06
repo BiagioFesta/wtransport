@@ -167,7 +167,8 @@ impl From<quinn::ConnectionError> for ConnectionError {
             quinn::ConnectionError::TransportError(_) => ConnectionError::QuicError,
             quinn::ConnectionError::ConnectionClosed(quic_close) => {
                 ConnectionError::ConnectionClosed(ConnectionClosed {
-                    code: quic_errno_to_code(quic_close.error_code),
+                    code: VarInt::try_from_u64(u64::from(quic_close.error_code))
+                        .unwrap_or_default(),
                     reason: quic_close.reason.into(),
                 })
             }
@@ -187,29 +188,6 @@ impl From<quinn::ConnectionError> for ConnectionError {
             quinn::ConnectionError::TimedOut => ConnectionError::TimedOut,
             quinn::ConnectionError::LocallyClosed => ConnectionError::LocallyClosed,
         }
-    }
-}
-
-fn quic_errno_to_code(code: quinn_proto::TransportErrorCode) -> VarInt {
-    match code {
-        quinn_proto::TransportErrorCode::NO_ERROR => VarInt::from_u32(0x00),
-        quinn_proto::TransportErrorCode::INTERNAL_ERROR => VarInt::from_u32(0x01),
-        quinn_proto::TransportErrorCode::CONNECTION_REFUSED => VarInt::from_u32(0x02),
-        quinn_proto::TransportErrorCode::FLOW_CONTROL_ERROR => VarInt::from_u32(0x03),
-        quinn_proto::TransportErrorCode::STREAM_LIMIT_ERROR => VarInt::from_u32(0x04),
-        quinn_proto::TransportErrorCode::STREAM_STATE_ERROR => VarInt::from_u32(0x05),
-        quinn_proto::TransportErrorCode::FINAL_SIZE_ERROR => VarInt::from_u32(0x06),
-        quinn_proto::TransportErrorCode::FRAME_ENCODING_ERROR => VarInt::from_u32(0x07),
-        quinn_proto::TransportErrorCode::TRANSPORT_PARAMETER_ERROR => VarInt::from_u32(0x08),
-        quinn_proto::TransportErrorCode::CONNECTION_ID_LIMIT_ERROR => VarInt::from_u32(0x09),
-        quinn_proto::TransportErrorCode::PROTOCOL_VIOLATION => VarInt::from_u32(0x0a),
-        quinn_proto::TransportErrorCode::INVALID_TOKEN => VarInt::from_u32(0x0b),
-        quinn_proto::TransportErrorCode::APPLICATION_ERROR => VarInt::from_u32(0x0c),
-        quinn_proto::TransportErrorCode::CRYPTO_BUFFER_EXCEEDED => VarInt::from_u32(0x0d),
-        quinn_proto::TransportErrorCode::KEY_UPDATE_ERROR => VarInt::from_u32(0x0e),
-        quinn_proto::TransportErrorCode::AEAD_LIMIT_REACHED => VarInt::from_u32(0x0f),
-        quinn_proto::TransportErrorCode::NO_VIABLE_PATH => VarInt::from_u32(0x10),
-        _ => VarInt::from_u32(0x0),
     }
 }
 
