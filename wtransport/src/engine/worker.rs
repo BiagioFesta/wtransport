@@ -365,7 +365,7 @@ impl LocalSettingsStream {
         let mut stream = Stream::open_uni(quic_connection)
             .await
             .ok_or(WorkerError::RemoteClosed)?
-            .upgrade(StreamHeader::new(StreamKind::Control, None))
+            .upgrade(StreamHeader::new_control())
             .await
             .map_err(|upgrade_error| {
                 WorkerError::with_upgrade_err(upgrade_error, "Unable to send SETTINGS")

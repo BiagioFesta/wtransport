@@ -21,7 +21,6 @@ use tokio::sync::Mutex;
 use wtransport_proto::ids::SessionId;
 use wtransport_proto::settings::Settings;
 use wtransport_proto::stream::StreamHeader;
-use wtransport_proto::stream::StreamKind;
 
 pub(crate) struct Engine {
     quic_connection: quinn::Connection,
@@ -127,10 +126,7 @@ impl Engine {
         };
 
         match stream
-            .upgrade(StreamHeader::new(
-                StreamKind::WebTransport,
-                Some(session_id),
-            ))
+            .upgrade(StreamHeader::new_webtransport(session_id))
             .await
         {
             Ok(stream) => Ok(stream.upgrade()),

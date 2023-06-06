@@ -90,28 +90,16 @@ impl StreamHeader {
     /// Maximum number of bytes a [`StreamHeader`] can take over network.
     pub const MAX_LEN: usize = 16;
 
-    /// Creates a new [`StreamHeader`] initializing its [`StreamKind`].
-    ///
-    /// **Note**: if [`StreamKind::WebTransport`] then `session_id` must be [`Some`].
-    ///
-    /// **Note**: if [`StreamKind::Exercise`] it must contain a valid exercise id otherwise
-    /// the behavior is unspecified. See [`StreamKind::is_id_exercise`].
-    pub fn new(kind: StreamKind, session_id: Option<SessionId>) -> Self {
-        if let StreamKind::WebTransport = kind {
-            debug_assert!(
-                session_id.is_some(),
-                "StreamHeader is webtransport but session_id not provided"
-            )
-        }
+    /// Creates a new stream header of type [`StreamKind::Control`].
+    #[inline(always)]
+    pub fn new_control() -> Self {
+        Self::new(StreamKind::Control, None)
+    }
 
-        if let StreamKind::Exercise(id) = kind {
-            debug_assert!(
-                StreamKind::is_id_exercise(id),
-                "StreamHeader is exercise but '{id}' is not valid"
-            )
-        }
-
-        Self { kind, session_id }
+    /// Creates a new stream header of type [`StreamKind::WebTransport`].
+    #[inline(always)]
+    pub fn new_webtransport(session_id: SessionId) -> Self {
+        Self::new(StreamKind::WebTransport, Some(session_id))
     }
 
     /// Reads a [`StreamHeader`] from a [`BytesReader`].
@@ -266,6 +254,16 @@ impl StreamHeader {
             self.session_id
                 .expect("WebTransport stream header contains session id")
         })
+    }
+
+    fn new(kind: StreamKind, session_id: Option<SessionId>) -> Self {
+        if let StreamKind::Exercise(id) = kind {
+            debug_assert!(StreamKind::is_id_exercise(id))
+        } else if let StreamKind::WebTransport = kind {
+            debug_assert!(session_id.is_some())
+        }
+
+        Self { kind, session_id }
     }
 }
 
