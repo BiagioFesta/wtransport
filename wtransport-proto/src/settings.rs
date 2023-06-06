@@ -3,10 +3,10 @@ use crate::bytes::BufferWriter;
 use crate::bytes::BytesReader;
 use crate::bytes::BytesWriter;
 use crate::bytes::EndOfBuffer;
-use crate::bytes::MAX_VARINT;
 use crate::error::Error;
 use crate::frame::Frame;
 use crate::frame::FrameKind;
+use crate::varint::VarInt;
 use std::collections::hash_map;
 use std::collections::HashMap;
 
@@ -23,11 +23,11 @@ pub enum SettingId {
     QPackBlockedStreams,
     H3Datagram,
     EnableWebTransport,
-    Exercise(u64),
+    Exercise(VarInt),
 }
 
 impl SettingId {
-    fn parse(id: u64) -> Result<Self, ParseError> {
+    fn parse(id: VarInt) -> Result<Self, ParseError> {
         if Self::is_reserved(id) {
             return Err(ParseError::ReservedSetting);
         }
@@ -46,7 +46,7 @@ impl SettingId {
         }
     }
 
-    const fn id(self) -> u64 {
+    const fn id(self) -> VarInt {
         match self {
             Self::QPackMaxTableCapacity => setting_ids::SETTINGS_QPACK_MAX_TABLE_CAPACITY,
             Self::MaxFieldSectionSize => setting_ids::SETTINGS_MAX_FIELD_SECTION_SIZE,
@@ -57,32 +57,20 @@ impl SettingId {
         }
     }
 
-    // TODO(bfesta): do we need this?
-    #[allow(unused)]
-    const fn is_valid_value(self, value: u64) -> bool {
-        match self {
-            Self::QPackMaxTableCapacity | Self::MaxFieldSectionSize | Self::QPackBlockedStreams => {
-                value <= MAX_VARINT
-            }
-            Self::H3Datagram | Self::EnableWebTransport => matches!(value, 0 | 1),
-            Self::Exercise(_) => true,
-        }
+    #[inline(always)]
+    const fn is_reserved(id: VarInt) -> bool {
+        matches!(id.into_inner(), 0x0 | 0x2 | 0x3 | 0x4 | 0x5)
     }
 
     #[inline(always)]
-    const fn is_reserved(id: u64) -> bool {
-        matches!(id, 0x0 | 0x2 | 0x3 | 0x4 | 0x5)
-    }
-
-    #[inline(always)]
-    const fn is_exercise(id: u64) -> bool {
-        id >= 0x21 && ((id - 0x21) % 0x1f == 0)
+    const fn is_exercise(id: VarInt) -> bool {
+        id.into_inner() >= 0x21 && ((id.into_inner() - 0x21) % 0x1f == 0)
     }
 }
 
 /// Collection of settings for an HTTP3 connection.
 #[derive(Clone, Debug)]
-pub struct Settings(HashMap<SettingId, u64>);
+pub struct Settings(HashMap<SettingId, VarInt>);
 
 impl Settings {
     /// Produces a new [`SettingsBuilder`] for new [`Settings`] construction.
@@ -181,29 +169,27 @@ pub struct SettingsBuilder(Settings);
 
 impl SettingsBuilder {
     /// Sets the QPACK max table capacity.
-    pub fn qpack_max_table_capacity(mut self, value: u32) -> Self {
-        self.0
-             .0
-            .insert(SettingId::QPackMaxTableCapacity, value as u64);
+    pub fn qpack_max_table_capacity(mut self, value: VarInt) -> Self {
+        self.0 .0.insert(SettingId::QPackMaxTableCapacity, value);
         self
     }
 
-    pub fn qpack_blocked_streams(mut self, value: u32) -> Self {
-        self.0
-             .0
-            .insert(SettingId::QPackBlockedStreams, value as u64);
+    pub fn qpack_blocked_streams(mut self, value: VarInt) -> Self {
+        self.0 .0.insert(SettingId::QPackBlockedStreams, value);
         self
     }
 
     /// Enables *WebTransport* support.
     pub fn enable_webtransport(mut self) -> Self {
-        self.0 .0.insert(SettingId::EnableWebTransport, 1);
+        self.0
+             .0
+            .insert(SettingId::EnableWebTransport, VarInt::from_u32(1));
         self
     }
 
     /// Enables HTTP3 datagrams support.
     pub fn enable_h3_datagrams(mut self) -> Self {
-        self.0 .0.insert(SettingId::H3Datagram, 1);
+        self.0 .0.insert(SettingId::H3Datagram, VarInt::from_u32(1));
         self
     }
 
@@ -214,9 +200,11 @@ impl SettingsBuilder {
 }
 
 mod setting_ids {
-    pub const SETTINGS_QPACK_MAX_TABLE_CAPACITY: u64 = 0x01;
-    pub const SETTINGS_MAX_FIELD_SECTION_SIZE: u64 = 0x06;
-    pub const SETTINGS_QPACK_BLOCKED_STREAMS: u64 = 0x07;
-    pub const SETTINGS_H3_DATAGRAM: u64 = 0xffd277;
-    pub const SETTINGS_ENABLE_WEBTRANSPORT: u64 = 0x2b603742;
+    use crate::varint::VarInt;
+
+    pub const SETTINGS_QPACK_MAX_TABLE_CAPACITY: VarInt = VarInt::from_u32(0x01);
+    pub const SETTINGS_MAX_FIELD_SECTION_SIZE: VarInt = VarInt::from_u32(0x06);
+    pub const SETTINGS_QPACK_BLOCKED_STREAMS: VarInt = VarInt::from_u32(0x07);
+    pub const SETTINGS_H3_DATAGRAM: VarInt = VarInt::from_u32(0xffd277);
+    pub const SETTINGS_ENABLE_WEBTRANSPORT: VarInt = VarInt::from_u32(0x2b603742);
 }

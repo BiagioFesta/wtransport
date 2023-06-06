@@ -18,7 +18,7 @@ use quinn::VarInt;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
-use wtransport_proto::frame::SessionId;
+use wtransport_proto::ids::SessionId;
 use wtransport_proto::settings::Settings;
 use wtransport_proto::stream::StreamHeader;
 use wtransport_proto::stream::StreamKind;
@@ -145,7 +145,7 @@ impl Engine {
                 Err(_) => return Err(self.worker_result().await),
             };
 
-            if let Some(dgram) = Datagram::read(quic_dgram, session_id).map_err(|DgramError| {
+            if let Some(dgram) = Datagram::read(session_id, quic_dgram).map_err(|DgramError| {
                 WorkerError::LocalClosed(H3Error::new(H3Code::Datagram, "Error reading datagram"))
             })? {
                 return Ok(dgram);
@@ -154,7 +154,7 @@ impl Engine {
     }
 
     pub fn send_datagram(&self, data: &[u8], session_id: SessionId) -> Result<(), DatagramError> {
-        let dgram = Datagram::write(data, session_id);
+        let dgram = Datagram::write(session_id, data);
 
         self.quic_connection
             .send_datagram(dgram.into_quic_bytes())?;

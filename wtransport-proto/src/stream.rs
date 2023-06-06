@@ -3,7 +3,9 @@ use crate::bytes::BufferWriter;
 use crate::bytes::BytesReader;
 use crate::bytes::BytesWriter;
 use crate::bytes::EndOfBuffer;
-use crate::frame::SessionId;
+use crate::ids::InvalidSessionId;
+use crate::ids::SessionId;
+use crate::varint::VarInt;
 
 #[cfg(feature = "async")]
 use crate::bytes::AsyncRead;
@@ -14,39 +16,30 @@ use crate::bytes::AsyncWrite;
 #[cfg(feature = "async")]
 use crate::bytes::IoError;
 
-/// QUIC stream id.
-pub type StreamId = u64;
+/// Error stream header read operation.
+#[derive(Debug)]
+pub enum StreamHeaderReadError {
+    /// Error for unknown stream type.
+    UnknownStream,
 
-/// An error during async read operation.
+    /// Error for invalid session ID.
+    InvalidSessionId,
+}
+
+/// An error during async stream header read operation.
 #[cfg(feature = "async")]
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 #[derive(Debug)]
-pub enum StreamHeaderReadError {
-    UnknownStream,
+pub enum StreamHeaderReadAsyncError {
+    StreamHeader(StreamHeaderReadError),
     Read(IoError),
 }
 
 #[cfg(feature = "async")]
-impl From<IoError> for StreamHeaderReadError {
+impl From<IoError> for StreamHeaderReadAsyncError {
     fn from(io_error: IoError) -> Self {
-        StreamHeaderReadError::Read(io_error)
+        StreamHeaderReadAsyncError::Read(io_error)
     }
-}
-
-/// Error for unknown stream type.
-#[derive(Debug)]
-pub struct UnknownStream;
-
-/// Checks whether a stream is *bi-directional* or not.
-#[inline(always)]
-pub const fn is_stream_bi(stream_id: StreamId) -> bool {
-    stream_id & 0x2 == 0
-}
-
-/// Checks whether a stream is *locally* initiated or not.
-#[inline(always)]
-pub const fn is_stream_local(stream_id: StreamId, is_server: bool) -> bool {
-    (stream_id & 0x1) == (is_server as u64)
 }
 
 /// An HTTP3 stream type.
@@ -56,17 +49,17 @@ pub enum StreamKind {
     QPackEncoder,
     QPackDecoder,
     WebTransport,
-    Exercise(u64),
+    Exercise(VarInt),
 }
 
 impl StreamKind {
     /// Checks whether an `id` is valid for a [`StreamKind::Exercise`].
     #[inline(always)]
-    pub const fn is_id_exercise(id: u64) -> bool {
-        id >= 0x21 && ((id - 0x21) % 0x1f == 0)
+    pub const fn is_id_exercise(id: VarInt) -> bool {
+        id.into_inner() >= 0x21 && ((id.into_inner() - 0x21) % 0x1f == 0)
     }
 
-    const fn parse(id: u64) -> Option<Self> {
+    const fn parse(id: VarInt) -> Option<Self> {
         match id {
             stream_type_ids::CONTROL_STREAM => Some(StreamKind::Control),
             stream_type_ids::QPACK_ENCODER_STREAM => Some(StreamKind::QPackEncoder),
@@ -77,7 +70,7 @@ impl StreamKind {
         }
     }
 
-    const fn id(self) -> u64 {
+    const fn id(self) -> VarInt {
         match self {
             StreamKind::Control => stream_type_ids::CONTROL_STREAM,
             StreamKind::QPackEncoder => stream_type_ids::QPACK_ENCODER_STREAM,
@@ -127,19 +120,22 @@ impl StreamHeader {
     /// to parse an entire header.
     ///
     /// In case [`None`] or [`Err`], `bytes_reader` might be partially read.
-    pub fn read<'a, R>(bytes_reader: &mut R) -> Option<Result<Self, UnknownStream>>
+    pub fn read<'a, R>(bytes_reader: &mut R) -> Option<Result<Self, StreamHeaderReadError>>
     where
         R: BytesReader<'a>,
     {
         let kind_id = bytes_reader.get_varint()?;
-
         let kind = match StreamKind::parse(kind_id) {
             Some(kind) => kind,
-            None => return Some(Err(UnknownStream)),
+            None => return Some(Err(StreamHeaderReadError::UnknownStream)),
         };
 
         let session_id = if matches!(kind, StreamKind::WebTransport) {
-            let session_id = bytes_reader.get_varint()?;
+            let session_id = match SessionId::try_from_varint(bytes_reader.get_varint()?) {
+                Ok(session_id) => session_id,
+                Err(InvalidSessionId) => return Some(Err(StreamHeaderReadError::InvalidSessionId)),
+            };
+
             Some(session_id)
         } else {
             None
@@ -151,17 +147,25 @@ impl StreamHeader {
     /// Reads a [`StreamHeader`] from a `reader`.
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    pub async fn read_async<R>(reader: &mut R) -> Result<Self, StreamHeaderReadError>
+    pub async fn read_async<R>(reader: &mut R) -> Result<Self, StreamHeaderReadAsyncError>
     where
         R: AsyncRead + Unpin + ?Sized,
     {
         use crate::bytes::BytesReaderAsync;
 
         let kind_id = reader.get_varint().await?;
-        let kind = StreamKind::parse(kind_id).ok_or(StreamHeaderReadError::UnknownStream)?;
+        let kind = StreamKind::parse(kind_id).ok_or(StreamHeaderReadAsyncError::StreamHeader(
+            StreamHeaderReadError::UnknownStream,
+        ))?;
 
         let session_id = if matches!(kind, StreamKind::WebTransport) {
-            let session_id = reader.get_varint().await?;
+            let session_id = SessionId::try_from_varint(reader.get_varint().await?).map_err(
+                |InvalidSessionId| {
+                    StreamHeaderReadAsyncError::StreamHeader(
+                        StreamHeaderReadError::InvalidSessionId,
+                    )
+                },
+            )?;
 
             Some(session_id)
         } else {
@@ -179,7 +183,7 @@ impl StreamHeader {
     /// In case [`None`] or [`Err`], `buffer_reader` offset if not advanced.
     pub fn read_from_buffer(
         buffer_reader: &mut BufferReader,
-    ) -> Option<Result<Self, UnknownStream>> {
+    ) -> Option<Result<Self, StreamHeaderReadError>> {
         let mut buffer_reader_child = buffer_reader.child();
 
         match Self::read(&mut *buffer_reader_child)? {
@@ -187,7 +191,7 @@ impl StreamHeader {
                 buffer_reader_child.commit();
                 Some(Ok(header))
             }
-            Err(UnknownStream) => Some(Err(UnknownStream)),
+            Err(error) => Some(Err(error)),
         }
     }
 
@@ -204,7 +208,7 @@ impl StreamHeader {
         bytes_writer.put_varint(self.kind.id())?;
 
         if let Some(session_id) = self.session_id() {
-            bytes_writer.put_varint(session_id)?;
+            bytes_writer.put_varint(session_id.into_varint())?;
         }
 
         Ok(())
@@ -222,7 +226,7 @@ impl StreamHeader {
         writer.put_varint(self.kind.id()).await?;
 
         if let Some(session_id) = self.session_id() {
-            writer.put_varint(session_id).await?;
+            writer.put_varint(session_id.into_varint()).await?;
         }
 
         Ok(())
@@ -233,9 +237,9 @@ impl StreamHeader {
     /// In case [`Err`], `buffer_writer` is not advanced.
     pub fn write_to_buffer(&self, buffer_writer: &mut BufferWriter) -> Result<(), EndOfBuffer> {
         let cap_needed = if let Some(session_id) = self.session_id() {
-            octets::varint_len(self.kind.id()) + octets::varint_len(session_id)
+            self.kind.id().size() + session_id.into_varint().size()
         } else {
-            octets::varint_len(self.kind.id())
+            self.kind.id().size()
         };
 
         if buffer_writer.capacity() < cap_needed {
@@ -266,8 +270,10 @@ impl StreamHeader {
 }
 
 mod stream_type_ids {
-    pub const CONTROL_STREAM: u64 = 0x0;
-    pub const QPACK_ENCODER_STREAM: u64 = 0x02;
-    pub const QPACK_DECODER_STREAM: u64 = 0x03;
-    pub const WEBTRANSPORT_STREAM: u64 = 0x54;
+    use crate::varint::VarInt;
+
+    pub const CONTROL_STREAM: VarInt = VarInt::from_u32(0x0);
+    pub const QPACK_ENCODER_STREAM: VarInt = VarInt::from_u32(0x02);
+    pub const QPACK_DECODER_STREAM: VarInt = VarInt::from_u32(0x03);
+    pub const WEBTRANSPORT_STREAM: VarInt = VarInt::from_u32(0x54);
 }

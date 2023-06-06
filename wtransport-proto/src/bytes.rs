@@ -1,13 +1,8 @@
+use crate::varint::VarInt;
 use octets::Octets;
 use octets::OctetsMut;
 use std::ops::Deref;
 use std::ops::DerefMut;
-
-/// Maximum value for a varint.
-pub const MAX_VARINT: u64 = 4_611_686_018_427_387_903;
-
-/// Maximum number of bytes for varint encoding.
-pub const MAX_VARINT_LEN: usize = 8;
 
 /// An error indicating write operation was not able to complete because
 /// end of buffer has been reached.
@@ -20,7 +15,7 @@ pub trait BytesReader<'a> {
     /// the current offset and advances the offset.
     ///
     /// Returns [`None`] if not enough capacity (offset is not advanced in that case).
-    fn get_varint(&mut self) -> Option<u64>;
+    fn get_varint(&mut self) -> Option<VarInt>;
 
     /// Reads `len` bytes from the current offset without copying and advances
     /// the offset.
@@ -30,13 +25,13 @@ pub trait BytesReader<'a> {
 }
 
 impl<'a> BytesReader<'a> for &'a [u8] {
-    fn get_varint(&mut self) -> Option<u64> {
-        let varint_len = octets::varint_parse_len(*self.first()?);
-        let buffer = self.get(..varint_len)?;
+    fn get_varint(&mut self) -> Option<VarInt> {
+        let varint_size = VarInt::parse_size(*self.first()?);
+        let buffer = self.get(..varint_size)?;
         let varint = BufferReader::new(buffer)
             .get_varint()
             .expect("Varint parsable");
-        *self = &self[varint_len..];
+        *self = &self[varint_size..];
         Some(varint)
     }
 
@@ -53,10 +48,7 @@ pub trait BytesWriter {
     /// current offset and advances the offset.
     ///
     /// Returns [`Err`] if source is exhausted and no space is available.
-    ///
-    /// **Note**: `value` must not be greater than [`MAX_VARINT`] otherwise
-    /// behavior is unspecified.
-    fn put_varint(&mut self, value: u64) -> Result<(), EndOfBuffer>;
+    fn put_varint(&mut self, varint: VarInt) -> Result<(), EndOfBuffer>;
 
     /// Writes (by **copy**) all `bytes` at the current offset and advances it.
     ///
@@ -65,14 +57,13 @@ pub trait BytesWriter {
 }
 
 impl BytesWriter for Vec<u8> {
-    fn put_varint(&mut self, value: u64) -> Result<(), EndOfBuffer> {
-        let varint_len = octets::varint_len(value);
+    fn put_varint(&mut self, varint: VarInt) -> Result<(), EndOfBuffer> {
         let offset = self.len();
 
-        self.resize(offset + varint_len, 0);
+        self.resize(offset + varint.size(), 0);
 
         BufferWriter::new(&mut self[offset..])
-            .put_varint(value)
+            .put_varint(varint)
             .expect("Enough capacity prellocated");
 
         Ok(())
@@ -141,8 +132,17 @@ impl<'a> BufferReader<'a> {
 
 impl<'a> BytesReader<'a> for BufferReader<'a> {
     #[inline(always)]
-    fn get_varint(&mut self) -> Option<u64> {
-        self.0.get_varint().ok()
+    fn get_varint(&mut self) -> Option<VarInt> {
+        match self.0.get_varint() {
+            Ok(value) => {
+                // SAFETY: octets returns a legit varint
+                Some(unsafe {
+                    debug_assert!(value <= VarInt::MAX.into_inner());
+                    VarInt::from_u64_unchecked(value)
+                })
+            }
+            Err(octets::BufferTooShortError) => None,
+        }
     }
 
     #[inline(always)]
@@ -231,11 +231,9 @@ impl<'a> BufferWriter<'a> {
 
 impl<'a> BytesWriter for BufferWriter<'a> {
     #[inline(always)]
-    fn put_varint(&mut self, value: u64) -> Result<(), EndOfBuffer> {
-        debug_assert!(value <= MAX_VARINT);
-
+    fn put_varint(&mut self, varint: VarInt) -> Result<(), EndOfBuffer> {
         self.0
-            .put_varint(value)
+            .put_varint(varint.into_inner())
             .map_err(|octets::BufferTooShortError| EndOfBuffer)?;
 
         Ok(())
@@ -280,7 +278,7 @@ pub mod r#async {
     /// Reads bytes from a source.
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub trait AsyncRead {
-        /// Attempt to read from the source copying into `buf`.
+        /// Attempt to read from the source **copying** into `buf`.
         ///
         /// * On success, returns `Poll::Ready(num_bytes_read)`.
         /// * It returns `0` (i.e., `num_bytes_read == 0`) if:
@@ -337,8 +335,8 @@ pub mod r#async {
     where
         T: AsyncWrite + ?Sized,
     {
-        fn put_varint(&mut self, value: u64) -> PutVarint<Self> {
-            PutVarint::new(self, value)
+        fn put_varint(&mut self, varint: VarInt) -> PutVarint<Self> {
+            PutVarint::new(self, varint)
         }
 
         fn put_buffer<'a>(&'a mut self, buffer: &'a [u8]) -> PutBuffer<Self> {
@@ -353,7 +351,7 @@ pub mod r#async {
         /// the source advancing the buffer's internal cursor.
         ///
         /// On succes, return the number of bytes written (the varint lenght of encoded value).
-        fn put_varint(&mut self, value: u64) -> PutVarint<Self>;
+        fn put_varint(&mut self, varint: VarInt) -> PutVarint<Self>;
 
         /// Pushes some bytes into ths source advancing the buffer’s internal cursor.
         fn put_buffer<'a>(&'a mut self, buffer: &'a [u8]) -> PutBuffer<Self>;
@@ -365,9 +363,9 @@ pub mod r#async {
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub struct GetVarint<'a, R: ?Sized> {
         reader: &'a mut R,
-        buffer: [u8; MAX_VARINT_LEN],
+        buffer: [u8; VarInt::MAX_SIZE],
         offset: usize,
-        varint_len: usize,
+        varint_size: usize,
     }
 
     impl<'a, R> GetVarint<'a, R>
@@ -377,9 +375,9 @@ pub mod r#async {
         fn new(reader: &'a mut R) -> Self {
             Self {
                 reader,
-                buffer: [0; MAX_VARINT_LEN],
+                buffer: [0; VarInt::MAX_SIZE],
                 offset: 0,
-                varint_len: 0,
+                varint_size: 0,
             }
         }
     }
@@ -388,13 +386,13 @@ pub mod r#async {
     where
         R: AsyncRead + Unpin + ?Sized,
     {
-        type Output = Result<u64, IoError>;
+        type Output = Result<VarInt, IoError>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let this = self.get_mut();
 
             if this.offset == 0 {
-                debug_assert_eq!(this.varint_len, 0);
+                debug_assert_eq!(this.varint_size, 0);
 
                 let read = ready!(AsyncRead::poll_read(
                     Pin::new(this.reader),
@@ -406,18 +404,18 @@ pub mod r#async {
 
                 if read == 1 {
                     this.offset = 1;
-                    this.varint_len = octets::varint_parse_len(this.buffer[0]);
-                    debug_assert_ne!(this.varint_len, 0);
+                    this.varint_size = VarInt::parse_size(this.buffer[0]);
+                    debug_assert_ne!(this.varint_size, 0);
                 } else {
                     return Poll::Ready(Err(IoError::Closed));
                 }
             }
 
-            while this.offset < this.varint_len {
+            while this.offset < this.varint_size {
                 let read = ready!(AsyncRead::poll_read(
                     Pin::new(this.reader),
                     cx,
-                    &mut this.buffer[this.offset..this.varint_len]
+                    &mut this.buffer[this.offset..this.varint_size]
                 ))?;
 
                 if read > 0 {
@@ -427,7 +425,7 @@ pub mod r#async {
                 }
             }
 
-            let varint = BufferReader::new(&this.buffer[..this.varint_len])
+            let varint = BufferReader::new(&this.buffer[..this.varint_size])
                 .get_varint()
                 .expect("Varint is parsable");
 
@@ -491,29 +489,29 @@ pub mod r#async {
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub struct PutVarint<'a, W: ?Sized> {
         writer: &'a mut W,
-        buffer: [u8; MAX_VARINT_LEN],
+        buffer: [u8; VarInt::MAX_SIZE],
         offset: usize,
-        varint_len: usize,
+        varint_size: usize,
     }
 
     impl<'a, W> PutVarint<'a, W>
     where
         W: AsyncWrite + ?Sized,
     {
-        fn new(writer: &'a mut W, value: u64) -> Self {
+        fn new(writer: &'a mut W, varint: VarInt) -> Self {
             let mut this = Self {
                 writer,
-                buffer: [0; MAX_VARINT_LEN],
+                buffer: [0; VarInt::MAX_SIZE],
                 offset: 0,
-                varint_len: 0,
+                varint_size: 0,
             };
 
             let mut buffer_writer = BufferWriter::new(&mut this.buffer);
             buffer_writer
-                .put_varint(value)
+                .put_varint(varint)
                 .expect("Inner buffer is enough for max varint");
 
-            this.varint_len = buffer_writer.offset();
+            this.varint_size = buffer_writer.offset();
 
             this
         }
@@ -528,11 +526,11 @@ pub mod r#async {
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let this = self.get_mut();
 
-            while this.offset < this.varint_len {
+            while this.offset < this.varint_size {
                 let written = ready!(AsyncWrite::poll_write(
                     Pin::new(this.writer),
                     cx,
-                    &this.buffer[this.offset..this.varint_len]
+                    &this.buffer[this.offset..this.varint_size]
                 ))?;
 
                 // TODO(bfesta): what if AsyncWrite returns Ok(0)? maybe wake and pending?
@@ -541,7 +539,7 @@ pub mod r#async {
                 this.offset += written;
             }
 
-            Poll::Ready(Ok(this.varint_len))
+            Poll::Ready(Ok(this.varint_size))
         }
     }
 
@@ -647,12 +645,12 @@ mod tests {
 
     #[test]
     fn write_varint() {
-        let mut buffer = [0; MAX_VARINT_LEN];
+        let mut buffer = [0; VarInt::MAX_SIZE];
         for (varint_buffer, value) in utils::VARINT_TEST_CASES {
             let mut buffer_writer = BufferWriter::new(&mut buffer);
 
             assert_eq!(buffer_writer.offset(), 0);
-            assert_eq!(buffer_writer.capacity(), MAX_VARINT_LEN);
+            assert_eq!(buffer_writer.capacity(), VarInt::MAX_SIZE);
 
             buffer_writer.put_varint(value).unwrap();
 
@@ -730,7 +728,7 @@ mod tests {
         assert!(matches!(buffer_reader.get_bytes(1), None));
 
         let mut buffer_writer = BufferWriter::new(&mut []);
-        assert!(buffer_writer.put_varint(0).is_err());
+        assert!(buffer_writer.put_varint(VarInt::from_u32(0)).is_err());
         assert!(buffer_writer.put_bytes(&[0x0]).is_err());
     }
 
@@ -742,26 +740,26 @@ mod tests {
         assert!(reader.get_buffer(&mut [0x0]).await.is_err());
 
         let mut writer = utils::StepWriter::new(Some(0));
-        assert!(writer.put_varint(0).await.is_err());
+        assert!(writer.put_varint(VarInt::from_u32(0)).await.is_err());
         assert!(writer.put_buffer(&[0x0]).await.is_err());
     }
 
     mod utils {
-        pub const VARINT_TEST_CASES: [(&[u8], u64); 4] = [
-            (
-                &[0xc2, 0x19, 0x7c, 0x5e, 0xff, 0x14, 0xe8, 0x8c],
-                151_288_809_941_952_652,
-            ),
-            (&[0x9d, 0x7f, 0x3e, 0x7d], 494_878_333),
-            (&[0x7b, 0xbd], 15_293),
-            (&[0x25], 37),
+        use super::*;
+
+        pub const VARINT_TEST_CASES: [(&[u8], VarInt); 4] = [
+            (&[0xc2, 0x19, 0x7c, 0x5e, 0xff, 0x14, 0xe8, 0x8c], unsafe {
+                VarInt::from_u64_unchecked(151_288_809_941_952_652)
+            }),
+            (&[0x9d, 0x7f, 0x3e, 0x7d], VarInt::from_u32(494_878_333)),
+            (&[0x7b, 0xbd], VarInt::from_u32(15_293)),
+            (&[0x25], VarInt::from_u32(37)),
         ];
 
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
         pub mod r#async {
-            use super::super::AsyncRead;
-            use super::super::AsyncWrite;
+            use super::*;
             use std::pin::Pin;
             use std::task::Context;
             use std::task::Poll;

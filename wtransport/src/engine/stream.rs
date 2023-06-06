@@ -1,5 +1,4 @@
 use crate::error::StreamError;
-use quinn::VarInt;
 use std::pin::Pin;
 use std::task::ready;
 use std::task::Context;
@@ -9,10 +8,12 @@ use wtransport_proto::bytes::AsyncRead;
 use wtransport_proto::bytes::AsyncWrite;
 use wtransport_proto::bytes::IoError;
 use wtransport_proto::frame::Frame;
-use wtransport_proto::frame::SessionId;
+use wtransport_proto::ids::SessionId;
+use wtransport_proto::ids::StreamId;
 use wtransport_proto::stream::StreamHeader;
+use wtransport_proto::stream::StreamHeaderReadAsyncError;
 use wtransport_proto::stream::StreamHeaderReadError;
-use wtransport_proto::stream::StreamId;
+use wtransport_proto::varint::VarInt;
 
 pub(crate) struct Raw;
 pub(crate) struct H3(Option<StreamHeader>);
@@ -45,7 +46,7 @@ impl Stream<BiRemote, Raw> {
         }
     }
 
-    pub(crate) fn stop(mut self, code: u64) -> Result<(), VarIntBoundsExceeded> {
+    pub(crate) fn stop(mut self, code: VarInt) {
         self.kind.1.stop(code)
     }
 
@@ -95,7 +96,7 @@ impl Stream<UniRemote, Raw> {
         })
     }
 
-    pub(crate) fn stop(mut self, code: u64) -> Result<(), VarIntBoundsExceeded> {
+    pub(crate) fn stop(mut self, code: VarInt) {
         self.kind.0.stop(code)
     }
 
@@ -151,10 +152,10 @@ impl Stream<BiRemote, H3> {
     }
 
     pub(crate) fn id(&self) -> StreamId {
-        self.kind.0 .0.id().0
+        self.kind.0.id()
     }
 
-    pub(crate) fn stop(mut self, code: u64) -> Result<(), VarIntBoundsExceeded> {
+    pub(crate) fn stop(mut self, code: VarInt) {
         self.kind.1.stop(code)
     }
 
@@ -191,7 +192,7 @@ impl Stream<BiLocal, H3> {
     }
 
     pub(crate) fn id(&self) -> StreamId {
-        self.kind.0 .0.id().0
+        self.kind.0.id()
     }
 
     pub(crate) fn normalize(self) -> Stream<Bi, Raw> {
@@ -288,7 +289,7 @@ impl Stream<UniLocal, Wt> {
 
 impl Stream<Bi, Raw> {
     pub(crate) fn id(&self) -> StreamId {
-        self.kind.0 .0.id().0
+        self.kind.0.id()
     }
 }
 
@@ -313,6 +314,17 @@ impl QuicSendStream {
     pub(crate) async fn stopped(&mut self) -> Result<(), StreamError> {
         self.0.stopped().await?;
         Ok(())
+    }
+
+    #[inline(always)]
+    pub(crate) fn id(&self) -> StreamId {
+        // SAFETY: stream id from QUIC is a legit varint
+        let varint = unsafe {
+            debug_assert!(self.0.id().0 <= VarInt::MAX.into_inner());
+            VarInt::from_u64_unchecked(self.0.id().0)
+        };
+
+        StreamId::new(varint)
     }
 }
 
@@ -372,12 +384,14 @@ impl QuicRecvStream {
         }
     }
 
-    pub(crate) fn stop(&mut self, error_code: u64) -> Result<(), VarIntBoundsExceeded> {
-        let _ = self.0.stop(
-            VarInt::from_u64(error_code)
-                .map_err(|quinn_proto::VarIntBoundsExceeded| VarIntBoundsExceeded)?,
-        );
-        Ok(())
+    pub(crate) fn stop(&mut self, error_code: VarInt) {
+        // SAFETY: varint conversion
+        let quic_varint = unsafe {
+            debug_assert!(error_code.into_inner() <= quinn::VarInt::MAX.into_inner());
+            quinn::VarInt::from_u64_unchecked(error_code.into_inner())
+        };
+
+        let _ = self.0.stop(quic_varint);
     }
 }
 
@@ -412,6 +426,7 @@ impl tokio::io::AsyncRead for QuicRecvStream {
 
 pub(crate) enum UpgradeError {
     UnknownStream,
+    InvalidSessionId,
     ConnectionClosed,
     EndOfStream,
 }
@@ -425,17 +440,23 @@ impl From<IoError> for UpgradeError {
     }
 }
 
-impl From<StreamHeaderReadError> for UpgradeError {
-    fn from(error: StreamHeaderReadError) -> Self {
+impl From<StreamHeaderReadAsyncError> for UpgradeError {
+    fn from(error: StreamHeaderReadAsyncError) -> Self {
         match error {
-            StreamHeaderReadError::UnknownStream => UpgradeError::UnknownStream,
-            StreamHeaderReadError::Read(io_error) => io_error.into(),
+            StreamHeaderReadAsyncError::StreamHeader(StreamHeaderReadError::UnknownStream) => {
+                UpgradeError::UnknownStream
+            }
+            StreamHeaderReadAsyncError::StreamHeader(StreamHeaderReadError::InvalidSessionId) => {
+                UpgradeError::InvalidSessionId
+            }
+            StreamHeaderReadAsyncError::Read(io_error) => io_error.into(),
         }
     }
 }
 
 pub(crate) enum FrameReadError {
     UnknownFrame,
+    InvalidSessionId,
     EndOfStream,
     ConnectionClosed,
 }
@@ -449,13 +470,18 @@ impl From<IoError> for FrameReadError {
     }
 }
 
-impl From<wtransport_proto::frame::FrameReadError> for FrameReadError {
-    fn from(error: wtransport_proto::frame::FrameReadError) -> Self {
+impl From<wtransport_proto::frame::FrameReadAsyncError> for FrameReadError {
+    fn from(error: wtransport_proto::frame::FrameReadAsyncError) -> Self {
         use wtransport_proto::frame;
 
         match error {
-            frame::FrameReadError::UnknownFrame => FrameReadError::UnknownFrame,
-            frame::FrameReadError::Read(io_error) => io_error.into(),
+            frame::FrameReadAsyncError::Frame(frame::FrameReadError::UnknownFrame) => {
+                FrameReadError::UnknownFrame
+            }
+            frame::FrameReadAsyncError::Frame(frame::FrameReadError::InvalidSessionId) => {
+                FrameReadError::InvalidSessionId
+            }
+            frame::FrameReadAsyncError::Read(io_error) => io_error.into(),
         }
     }
 }
@@ -474,6 +500,3 @@ impl From<IoError> for FrameWriteError {
         }
     }
 }
-
-#[derive(Debug)]
-pub struct VarIntBoundsExceeded;

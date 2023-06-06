@@ -28,7 +28,7 @@ impl VarInt {
 
     /// Tries to construct a [`VarInt`] from `u64`.
     #[inline(always)]
-    pub const fn from_u64(value: u64) -> Result<Self, VarIntBoundsExceeded> {
+    pub const fn try_from_u64(value: u64) -> Result<Self, VarIntBoundsExceeded> {
         if value <= Self::MAX.0 {
             Ok(Self(value))
         } else {
@@ -36,7 +36,7 @@ impl VarInt {
         }
     }
 
-    /// Create a VarInt without ensuring it's in range.
+    /// Creates a VarInt without ensuring it's in range.
     ///
     /// # Safety
     ///
@@ -109,7 +109,7 @@ impl TryFrom<u64> for VarInt {
 
     #[inline(always)]
     fn try_from(value: u64) -> Result<Self, Self::Error> {
-        Self::from_u64(value)
+        Self::try_from_u64(value)
     }
 }
 

@@ -9,8 +9,8 @@ use crate::engine::stream::H3;
 use crate::error::H3Code;
 use crate::error::H3Error;
 use wtransport_proto::frame::FrameKind;
-use wtransport_proto::frame::SessionId;
 use wtransport_proto::headers::Headers;
+use wtransport_proto::ids::SessionId;
 
 #[derive(Debug)]
 pub(crate) enum SessionError {
@@ -160,8 +160,13 @@ impl SessionRemoteResponse {
 pub(crate) struct Session(Stream<Bi, Raw>);
 
 impl Session {
+    #[inline(always)]
     pub fn id(&self) -> SessionId {
-        self.0.id()
+        // SAFETY: inner stream is a session stream by construction
+        unsafe {
+            debug_assert!(self.0.id().is_bidirectional() && self.0.id().is_client_initiated());
+            SessionId::from_session_stream_unchecked(self.0.id())
+        }
     }
 }
 
@@ -184,6 +189,9 @@ impl SessionError {
     {
         match frame_read_error {
             FrameReadError::UnknownFrame => {
+                SessionError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+            }
+            FrameReadError::InvalidSessionId => {
                 SessionError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
             }
             FrameReadError::EndOfStream => {

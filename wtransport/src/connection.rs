@@ -9,7 +9,7 @@ use std::future::Future;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
-use wtransport_proto::frame::SessionId;
+use wtransport_proto::ids::SessionId;
 
 /// [`Future`] for an in-progress connection attempt.
 pub struct Connecting(

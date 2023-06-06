@@ -3,6 +3,10 @@ use crate::bytes::BufferWriter;
 use crate::bytes::BytesReader;
 use crate::bytes::BytesWriter;
 use crate::bytes::EndOfBuffer;
+use crate::ids::InvalidSessionId;
+use crate::ids::SessionId;
+use crate::ids::StreamId;
+use crate::varint::VarInt;
 use std::borrow::Cow;
 
 #[cfg(feature = "async")]
@@ -14,28 +18,31 @@ use crate::bytes::AsyncWrite;
 #[cfg(feature = "async")]
 use crate::bytes::IoError;
 
-/// A WebTransport session id.
-pub type SessionId = u64;
+/// Error frame read operation.
+#[derive(Debug)]
+pub enum FrameReadError {
+    /// Error for unknown frame ID.
+    UnknownFrame,
 
-/// An error during async read operation.
+    /// Error for invalid session ID.
+    InvalidSessionId,
+}
+
+/// An error during async frame read operation.
 #[cfg(feature = "async")]
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 #[derive(Debug)]
-pub enum FrameReadError {
-    UnknownFrame,
+pub enum FrameReadAsyncError {
+    Frame(FrameReadError),
     Read(IoError),
 }
 
 #[cfg(feature = "async")]
-impl From<IoError> for FrameReadError {
+impl From<IoError> for FrameReadAsyncError {
     fn from(io_error: IoError) -> Self {
-        FrameReadError::Read(io_error)
+        FrameReadAsyncError::Read(io_error)
     }
 }
-
-/// Error for unknown frame IDs.
-#[derive(Debug)]
-pub struct UnknownFrame;
 
 /// An HTTP3 [`Frame`] type.
 #[derive(Copy, Clone, Debug)]
@@ -44,17 +51,17 @@ pub enum FrameKind {
     Headers,
     Settings,
     WebTransport,
-    Exercise(u64),
+    Exercise(VarInt),
 }
 
 impl FrameKind {
     /// Checks whether an `id` is valid for a [`FrameKind::Exercise`].
     #[inline(always)]
-    pub const fn is_id_exercise(id: u64) -> bool {
-        id >= 0x21 && ((id - 0x21) % 0x1f == 0)
+    pub const fn is_id_exercise(id: VarInt) -> bool {
+        id.into_inner() >= 0x21 && ((id.into_inner() - 0x21) % 0x1f == 0)
     }
 
-    const fn parse(id: u64) -> Option<Self> {
+    const fn parse(id: VarInt) -> Option<Self> {
         match id {
             frame_kind_ids::DATA => Some(FrameKind::Data),
             frame_kind_ids::HEADERS => Some(FrameKind::Headers),
@@ -65,7 +72,7 @@ impl FrameKind {
         }
     }
 
-    const fn id(self) -> u64 {
+    const fn id(self) -> VarInt {
         match self {
             FrameKind::Data => frame_kind_ids::DATA,
             FrameKind::Headers => frame_kind_ids::HEADERS,
@@ -125,7 +132,10 @@ impl<'a> Frame<'a> {
 
     /// Creates a new [`Frame`] of type [`FrameKind::WebTransport`].
     pub fn new_webtransport(session_id: SessionId) -> Self {
-        Self::with_payload_own(FrameKind::WebTransport, session_id.to_be_bytes().into())
+        Self::with_payload_own(
+            FrameKind::WebTransport,
+            session_id.into_u64().to_be_bytes().into(),
+        )
     }
 
     /// Reads a [`Frame`] from a [`BytesReader`].
@@ -134,23 +144,26 @@ impl<'a> Frame<'a> {
     /// to parse an entire frame.
     ///
     /// In case [`None`] or [`Err`], `bytes_reader` might be partially read.
-    pub fn read<R>(bytes_reader: &mut R) -> Option<Result<Self, UnknownFrame>>
+    pub fn read<R>(bytes_reader: &mut R) -> Option<Result<Self, FrameReadError>>
     where
         R: BytesReader<'a>,
     {
         let kind_id = bytes_reader.get_varint()?;
         let kind = match FrameKind::parse(kind_id) {
             Some(kind) => kind,
-            None => return Some(Err(UnknownFrame)),
+            None => return Some(Err(FrameReadError::UnknownFrame)),
         };
 
         if matches!(kind, FrameKind::WebTransport) {
-            let session_id = bytes_reader.get_varint()?;
+            let session_id = match SessionId::try_from_varint(bytes_reader.get_varint()?) {
+                Ok(session_id) => session_id,
+                Err(InvalidSessionId) => return Some(Err(FrameReadError::InvalidSessionId)),
+            };
 
             Some(Ok(Self::new_webtransport(session_id)))
         } else {
-            let payload_len = bytes_reader.get_varint()?;
-            let payload = bytes_reader.get_bytes(payload_len as usize)?;
+            let payload_len = bytes_reader.get_varint()?.into_inner() as usize;
+            let payload = bytes_reader.get_bytes(payload_len)?;
 
             Some(Ok(Self::with_payload_ref(kind, payload)))
         }
@@ -159,22 +172,25 @@ impl<'a> Frame<'a> {
     /// Reads a [`Frame`] from a `reader`.
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    pub async fn read_async<R>(reader: &mut R) -> Result<Frame<'a>, FrameReadError>
+    pub async fn read_async<R>(reader: &mut R) -> Result<Frame<'a>, FrameReadAsyncError>
     where
         R: AsyncRead + Unpin + ?Sized,
     {
         use crate::bytes::BytesReaderAsync;
 
         let kind_id = reader.get_varint().await?;
-        let kind = FrameKind::parse(kind_id).ok_or(FrameReadError::UnknownFrame)?;
+        let kind = FrameKind::parse(kind_id)
+            .ok_or(FrameReadAsyncError::Frame(FrameReadError::UnknownFrame))?;
 
         if matches!(kind, FrameKind::WebTransport) {
-            let session_id = reader.get_varint().await?;
+            let session_id = SessionId::try_from_varint(reader.get_varint().await?).map_err(
+                |InvalidSessionId| FrameReadAsyncError::Frame(FrameReadError::InvalidSessionId),
+            )?;
 
             Ok(Self::new_webtransport(session_id))
         } else {
-            let payload_len = reader.get_varint().await?;
-            let mut payload = vec![0; payload_len as usize].into_boxed_slice();
+            let payload_len = reader.get_varint().await?.into_inner() as usize;
+            let mut payload = vec![0; payload_len].into_boxed_slice();
 
             reader.get_buffer(&mut payload).await?;
 
@@ -190,7 +206,7 @@ impl<'a> Frame<'a> {
     /// In case [`None`] or [`Err`], `buffer_reader` offset if not advanced.
     pub fn read_from_buffer(
         buffer_reader: &mut BufferReader<'a>,
-    ) -> Option<Result<Self, UnknownFrame>> {
+    ) -> Option<Result<Self, FrameReadError>> {
         let mut buffer_reader_child = buffer_reader.child();
 
         match Self::read(&mut *buffer_reader_child)? {
@@ -198,7 +214,7 @@ impl<'a> Frame<'a> {
                 buffer_reader_child.commit();
                 Some(Ok(frame))
             }
-            Err(UnknownFrame) => Some(Err(UnknownFrame)),
+            Err(error) => Some(Err(error)),
         }
     }
 
@@ -208,6 +224,10 @@ impl<'a> Frame<'a> {
     /// to write the entire frame.
     ///
     /// In case [`Err`], `bytes_writer` might be partially written.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the payload size if greater than [`VarInt::MAX`].
     pub fn write<W>(&self, bytes_writer: &mut W) -> Result<(), EndOfBuffer>
     where
         W: BytesWriter,
@@ -215,9 +235,12 @@ impl<'a> Frame<'a> {
         bytes_writer.put_varint(self.kind.id())?;
 
         if let Some(session_id) = self.session_id() {
-            bytes_writer.put_varint(session_id)?;
+            bytes_writer.put_varint(session_id.into_varint())?;
         } else {
-            bytes_writer.put_varint(self.payload.len() as u64)?;
+            bytes_writer.put_varint(
+                VarInt::try_from(self.payload.len() as u64)
+                    .expect("Payload size is too large for varint"),
+            )?;
             bytes_writer.put_bytes(&self.payload)?;
         }
 
@@ -225,6 +248,10 @@ impl<'a> Frame<'a> {
     }
 
     /// Writes a [`Frame`] into a `writer`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the payload size if greater than [`VarInt::MAX`].
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn write_async<W>(&self, writer: &mut W) -> Result<(), IoError>
@@ -236,9 +263,14 @@ impl<'a> Frame<'a> {
         writer.put_varint(self.kind.id()).await?;
 
         if let Some(session_id) = self.session_id() {
-            writer.put_varint(session_id).await?;
+            writer.put_varint(session_id.into_varint()).await?;
         } else {
-            writer.put_varint(self.payload.len() as u64).await?;
+            writer
+                .put_varint(
+                    VarInt::try_from(self.payload.len() as u64)
+                        .expect("Payload size is too large for varint"),
+                )
+                .await?;
             writer.put_buffer(&self.payload).await?;
         }
 
@@ -248,12 +280,18 @@ impl<'a> Frame<'a> {
     /// Writes this [`Frame`] into a buffer via [`BufferWriter`].
     ///
     /// In case [`Err`], `buffer_writer` is not advanced.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the payload size if greater than [`VarInt::MAX`].
     pub fn write_to_buffer(&self, buffer_writer: &mut BufferWriter) -> Result<(), EndOfBuffer> {
         let cap_needed = if let Some(session_id) = self.session_id() {
-            octets::varint_len(self.kind.id()) + octets::varint_len(session_id)
+            self.kind.id().size() + session_id.into_varint().size()
         } else {
-            octets::varint_len(self.kind.id())
-                + octets::varint_len(self.payload.len() as u64)
+            self.kind.id().size()
+                + VarInt::try_from(self.payload.len() as u64)
+                    .expect("Payload size is too large for varint")
+                    .size()
                 + self.payload.len()
         };
 
@@ -289,14 +327,30 @@ impl<'a> Frame<'a> {
             let mut buffer = [0; 8];
             buffer.copy_from_slice(&self.payload);
 
-            u64::from_be_bytes(buffer)
+            let value = u64::from_be_bytes(buffer);
+
+            // SAFETY: the encoded value is a varint by construction of payload
+            let varint = unsafe {
+                debug_assert!(value <= VarInt::MAX.into_inner());
+                VarInt::from_u64_unchecked(value)
+            };
+
+            let stream_id = StreamId::new(varint);
+
+            // SAFETY: the encoded value is a valid session id by construction of payload
+            unsafe {
+                debug_assert!(stream_id.is_bidirectional() && stream_id.is_client_initiated());
+                SessionId::from_session_stream_unchecked(stream_id)
+            }
         })
     }
 }
 
 mod frame_kind_ids {
-    pub const DATA: u64 = 0x00;
-    pub const HEADERS: u64 = 0x01;
-    pub const SETTINGS: u64 = 0x04;
-    pub const WEBTRANSPORT_STREAM: u64 = 0x41;
+    use crate::varint::VarInt;
+
+    pub const DATA: VarInt = VarInt::from_u32(0x00);
+    pub const HEADERS: VarInt = VarInt::from_u32(0x01);
+    pub const SETTINGS: VarInt = VarInt::from_u32(0x04);
+    pub const WEBTRANSPORT_STREAM: VarInt = VarInt::from_u32(0x41);
 }

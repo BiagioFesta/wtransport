@@ -1,3 +1,4 @@
+use crate::varint::VarInt;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::fmt::Formatter;
@@ -40,7 +41,7 @@ pub enum Error {
 }
 
 impl Error {
-    pub fn to_code(self) -> u64 {
+    pub fn to_code(self) -> VarInt {
         match self {
             Error::Datagram => h3_error_codes::H3_DATAGRAM_ERROR,
             Error::StreamCreation => h3_error_codes::H3_STREAM_CREATION_ERROR,
@@ -84,21 +85,27 @@ impl Display for Error {
 impl std::error::Error for Error {}
 
 mod h3_error_codes {
-    pub const H3_DATAGRAM_ERROR: u64 = 0x33;
-    pub const H3_STREAM_CREATION_ERROR: u64 = 0x0103;
-    pub const H3_CLOSED_CRITICAL_STREAM: u64 = 0x0104;
-    pub const H3_FRAME_UNEXPECTED: u64 = 0x0105;
-    pub const H3_FRAME_ERROR: u64 = 0x0106;
-    pub const H3_SETTINGS_ERROR: u64 = 0x0109;
-    pub const H3_MISSING_SETTINGS: u64 = 0x010a;
-    pub const H3_MESSAGE_ERROR: u64 = 0x010e;
+    use crate::varint::VarInt;
+
+    pub const H3_DATAGRAM_ERROR: VarInt = VarInt::from_u32(0x33);
+    pub const H3_STREAM_CREATION_ERROR: VarInt = VarInt::from_u32(0x0103);
+    pub const H3_CLOSED_CRITICAL_STREAM: VarInt = VarInt::from_u32(0x0104);
+    pub const H3_FRAME_UNEXPECTED: VarInt = VarInt::from_u32(0x0105);
+    pub const H3_FRAME_ERROR: VarInt = VarInt::from_u32(0x0106);
+    pub const H3_SETTINGS_ERROR: VarInt = VarInt::from_u32(0x0109);
+    pub const H3_MISSING_SETTINGS: VarInt = VarInt::from_u32(0x010a);
+    pub const H3_MESSAGE_ERROR: VarInt = VarInt::from_u32(0x010e);
 }
 
 mod qpack_error_codes {
-    pub const QPACK_DECOMPRESSION_FAILED: u64 = 0x0200;
+    use crate::varint::VarInt;
+
+    pub const QPACK_DECOMPRESSION_FAILED: VarInt = VarInt::from_u32(0x0200);
 }
 
 mod wt_error_codes {
-    pub const WEBTRANSPORT_BUFFERED_STREAM_REJECTED: u64 = 0x3994bd84;
-    pub const WEBTRANSPORT_SESSION_GONE: u64 = 0x170d7b68;
+    use crate::varint::VarInt;
+
+    pub const WEBTRANSPORT_BUFFERED_STREAM_REJECTED: VarInt = VarInt::from_u32(0x3994bd84);
+    pub const WEBTRANSPORT_SESSION_GONE: VarInt = VarInt::from_u32(0x170d7b68);
 }

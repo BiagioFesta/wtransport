@@ -5,6 +5,7 @@ pub mod datagram;
 pub mod error;
 pub mod frame;
 pub mod headers;
+pub mod ids;
 pub mod settings;
 pub mod stream;
 pub mod varint;

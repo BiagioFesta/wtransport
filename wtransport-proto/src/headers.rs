@@ -1,7 +1,7 @@
 use crate::error::Error;
 use crate::frame::Frame;
 use crate::frame::FrameKind;
-use crate::stream::StreamId;
+use crate::ids::StreamId;
 use ls_qpack::decoder::Decoder;
 use ls_qpack::decoder::DecoderOutput;
 use ls_qpack::encoder::Encoder;
@@ -18,7 +18,7 @@ impl Headers {
         let mut decoder = Decoder::new(0, 0);
 
         match decoder
-            .decode(ls_qpack::StreamId::new(stream_id), frame.payload())
+            .decode(stream_id.into(), frame.payload())
             .map_err(|DecoderError| Error::Decompression)?
         {
             DecoderOutput::Done(headers) => Ok(headers
@@ -33,7 +33,7 @@ impl Headers {
         let mut encoder = Encoder::new();
 
         let (enc_headers, enc_stream) = encoder
-            .encode_all(ls_qpack::StreamId::new(stream_id), self.0.iter())
+            .encode_all(stream_id.into(), self.0.iter())
             .expect("Static encoding is not expected to fail")
             .take();
 
@@ -61,5 +61,12 @@ where
                 .map(|(k, v)| (k.to_string(), v.to_string()))
                 .collect(),
         )
+    }
+}
+
+impl From<StreamId> for ls_qpack::StreamId {
+    #[inline(always)]
+    fn from(value: StreamId) -> Self {
+        ls_qpack::StreamId::new(value.into_u64())
     }
 }

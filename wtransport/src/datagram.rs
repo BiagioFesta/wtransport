@@ -1,9 +1,10 @@
 use bytes::Bytes;
 use std::ops::Deref;
 use wtransport_proto::datagram::Datagram as H3Datagram;
-use wtransport_proto::datagram::QStreamOB;
-use wtransport_proto::frame::SessionId;
+use wtransport_proto::ids::QStreamId;
+use wtransport_proto::ids::SessionId;
 
+#[derive(Debug)]
 pub(crate) struct DgramError;
 
 /// An application Datagram.
@@ -14,19 +15,16 @@ pub struct Datagram {
 
 impl Datagram {
     pub(crate) fn read(
-        quic_dgram: Bytes,
         session_id: SessionId,
+        quic_dgram: Bytes,
     ) -> Result<Option<Self>, DgramError> {
-        let h3dgram = H3Datagram::read(&mut &quic_dgram[..], quic_dgram.len())
-            .ok_or(DgramError)?
-            .map_err(|QStreamOB| DgramError)?;
+        let h3dgram = H3Datagram::read(&quic_dgram).map_err(|_| DgramError)?;
 
-        let stream_id = h3dgram.stream_id();
-        if stream_id != session_id {
+        let stream_id = h3dgram.qstream_id().into_stream_id();
+        if session_id.session_stream() != stream_id {
             return Ok(None);
         }
 
-        debug_assert!(quic_dgram.len() > h3dgram.payload().len());
         let payload_offset = quic_dgram.len() - h3dgram.payload().len();
 
         Ok(Some(Self {
@@ -35,16 +33,17 @@ impl Datagram {
         }))
     }
 
-    pub(crate) fn write(payload: &[u8], session_id: SessionId) -> Self {
-        let mut buffer = Vec::with_capacity(payload.len() + 8);
+    pub(crate) fn write(session_id: SessionId, payload: &[u8]) -> Self {
+        let h3dgram = H3Datagram::new(
+            QStreamId::from_stream_id(session_id.session_stream()),
+            payload,
+        );
 
-        H3Datagram::new(session_id, payload)
-            .write(&mut buffer)
-            .expect("Vector cannot have EndOfBuffer");
+        let mut buffer = vec![0; h3dgram.write_size()].into_boxed_slice();
+        h3dgram.write(&mut buffer).expect("Preallocated capacity");
 
         let quic_dgram = Bytes::from(buffer);
 
-        debug_assert!(quic_dgram.len() > payload.len());
         let payload_offset = quic_dgram.len() - payload.len();
 
         Self {

@@ -23,6 +23,7 @@ use wtransport_proto::headers::Headers;
 use wtransport_proto::settings::Settings;
 use wtransport_proto::stream::StreamHeader;
 use wtransport_proto::stream::StreamKind;
+use wtransport_proto::varint::VarInt;
 
 type WorkerResult<T> = Result<T, WorkerError>;
 
@@ -196,9 +197,7 @@ impl Worker {
                 let slot = match self.inc_sessions_channel.try_reserve() {
                     Ok(slot) => slot,
                     Err(_) => {
-                        stream
-                            .stop(H3Code::BufferedStreamRejected.to_code())
-                            .expect("Error code is expected to fit varint");
+                        stream.stop(H3Code::BufferedStreamRejected.to_code());
                         return Ok(());
                     }
                 };
@@ -231,9 +230,7 @@ impl Worker {
             let h3slot = match h3_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream
-                        .stop(H3Code::BufferedStreamRejected.to_code())
-                        .expect("Error code is expected to fit varint");
+                    stream.stop(H3Code::BufferedStreamRejected.to_code());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => unreachable!(),
@@ -242,9 +239,7 @@ impl Worker {
             let w3slot = match self.inc_uni_wt_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream
-                        .stop(H3Code::BufferedStreamRejected.to_code())
-                        .expect("Error code is expected to fit varint");
+                    stream.stop(H3Code::BufferedStreamRejected.to_code());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -272,9 +267,7 @@ impl Worker {
             let h3slot = match h3_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream
-                        .stop(H3Code::BufferedStreamRejected.to_code())
-                        .expect("Error code is expected to fit varint");
+                    stream.stop(H3Code::BufferedStreamRejected.to_code());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => unreachable!(),
@@ -283,9 +276,7 @@ impl Worker {
             let w3slot = match self.inc_bi_wt_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream
-                        .stop(H3Code::BufferedStreamRejected.to_code())
-                        .expect("Error code is expected to fit varint");
+                    stream.stop(H3Code::BufferedStreamRejected.to_code());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -306,6 +297,7 @@ impl Worker {
             let stream = match stream.upgrade().await {
                 Ok(stream) => stream,
                 Err(UpgradeError::UnknownStream) => return,
+                Err(UpgradeError::InvalidSessionId) => return,
                 Err(UpgradeError::ConnectionClosed) => return,
                 Err(UpgradeError::EndOfStream) => return,
             };
@@ -332,6 +324,7 @@ impl Worker {
             let frame = match stream.read_frame().await {
                 Ok(frame) => frame,
                 Err(FrameReadError::UnknownFrame) => return,
+                Err(FrameReadError::InvalidSessionId) => return,
                 Err(FrameReadError::ConnectionClosed) => return,
                 Err(FrameReadError::EndOfStream) => return,
             };
@@ -363,8 +356,8 @@ impl LocalSettingsStream {
         debug_assert!(self.0.is_none());
 
         let local_settings = Settings::builder()
-            .qpack_max_table_capacity(0)
-            .qpack_blocked_streams(0)
+            .qpack_max_table_capacity(VarInt::from_u32(0))
+            .qpack_blocked_streams(VarInt::from_u32(0))
             .enable_webtransport()
             .enable_h3_datagrams()
             .build();
@@ -568,6 +561,9 @@ impl WorkerError {
             UpgradeError::UnknownStream => {
                 WorkerError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
             }
+            UpgradeError::InvalidSessionId => {
+                WorkerError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+            }
             UpgradeError::ConnectionClosed => WorkerError::RemoteClosed,
             UpgradeError::EndOfStream => {
                 WorkerError::LocalClosed(H3Error::new(H3Code::ClosedCriticalStream, reason))
@@ -593,6 +589,9 @@ impl WorkerError {
     {
         match frame_read_error {
             FrameReadError::UnknownFrame => {
+                WorkerError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+            }
+            FrameReadError::InvalidSessionId => {
                 WorkerError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
             }
             FrameReadError::EndOfStream => {
