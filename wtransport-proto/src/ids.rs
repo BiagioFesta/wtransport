@@ -197,3 +197,17 @@ impl QStreamId {
         }
     }
 }
+
+impl From<StreamId> for QStreamId {
+    #[inline(always)]
+    fn from(stream_id: StreamId) -> Self {
+        QStreamId::from_stream_id(stream_id)
+    }
+}
+
+impl From<QStreamId> for StreamId {
+    #[inline(always)]
+    fn from(qstream_id: QStreamId) -> Self {
+        qstream_id.into_stream_id()
+    }
+}
