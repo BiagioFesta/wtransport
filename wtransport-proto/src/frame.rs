@@ -33,13 +33,13 @@ pub enum FrameReadError {
 #[derive(Debug)]
 pub enum FrameReadAsyncError {
     Frame(FrameReadError),
-    Read(IoError),
+    IO(IoError),
 }
 
 #[cfg(feature = "async")]
 impl From<IoError> for FrameReadAsyncError {
     fn from(io_error: IoError) -> Self {
-        FrameReadAsyncError::Read(io_error)
+        FrameReadAsyncError::IO(io_error)
     }
 }
 

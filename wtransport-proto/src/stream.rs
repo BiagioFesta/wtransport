@@ -32,13 +32,13 @@ pub enum StreamHeaderReadError {
 #[derive(Debug)]
 pub enum StreamHeaderReadAsyncError {
     StreamHeader(StreamHeaderReadError),
-    Read(IoError),
+    IO(IoError),
 }
 
 #[cfg(feature = "async")]
 impl From<IoError> for StreamHeaderReadAsyncError {
     fn from(io_error: IoError) -> Self {
-        StreamHeaderReadAsyncError::Read(io_error)
+        StreamHeaderReadAsyncError::IO(io_error)
     }
 }
 

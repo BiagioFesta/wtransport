@@ -449,7 +449,7 @@ impl From<StreamHeaderReadAsyncError> for UpgradeError {
             StreamHeaderReadAsyncError::StreamHeader(StreamHeaderReadError::InvalidSessionId) => {
                 UpgradeError::InvalidSessionId
             }
-            StreamHeaderReadAsyncError::Read(io_error) => io_error.into(),
+            StreamHeaderReadAsyncError::IO(io_error) => io_error.into(),
         }
     }
 }
@@ -481,7 +481,7 @@ impl From<wtransport_proto::frame::FrameReadAsyncError> for FrameReadError {
             frame::FrameReadAsyncError::Frame(frame::FrameReadError::InvalidSessionId) => {
                 FrameReadError::InvalidSessionId
             }
-            frame::FrameReadAsyncError::Read(io_error) => io_error.into(),
+            frame::FrameReadAsyncError::IO(io_error) => io_error.into(),
         }
     }
 }
