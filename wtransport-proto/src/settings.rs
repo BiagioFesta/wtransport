@@ -81,15 +81,15 @@ impl Settings {
 
     /// Constructs [`Settings`] parsing payload of a [`Frame`].
     ///
-    /// Returns an [`Err`] in case of invalid setting (id or value) or incomplete
-    /// payload.
+    /// Returns an [`Err`] in case of invalid setting or incomplete payload.
     ///
     /// Unknown settings-ids are ignored.
     ///
-    /// **Note**: frame must be [`FrameKind::Settings`], otherwise behavior
-    /// is unspecified.
+    /// # Panics
+    ///
+    /// Panics if `frame` is not type [`FrameKind::Settings`].
     pub fn with_frame(frame: &Frame) -> Result<Self, Error> {
-        debug_assert!(matches!(frame.kind(), FrameKind::Settings));
+        assert!(matches!(frame.kind(), FrameKind::Settings));
 
         let mut settings = Settings::new();
         let mut buffer_reader = BufferReader::new(frame.payload());
