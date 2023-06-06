@@ -206,6 +206,7 @@ impl<'a> Frame<'a> {
     ///
     /// It returns [`Err`] if the `bytes_writer` does not have enough capacity
     /// to write the entire frame.
+    /// See [`Self::write_size`] to retrieve the extact amount of required capacity.
     ///
     /// In case [`Err`], `bytes_writer` might be partially written.
     pub fn write<W>(&self, bytes_writer: &mut W) -> Result<(), EndOfBuffer>
