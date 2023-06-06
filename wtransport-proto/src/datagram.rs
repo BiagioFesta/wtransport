@@ -51,7 +51,7 @@ impl<'a> Datagram<'a> {
         })
     }
 
-    /// Writes a [`Datagram`] as QUIC datagram into `buffer`..
+    /// Writes a [`Datagram`] as QUIC datagram into `buffer`.
     ///
     /// It returns [`Err`] if the `buffer` does not have enough capacity.
     /// See [`Self::write_size`].
