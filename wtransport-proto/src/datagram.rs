@@ -75,8 +75,7 @@ impl<'a> Datagram<'a> {
         Ok(())
     }
 
-    /// Returns the needed capacity to write this [`Datagram`] into a buffer.
-    // TODO(bfesta): you should implement this logic-method for `Frame` and `StreamHeader` as well!
+    /// Returns the needed capacity to write this datagram into a buffer.
     #[inline(always)]
     pub fn write_size(&self) -> usize {
         self.qstream_id.into_varint().size() + self.payload.len()
