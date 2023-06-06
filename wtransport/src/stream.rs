@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::ReadBuf;
+use wtransport_proto::ids::StreamId;
 
 /// A stream that can only be used to send data.
 pub struct SendStream(QuicSendStream);
@@ -35,6 +36,12 @@ impl SendStream {
     pub async fn finish(&mut self) -> Result<(), StreamError> {
         self.0.finish().await
     }
+
+    /// Returns the [`StreamId`] associated.
+    #[inline(always)]
+    pub fn id(&self) -> StreamId {
+        self.0.id()
+    }
 }
 
 /// A stream that can only be used to receive data.
@@ -50,6 +57,12 @@ impl RecvStream {
     /// On success, returns the number of bytes read into `buf`.
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>, StreamError> {
         self.0.read(buf).await
+    }
+
+    /// Returns the [`StreamId`] associated.
+    #[inline(always)]
+    pub fn id(&self) -> StreamId {
+        self.0.id()
     }
 }
 

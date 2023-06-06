@@ -393,6 +393,17 @@ impl QuicRecvStream {
 
         let _ = self.0.stop(quic_varint);
     }
+
+    #[inline(always)]
+    pub(crate) fn id(&self) -> StreamId {
+        // SAFETY: stream id from QUIC is a legit varint
+        let varint = unsafe {
+            debug_assert!(self.0.id().0 <= VarInt::MAX.into_inner());
+            VarInt::from_u64_unchecked(self.0.id().0)
+        };
+
+        StreamId::new(varint)
+    }
 }
 
 impl AsyncRead for QuicRecvStream {
