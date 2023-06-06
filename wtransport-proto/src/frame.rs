@@ -91,12 +91,20 @@ pub struct Frame<'a> {
 
 impl<'a> Frame<'a> {
     /// Creates a new frame of type [`FrameKind::Headers`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `payload` size if greater than [`VarInt::MAX`].
     #[inline(always)]
     pub fn new_headers(payload: Cow<'a, [u8]>) -> Self {
         Self::new(FrameKind::Headers, payload, None)
     }
 
     /// Creates a new frame of type [`FrameKind::Settings`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `payload` size if greater than [`VarInt::MAX`].
     #[inline(always)]
     pub fn new_settings(payload: Cow<'a, [u8]>) -> Self {
         Self::new(FrameKind::Settings, payload, None)
@@ -200,10 +208,6 @@ impl<'a> Frame<'a> {
     /// to write the entire frame.
     ///
     /// In case [`Err`], `bytes_writer` might be partially written.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the payload size if greater than [`VarInt::MAX`].
     pub fn write<W>(&self, bytes_writer: &mut W) -> Result<(), EndOfBuffer>
     where
         W: BytesWriter,
@@ -215,7 +219,7 @@ impl<'a> Frame<'a> {
         } else {
             bytes_writer.put_varint(
                 VarInt::try_from(self.payload.len() as u64)
-                    .expect("Payload size is too large for varint"),
+                    .expect("Payload cannot be larger than varint max"),
             )?;
             bytes_writer.put_bytes(&self.payload)?;
         }
@@ -224,10 +228,6 @@ impl<'a> Frame<'a> {
     }
 
     /// Writes a [`Frame`] into a `writer`.
-    ///
-    /// # Panics
-    ///
-    /// Panics if the payload size if greater than [`VarInt::MAX`].
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn write_async<W>(&self, writer: &mut W) -> Result<(), IoError>
@@ -244,7 +244,7 @@ impl<'a> Frame<'a> {
             writer
                 .put_varint(
                     VarInt::try_from(self.payload.len() as u64)
-                        .expect("Payload size is too large for varint"),
+                        .expect("Payload cannot be larger than varint max"),
                 )
                 .await?;
             writer.put_buffer(&self.payload).await?;
@@ -261,17 +261,7 @@ impl<'a> Frame<'a> {
     ///
     /// Panics if the payload size if greater than [`VarInt::MAX`].
     pub fn write_to_buffer(&self, buffer_writer: &mut BufferWriter) -> Result<(), EndOfBuffer> {
-        let cap_needed = if let Some(session_id) = self.session_id() {
-            self.kind.id().size() + session_id.into_varint().size()
-        } else {
-            self.kind.id().size()
-                + VarInt::try_from(self.payload.len() as u64)
-                    .expect("Payload size is too large for varint")
-                    .size()
-                + self.payload.len()
-        };
-
-        if buffer_writer.capacity() < cap_needed {
+        if buffer_writer.capacity() < self.write_size() {
             return Err(EndOfBuffer);
         }
 
@@ -279,6 +269,19 @@ impl<'a> Frame<'a> {
             .expect("Enough capacity for frame");
 
         Ok(())
+    }
+
+    /// Returns the needed capacity to write this frame into a buffer.
+    pub fn write_size(&self) -> usize {
+        if let Some(session_id) = self.session_id() {
+            self.kind.id().size() + session_id.into_varint().size()
+        } else {
+            self.kind.id().size()
+                + VarInt::try_from(self.payload.len() as u64)
+                    .expect("Payload cannot be larger than varint max")
+                    .size()
+                + self.payload.len()
+        }
     }
 
     /// Returns the [`FrameKind`] of this [`Frame`].
@@ -303,6 +306,9 @@ impl<'a> Frame<'a> {
         })
     }
 
+    /// # Panics
+    ///
+    /// Panics if the `payload` size if greater than [`VarInt::MAX`].
     fn new(kind: FrameKind, payload: Cow<'a, [u8]>, session_id: Option<SessionId>) -> Self {
         if let FrameKind::Exercise(id) = kind {
             debug_assert!(FrameKind::is_id_exercise(id))
@@ -310,6 +316,8 @@ impl<'a> Frame<'a> {
             debug_assert!(payload.is_empty());
             debug_assert!(session_id.is_some())
         }
+
+        assert!(payload.len() <= VarInt::MAX.into_inner() as usize);
 
         Self {
             kind,
