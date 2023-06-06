@@ -2,7 +2,7 @@ use crate::varint::VarInt;
 use std::fmt;
 
 /// QUIC stream id.
-#[derive(Default, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StreamId(VarInt);
 
 impl StreamId {
@@ -75,7 +75,7 @@ pub struct InvalidSessionId;
 ///
 /// Internally, it corresponds to a *bidirectional* *client-initiated* QUIC stream,
 /// that is, a webtransport *session stream*.
-#[derive(Default, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct SessionId(StreamId);
 
 impl SessionId {
@@ -145,7 +145,7 @@ impl fmt::Display for SessionId {
 pub struct InvalidQStreamId;
 
 /// HTTP3 Quarter Stream ID.
-#[derive(Default, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
+#[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct QStreamId(VarInt);
 
 impl QStreamId {
