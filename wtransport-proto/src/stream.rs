@@ -224,13 +224,7 @@ impl StreamHeader {
     ///
     /// In case [`Err`], `buffer_writer` is not advanced.
     pub fn write_to_buffer(&self, buffer_writer: &mut BufferWriter) -> Result<(), EndOfBuffer> {
-        let cap_needed = if let Some(session_id) = self.session_id() {
-            self.kind.id().size() + session_id.into_varint().size()
-        } else {
-            self.kind.id().size()
-        };
-
-        if buffer_writer.capacity() < cap_needed {
+        if buffer_writer.capacity() < self.write_size() {
             return Err(EndOfBuffer);
         }
 
@@ -238,6 +232,15 @@ impl StreamHeader {
             .expect("Enough capacity for header");
 
         Ok(())
+    }
+
+    /// Returns the needed capacity to write this stream header into a buffer.
+    pub fn write_size(&self) -> usize {
+        if let Some(session_id) = self.session_id() {
+            self.kind.id().size() + session_id.into_varint().size()
+        } else {
+            self.kind.id().size()
+        }
     }
 
     /// Returns the [`StreamKind`].
