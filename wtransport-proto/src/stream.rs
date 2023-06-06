@@ -264,7 +264,7 @@ impl StreamHeader {
     pub fn session_id(&self) -> Option<SessionId> {
         matches!(self.kind, StreamKind::WebTransport).then(|| {
             self.session_id
-                .expect("WebTransport stream header should contain session id")
+                .expect("WebTransport stream header contains session id")
         })
     }
 }
