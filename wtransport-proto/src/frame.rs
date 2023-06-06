@@ -5,7 +5,6 @@ use crate::bytes::BytesWriter;
 use crate::bytes::EndOfBuffer;
 use crate::ids::InvalidSessionId;
 use crate::ids::SessionId;
-use crate::ids::StreamId;
 use crate::varint::VarInt;
 use std::borrow::Cow;
 
@@ -87,54 +86,29 @@ impl FrameKind {
 pub struct Frame<'a> {
     kind: FrameKind,
     payload: Cow<'a, [u8]>,
+    session_id: Option<SessionId>,
 }
 
 impl<'a> Frame<'a> {
-    /// Creates a new [`Frame`] specifying its kind and payload.
-    ///
-    /// **Note**: if [`FrameKind::Exercise`] it must contain a valid exercise id otherwise
-    /// the behavior is unspecified. See [`FrameKind::is_id_exercise`].
-    ///
-    /// **Note**: if [`FrameKind::WebTransport`] then the payload must contain encoded
-    /// [`SessionId`]. Better to use [`Self::new_webtransport`].
-    pub fn new(kind: FrameKind, payload: Cow<'a, [u8]>) -> Self {
-        if let FrameKind::Exercise(id) = kind {
-            debug_assert!(
-                FrameKind::is_id_exercise(id),
-                "Frame is exercise but '{id}' is not valid"
-            )
-        }
-
-        Self { kind, payload }
+    /// Creates a new frame of type [`FrameKind::Headers`].
+    #[inline(always)]
+    pub fn new_headers(payload: Cow<'a, [u8]>) -> Self {
+        Self::new(FrameKind::Headers, payload, None)
     }
 
-    /// Creates a new [`Frame`] with a borrowed payload.
-    ///
-    /// **Note**: if [`FrameKind::Exercise`] it must contain a valid exercise id otherwise
-    /// the behavior is unspecified. See [`FrameKind::is_id_exercise`].
-    ///
-    /// **Note**: if [`FrameKind::WebTransport`] then the payload must contain encoded
-    /// [`SessionId`]. Better to use [`Self::new_webtransport`].
-    pub fn with_payload_ref(kind: FrameKind, payload: &'a [u8]) -> Self {
-        Self::new(kind, Cow::Borrowed(payload))
+    /// Creates a new frame of type [`FrameKind::Settings`].
+    #[inline(always)]
+    pub fn new_settings(payload: Cow<'a, [u8]>) -> Self {
+        Self::new(FrameKind::Settings, payload, None)
     }
 
-    /// Creates a new [`Frame`] with a owned payload.
-    ///
-    /// **Note**: if [`FrameKind::Exercise`] it must contain a valid exercise id otherwise
-    /// the behavior is unspecified. See [`FrameKind::is_id_exercise`].
-    ///
-    /// **Note**: if [`FrameKind::WebTransport`] then the payload must contain encoded
-    /// [`SessionId`]. Better to use [`Self::new_webtransport`].
-    pub fn with_payload_own(kind: FrameKind, payload: Box<[u8]>) -> Self {
-        Self::new(kind, Cow::Owned(payload.into_vec()))
-    }
-
-    /// Creates a new [`Frame`] of type [`FrameKind::WebTransport`].
+    /// Creates a new frame of type [`FrameKind::WebTransport`].
+    #[inline(always)]
     pub fn new_webtransport(session_id: SessionId) -> Self {
-        Self::with_payload_own(
+        Self::new(
             FrameKind::WebTransport,
-            session_id.into_u64().to_be_bytes().into(),
+            Cow::Owned(Default::default()),
+            Some(session_id),
         )
     }
 
@@ -165,7 +139,7 @@ impl<'a> Frame<'a> {
             let payload_len = bytes_reader.get_varint()?.into_inner() as usize;
             let payload = bytes_reader.get_bytes(payload_len)?;
 
-            Some(Ok(Self::with_payload_ref(kind, payload)))
+            Some(Ok(Self::new(kind, Cow::Borrowed(payload), None)))
         }
     }
 
@@ -190,11 +164,13 @@ impl<'a> Frame<'a> {
             Ok(Self::new_webtransport(session_id))
         } else {
             let payload_len = reader.get_varint().await?.into_inner() as usize;
-            let mut payload = vec![0; payload_len].into_boxed_slice();
+            let mut payload = vec![0; payload_len];
 
             reader.get_buffer(&mut payload).await?;
 
-            Ok(Self::with_payload_own(kind, payload))
+            payload.shrink_to_fit();
+
+            Ok(Self::new(kind, Cow::Owned(payload), None))
         }
     }
 
@@ -322,27 +298,24 @@ impl<'a> Frame<'a> {
     #[inline(always)]
     pub fn session_id(&self) -> Option<SessionId> {
         matches!(self.kind, FrameKind::WebTransport).then(|| {
-            debug_assert_eq!(self.payload.len(), 8);
-
-            let mut buffer = [0; 8];
-            buffer.copy_from_slice(&self.payload);
-
-            let value = u64::from_be_bytes(buffer);
-
-            // SAFETY: the encoded value is a varint by construction of payload
-            let varint = unsafe {
-                debug_assert!(value <= VarInt::MAX.into_inner());
-                VarInt::from_u64_unchecked(value)
-            };
-
-            let stream_id = StreamId::new(varint);
-
-            // SAFETY: the encoded value is a valid session id by construction of payload
-            unsafe {
-                debug_assert!(stream_id.is_bidirectional() && stream_id.is_client_initiated());
-                SessionId::from_session_stream_unchecked(stream_id)
-            }
+            self.session_id
+                .expect("WebTransport frame contains session id")
         })
+    }
+
+    fn new(kind: FrameKind, payload: Cow<'a, [u8]>, session_id: Option<SessionId>) -> Self {
+        if let FrameKind::Exercise(id) = kind {
+            debug_assert!(FrameKind::is_id_exercise(id),)
+        } else if matches!(kind, FrameKind::WebTransport) {
+            debug_assert!(payload.is_empty());
+            debug_assert!(session_id.is_some())
+        }
+
+        Self {
+            kind,
+            payload,
+            session_id,
+        }
     }
 }
 

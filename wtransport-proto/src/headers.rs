@@ -6,6 +6,7 @@ use ls_qpack::decoder::Decoder;
 use ls_qpack::decoder::DecoderOutput;
 use ls_qpack::encoder::Encoder;
 use ls_qpack::errors::DecoderError;
+use std::borrow::Cow;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -39,7 +40,7 @@ impl Headers {
 
         debug_assert_eq!(enc_stream.len(), 0);
 
-        Frame::with_payload_own(FrameKind::Headers, enc_headers)
+        Frame::new_headers(Cow::Owned(enc_headers.to_vec()))
     }
 
     pub fn get<K>(&self, key: K) -> Option<&str>

@@ -7,6 +7,7 @@ use crate::error::Error;
 use crate::frame::Frame;
 use crate::frame::FrameKind;
 use crate::varint::VarInt;
+use std::borrow::Cow;
 use std::collections::hash_map;
 use std::collections::HashMap;
 
@@ -121,21 +122,17 @@ impl Settings {
     /// This function allocates heap-memory, producing a [`Frame`] with owned payload.
     /// See [`Self::generate_frame_ref`] for a version without inner memory allocation.
     pub fn generate_frame(&self) -> Frame {
-        let mut payload_writer = Vec::new();
+        let mut payload = Vec::new();
 
         for (id, value) in &self.0 {
-            payload_writer
-                .put_varint(id.id())
-                .expect("Vec does not have EOF");
+            payload.put_varint(id.id()).expect("Vec does not have EOF");
 
-            payload_writer
-                .put_varint(*value)
-                .expect("Vec does not have EOF");
+            payload.put_varint(*value).expect("Vec does not have EOF");
         }
 
-        let payload = payload_writer.into_boxed_slice();
+        payload.shrink_to_fit();
 
-        Frame::with_payload_own(FrameKind::Settings, payload)
+        Frame::new_settings(Cow::Owned(payload))
     }
 
     /// Generates a [`Frame`] with these settings.
@@ -153,10 +150,7 @@ impl Settings {
 
         let offset = bytes_writer.offset();
 
-        Ok(Frame::with_payload_ref(
-            FrameKind::Settings,
-            &buffer[..offset],
-        ))
+        Ok(Frame::new_settings(Cow::Borrowed(&buffer[..offset])))
     }
 
     fn new() -> Self {
