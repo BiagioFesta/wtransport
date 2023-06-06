@@ -305,8 +305,8 @@ impl<'a> Frame<'a> {
 
     fn new(kind: FrameKind, payload: Cow<'a, [u8]>, session_id: Option<SessionId>) -> Self {
         if let FrameKind::Exercise(id) = kind {
-            debug_assert!(FrameKind::is_id_exercise(id),)
-        } else if matches!(kind, FrameKind::WebTransport) {
+            debug_assert!(FrameKind::is_id_exercise(id))
+        } else if let FrameKind::WebTransport = kind {
             debug_assert!(payload.is_empty());
             debug_assert!(session_id.is_some())
         }
