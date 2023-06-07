@@ -128,8 +128,8 @@ impl ClientConfigBuilder<WantsRootStore> {
     }
 
     /// Skip certificate server validation.
-    #[cfg(feature = "dangerous_configuration")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous_configuration")))]
+    #[cfg(feature = "dangerous-configuration")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
     pub fn with_no_cert_validation(self) -> ClientConfig {
         let mut tls_config = Self::build_tls_config(RootCertStore::empty());
         tls_config
@@ -198,7 +198,7 @@ pub struct WantsRootStore {
     bind_address: SocketAddr,
 }
 
-#[cfg(feature = "dangerous_configuration")]
+#[cfg(feature = "dangerous-configuration")]
 mod dangerous_configuration {
     use rustls::client::ServerCertVerified;
     use rustls::client::ServerCertVerifier;
