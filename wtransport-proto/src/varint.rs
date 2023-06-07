@@ -133,3 +133,43 @@ impl fmt::Display for VarInt {
         self.0.fmt(f)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bounds() {
+        assert!(VarInt::try_from_u64(VarInt::MAX.into_inner()).is_ok());
+        assert!(VarInt::try_from_u64(VarInt::MAX.into_inner() + 1).is_err());
+        assert!(VarInt::try_from_u64(2_u64.pow(62)).is_err());
+        assert!(VarInt::try_from_u64(2_u64.pow(62) - 1).is_ok());
+    }
+
+    #[test]
+    fn size() {
+        assert!((1..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(0).unwrap().size()));
+        assert!((1..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(63).unwrap().size()));
+
+        assert!((2..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(64).unwrap().size()));
+        assert!((2..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(16383).unwrap().size()));
+
+        assert!((4..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(16384).unwrap().size()));
+        assert!((4..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(1073741823).unwrap().size()));
+
+        assert!((8..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(1073741824).unwrap().size()));
+        assert!((8..=VarInt::MAX_SIZE)
+            .contains(&VarInt::try_from_u64(4611686018427387903).unwrap().size()));
+
+        assert_eq!(VarInt::MAX_SIZE, 8);
+        assert_eq!(VarInt::MAX.size(), VarInt::MAX_SIZE);
+    }
+
+    #[test]
+    fn parse() {
+        assert_eq!(VarInt::parse_size(0xc2), 8);
+        assert_eq!(VarInt::parse_size(0x9d), 4);
+        assert_eq!(VarInt::parse_size(0x7b), 2);
+        assert_eq!(VarInt::parse_size(0x25), 1);
+    }
+}
