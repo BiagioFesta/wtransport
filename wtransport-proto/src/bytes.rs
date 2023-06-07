@@ -102,6 +102,8 @@ impl<'a> BufferReader<'a> {
     }
 
     /// Advances the offset.
+    ///
+    /// In case of [`Err`] the offset is not advanced.
     #[inline(always)]
     pub fn skip(&mut self, len: usize) -> Result<(), EndOfBuffer> {
         self.0
