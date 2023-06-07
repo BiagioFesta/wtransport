@@ -31,7 +31,10 @@ pub enum StreamHeaderReadError {
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 #[derive(Debug)]
 pub enum StreamHeaderReadAsyncError {
+    /// Error during parsing stream header.
     StreamHeader(StreamHeaderReadError),
+
+    /// Error due to I/O operation.
     IO(IoError),
 }
 
@@ -45,10 +48,19 @@ impl From<IoError> for StreamHeaderReadAsyncError {
 /// An HTTP3 stream type.
 #[derive(Copy, Clone, Debug)]
 pub enum StreamKind {
+    /// CONTROL stream type.
     Control,
+
+    /// QPACK Encoder stream type.
     QPackEncoder,
+
+    /// QPACK Decoder stream type.
     QPackDecoder,
+
+    /// WebTransport stream type.
     WebTransport,
+
+    /// Exercise stream.
     Exercise(VarInt),
 }
 
@@ -81,6 +93,9 @@ impl StreamKind {
     }
 }
 
+/// HTTP3 stream type.
+///
+/// *Unidirectional* HTTP3 streams have an header encoding the type.
 pub struct StreamHeader {
     kind: StreamKind,
     session_id: Option<SessionId>,

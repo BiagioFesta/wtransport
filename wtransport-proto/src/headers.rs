@@ -9,12 +9,18 @@ use ls_qpack::errors::DecoderError;
 use std::borrow::Cow;
 use std::collections::HashMap;
 
+/// HTTP3 headers from the request or response.
 #[derive(Debug)]
 pub struct Headers(HashMap<String, String>);
 
 impl Headers {
+    /// Constructs the headers from a HTTP3 [`Frame`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if `frame` is not type [`FrameKind::Headers`].
     pub fn with_frame(frame: &Frame, stream_id: StreamId) -> Result<Self, Error> {
-        debug_assert!(matches!(frame.kind(), FrameKind::Headers));
+        assert!(matches!(frame.kind(), FrameKind::Headers));
 
         let mut decoder = Decoder::new(0, 0);
 
@@ -30,6 +36,7 @@ impl Headers {
         }
     }
 
+    /// Generates a [`Frame`] with these headers.
     pub fn generate_frame(&self, stream_id: StreamId) -> Frame {
         let mut encoder = Encoder::new();
 
@@ -43,6 +50,8 @@ impl Headers {
         Frame::new_headers(Cow::Owned(enc_headers.to_vec()))
     }
 
+    /// Returns a reference to the value associated with the key.
+    #[inline(always)]
     pub fn get<K>(&self, key: K) -> Option<&str>
     where
         K: AsRef<str>,

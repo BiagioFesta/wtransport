@@ -249,6 +249,7 @@ impl<'a> BytesWriter for BufferWriter<'a> {
     }
 }
 
+/// Async operations.
 #[cfg(feature = "async")]
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 pub mod r#async {
@@ -261,10 +262,14 @@ pub mod r#async {
     use std::task::Context;
     use std::task::Poll;
 
+    /// Error during I/O async operation.
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     #[derive(Debug)]
     pub enum IoError {
+        /// The operation failed because it was not connected yet.
         NotConnected,
+
+        /// The operation did not completed because underlying transport was closed.
         Closed,
     }
 

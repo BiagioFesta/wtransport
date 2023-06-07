@@ -19,11 +19,22 @@ enum ParseError {
 /// Settings IDs for an HTTP3 connection.
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub enum SettingId {
+    /// SETTINGS_QPACK_MAX_TABLE_CAPACITY.
     QPackMaxTableCapacity,
+
+    /// SETTINGS_MAX_FIELD_SECTION_SIZE.
     MaxFieldSectionSize,
+
+    /// SETTINGS_QPACK_BLOCKED_STREAMS.
     QPackBlockedStreams,
+
+    /// SETTINGS_H3_DATAGRAM.
     H3Datagram,
+
+    /// SETTINGS_ENABLE_WEBTRANSPORT.
     EnableWebTransport,
+
+    /// Exercise setting.
     Exercise(VarInt),
 }
 
@@ -162,12 +173,13 @@ impl Settings {
 pub struct SettingsBuilder(Settings);
 
 impl SettingsBuilder {
-    /// Sets the QPACK max table capacity.
+    /// Sets the QPACK max dynamic table capacity.
     pub fn qpack_max_table_capacity(mut self, value: VarInt) -> Self {
         self.0 .0.insert(SettingId::QPackMaxTableCapacity, value);
         self
     }
 
+    /// Sets the upper bound on the number of streams that can be blocked.
     pub fn qpack_blocked_streams(mut self, value: VarInt) -> Self {
         self.0 .0.insert(SettingId::QPackBlockedStreams, value);
         self

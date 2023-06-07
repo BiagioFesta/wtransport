@@ -1,4 +1,4 @@
-//! WebTransport protocol implementation
+//! WebTransport protocol implementation.
 //!
 //! The entry point of this crate is [`Endpoint`].
 //!

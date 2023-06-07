@@ -32,7 +32,10 @@ pub enum FrameReadError {
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 #[derive(Debug)]
 pub enum FrameReadAsyncError {
+    /// Error during parsing a frame.
     Frame(FrameReadError),
+
+    /// Error due to I/O operation.
     IO(IoError),
 }
 
@@ -46,10 +49,19 @@ impl From<IoError> for FrameReadAsyncError {
 /// An HTTP3 [`Frame`] type.
 #[derive(Copy, Clone, Debug)]
 pub enum FrameKind {
+    /// DATA frame type.
     Data,
+
+    /// HEADERS frame type.
     Headers,
+
+    /// SETTINGS frame type.
     Settings,
+
+    /// WebTransport frame type.
     WebTransport,
+
+    /// Exercise frame.
     Exercise(VarInt),
 }
 
