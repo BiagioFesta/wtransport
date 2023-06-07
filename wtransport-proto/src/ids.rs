@@ -113,7 +113,7 @@ impl SessionId {
     ///
     /// # Safety
     ///
-    /// `stream_id` must be *bidirectional* and *client-initiated*, otherwise
+    /// `stream_id` must be *bidirectional* and *client-initiated*.
     #[inline(always)]
     pub const unsafe fn from_session_stream_unchecked(stream_id: StreamId) -> Self {
         debug_assert!(stream_id.is_bidirectional() && stream_id.is_client_initiated());
