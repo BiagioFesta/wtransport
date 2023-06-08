@@ -489,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_fame() {
+    fn unknown_frame() {
         let mut buffer = Vec::new();
 
         Frame {
@@ -508,7 +508,7 @@ mod tests {
 
     #[cfg(feature = "async")]
     #[tokio::test]
-    async fn unknown_fame_async() {
+    async fn unknown_frame_async() {
         let mut buffer = Vec::new();
 
         Frame {
