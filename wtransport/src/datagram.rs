@@ -1,7 +1,7 @@
+use crate::error::H3Error;
 use bytes::Bytes;
 use std::ops::Deref;
 use wtransport_proto::datagram::Datagram as H3Datagram;
-use wtransport_proto::datagram::DatagramReadError;
 use wtransport_proto::ids::QStreamId;
 use wtransport_proto::ids::SessionId;
 
@@ -12,11 +12,9 @@ pub struct Datagram {
 }
 
 impl Datagram {
-    pub(crate) fn read(
-        session_id: SessionId,
-        quic_dgram: Bytes,
-    ) -> Result<Option<Self>, DatagramReadError> {
-        let h3dgram = H3Datagram::read(&quic_dgram)?;
+    pub(crate) fn read(session_id: SessionId, quic_dgram: Bytes) -> Result<Option<Self>, H3Error> {
+        let h3dgram = H3Datagram::read(&quic_dgram)
+            .map_err(|h3_code| H3Error::new(h3_code, "Invalid datagram"))?;
 
         let stream_id = h3dgram.qstream_id().into_stream_id();
         if session_id.session_stream() != stream_id {

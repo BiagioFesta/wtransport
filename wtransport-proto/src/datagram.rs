@@ -3,18 +3,9 @@ use crate::bytes::BufferWriter;
 use crate::bytes::BytesReader;
 use crate::bytes::BytesWriter;
 use crate::bytes::EndOfBuffer;
+use crate::error::Error;
 use crate::ids::InvalidQStreamId;
 use crate::ids::QStreamId;
-
-/// Error datagram read operation.
-#[derive(Debug)]
-pub enum DatagramReadError {
-    /// Error when QUIC datagram is too short.
-    TooShort,
-
-    /// Error for invalid QStream ID (too large).
-    InvalidQStreamId,
-}
 
 /// An HTTP3 datagram.
 pub struct Datagram<'a> {
@@ -33,15 +24,13 @@ impl<'a> Datagram<'a> {
     }
 
     /// Reads [`Datagram`] from a QUIC datagram.
-    pub fn read(quic_datagram: &'a [u8]) -> Result<Self, DatagramReadError> {
+    pub fn read(quic_datagram: &'a [u8]) -> Result<Self, Error> {
         let mut buffer_reader = BufferReader::new(quic_datagram);
 
-        let varint = buffer_reader
-            .get_varint()
-            .ok_or(DatagramReadError::TooShort)?;
+        let varint = buffer_reader.get_varint().ok_or(Error::Datagram)?;
 
-        let qstream_id = QStreamId::try_from_varint(varint)
-            .map_err(|InvalidQStreamId| DatagramReadError::InvalidQStreamId)?;
+        let qstream_id =
+            QStreamId::try_from_varint(varint).map_err(|InvalidQStreamId| Error::Datagram)?;
 
         let payload = buffer_reader.buffer_remaining();
 
@@ -123,10 +112,7 @@ mod tests {
         let mut buffer = vec![0; dgram.write_size() + 42];
         dgram.write(&mut buffer).unwrap();
 
-        assert!(matches!(
-            Datagram::read(&buffer[..1]),
-            Err(DatagramReadError::TooShort)
-        ));
+        assert!(matches!(Datagram::read(&buffer[..1]), Err(Error::Datagram)));
     }
 
     #[test]
@@ -138,7 +124,7 @@ mod tests {
 
         assert!(matches!(
             Datagram::read(&buffer[..written]),
-            Err(DatagramReadError::InvalidQStreamId)
+            Err(Error::Datagram)
         ));
     }
 
