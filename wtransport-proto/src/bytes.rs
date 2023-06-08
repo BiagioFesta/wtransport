@@ -618,6 +618,17 @@ pub mod r#async {
             Poll::Ready(Ok(amt))
         }
     }
+
+    impl AsyncWrite for Vec<u8> {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<IoResult<usize>> {
+            self.extend_from_slice(buf);
+            Poll::Ready(IoResult::Ok(buf.len()))
+        }
+    }
 }
 
 #[cfg(feature = "async")]
