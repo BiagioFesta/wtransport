@@ -294,3 +294,188 @@ mod stream_type_ids {
     pub const QPACK_DECODER_STREAM: VarInt = VarInt::from_u32(0x03);
     pub const WEBTRANSPORT_STREAM: VarInt = VarInt::from_u32(0x54);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn control() {
+        let stream_header = StreamHeader::new_control();
+        assert!(matches!(stream_header.kind(), StreamKind::Control));
+        assert!(stream_header.session_id().is_none());
+
+        let stream_header = utils::assert_serde(stream_header);
+        assert!(matches!(stream_header.kind(), StreamKind::Control));
+        assert!(stream_header.session_id().is_none());
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn control_async() {
+        let stream_header = StreamHeader::new_control();
+        assert!(matches!(stream_header.kind(), StreamKind::Control));
+        assert!(stream_header.session_id().is_none());
+
+        let stream_header = utils::assert_serde_async(stream_header).await;
+        assert!(matches!(stream_header.kind(), StreamKind::Control));
+        assert!(stream_header.session_id().is_none());
+    }
+
+    #[test]
+    fn webtransport() {
+        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+
+        let stream_header = StreamHeader::new_webtransport(session_id);
+        assert!(matches!(stream_header.kind(), StreamKind::WebTransport));
+        assert!(matches!(stream_header.session_id(), Some(x) if x == session_id));
+
+        let stream_header = utils::assert_serde(stream_header);
+        assert!(matches!(stream_header.kind(), StreamKind::WebTransport));
+        assert!(matches!(stream_header.session_id(), Some(x) if x == session_id));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn webtransport_async() {
+        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+
+        let stream_header = StreamHeader::new_webtransport(session_id);
+        assert!(matches!(stream_header.kind(), StreamKind::WebTransport));
+        assert!(matches!(stream_header.session_id(), Some(x) if x == session_id));
+
+        let stream_header = utils::assert_serde_async(stream_header).await;
+        assert!(matches!(stream_header.kind(), StreamKind::WebTransport));
+        assert!(matches!(stream_header.session_id(), Some(x) if x == session_id));
+    }
+
+    #[test]
+    fn read_eof() {
+        let mut buffer = Vec::new();
+        StreamHeader::new_control().write(&mut buffer).unwrap();
+        assert!(StreamHeader::read(&mut &buffer[..buffer.len() - 1]).is_none());
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn read_eof_async() {
+        let mut buffer = Vec::new();
+        StreamHeader::new_control().write(&mut buffer).unwrap();
+
+        assert!(matches!(
+            StreamHeader::read_async(&mut &buffer[..buffer.len() - 1]).await,
+            Err(StreamHeaderReadAsyncError::IO(IoError::Closed))
+        ));
+    }
+
+    #[test]
+    fn unknown_stream() {
+        let mut buffer = Vec::new();
+
+        StreamHeader {
+            kind: StreamKind::Exercise(VarInt::from_u32(0x42)),
+            session_id: None,
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        assert!(matches!(
+            StreamHeader::read(&mut buffer.as_slice()).unwrap(),
+            Err(StreamHeaderReadError::UnknownStream)
+        ));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn unknown_fame_async() {
+        let mut buffer = Vec::new();
+
+        StreamHeader {
+            kind: StreamKind::Exercise(VarInt::from_u32(0x42)),
+            session_id: None,
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        assert!(matches!(
+            StreamHeader::read_async(&mut buffer.as_slice()).await,
+            Err(StreamHeaderReadAsyncError::StreamHeader(
+                StreamHeaderReadError::UnknownStream
+            ))
+        ));
+    }
+
+    #[test]
+    fn invalid_session_id() {
+        let mut buffer = Vec::new();
+
+        let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
+
+        StreamHeader {
+            kind: StreamKind::WebTransport,
+            session_id: Some(invalid_session_id),
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        assert!(matches!(
+            StreamHeader::read(&mut buffer.as_slice()).unwrap(),
+            Err(StreamHeaderReadError::InvalidSessionId)
+        ));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn invalid_session_id_async() {
+        let mut buffer = Vec::new();
+
+        let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
+
+        StreamHeader {
+            kind: StreamKind::WebTransport,
+            session_id: Some(invalid_session_id),
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        assert!(matches!(
+            StreamHeader::read_async(&mut buffer.as_slice()).await,
+            Err(StreamHeaderReadAsyncError::StreamHeader(
+                StreamHeaderReadError::InvalidSessionId
+            ))
+        ));
+    }
+
+    mod utils {
+        use super::*;
+
+        pub fn assert_serde(stream_header: StreamHeader) -> StreamHeader {
+            let mut buffer = Vec::new();
+
+            stream_header.write(&mut buffer).unwrap();
+            assert_eq!(buffer.len(), stream_header.write_size());
+            assert!(buffer.len() <= StreamHeader::MAX_LEN);
+
+            let mut buffer = buffer.as_slice();
+            let stream_header = StreamHeader::read(&mut buffer).unwrap().unwrap();
+            assert!(buffer.is_empty());
+
+            stream_header
+        }
+
+        #[cfg(feature = "async")]
+        pub async fn assert_serde_async(stream_header: StreamHeader) -> StreamHeader {
+            let mut buffer = Vec::new();
+
+            stream_header.write_async(&mut buffer).await.unwrap();
+            assert_eq!(buffer.len(), stream_header.write_size());
+            assert!(buffer.len() <= StreamHeader::MAX_LEN);
+
+            let mut buffer = buffer.as_slice();
+            let stream_header = StreamHeader::read_async(&mut buffer).await.unwrap();
+            assert!(buffer.is_empty());
+
+            stream_header
+        }
+    }
+}
