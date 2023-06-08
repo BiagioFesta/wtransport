@@ -235,3 +235,99 @@ impl fmt::Display for QStreamId {
         self.0.fmt(f)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use utils::stream_types;
+    use utils::StreamType;
+
+    use super::*;
+
+    #[test]
+    fn stream_properties() {
+        for (id, stream_type) in stream_types(1024) {
+            let stream_id = StreamId::new(id);
+
+            match stream_type {
+                StreamType::ClientBi => {
+                    assert!(stream_id.is_bidirectional());
+                    assert!(stream_id.is_client_initiated());
+                    assert!(stream_id.is_local(false));
+                    assert!(!stream_id.is_local(true));
+                }
+                StreamType::ServerBi => {
+                    assert!(stream_id.is_bidirectional());
+                    assert!(!stream_id.is_client_initiated());
+                    assert!(!stream_id.is_local(false));
+                    assert!(stream_id.is_local(true));
+                }
+                StreamType::ClientUni => {
+                    assert!(!stream_id.is_bidirectional());
+                    assert!(stream_id.is_client_initiated());
+                    assert!(stream_id.is_local(false));
+                    assert!(!stream_id.is_local(true));
+                }
+                StreamType::ServerUni => {
+                    assert!(!stream_id.is_bidirectional());
+                    assert!(!stream_id.is_client_initiated());
+                    assert!(!stream_id.is_local(false));
+                    assert!(stream_id.is_local(true));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn session_id() {
+        for (id, stream_type) in stream_types(1024) {
+            if let StreamType::ClientBi = stream_type {
+                assert!(SessionId::try_from_varint(id).is_ok());
+                assert!(SessionId::try_from_session_stream(StreamId::new(id)).is_ok());
+            } else {
+                assert!(SessionId::try_from_varint(id).is_err());
+                assert!(SessionId::try_from_session_stream(StreamId::new(id)).is_err());
+            }
+        }
+    }
+
+    #[test]
+    fn qstream_id() {
+        for (quarter, id) in stream_types(1024)
+            .filter_map(|(id, r#type)| matches!(r#type, StreamType::ClientBi).then(|| id))
+            .enumerate()
+        {
+            let session_id = SessionId::try_from_varint(id).unwrap();
+            let qstream_id = QStreamId::from_session_id(session_id);
+
+            assert_eq!(qstream_id.into_stream_id(), session_id.session_stream());
+            assert_eq!(qstream_id.into_session_id(), session_id);
+            assert_eq!(qstream_id.into_u64(), quarter as u64);
+        }
+    }
+
+    mod utils {
+        use super::*;
+
+        #[derive(Copy, Clone, Debug)]
+        pub enum StreamType {
+            ClientBi,
+            ServerBi,
+            ClientUni,
+            ServerUni,
+        }
+
+        pub fn stream_types(max_id: u32) -> impl Iterator<Item = (VarInt, StreamType)> {
+            [
+                StreamType::ClientBi,
+                StreamType::ServerBi,
+                StreamType::ClientUni,
+                StreamType::ServerUni,
+            ]
+            .into_iter()
+            .cycle()
+            .enumerate()
+            .map(|(index, r#type)| (VarInt::from_u32(index as u32), r#type))
+            .take(max_id as usize)
+        }
+    }
+}
