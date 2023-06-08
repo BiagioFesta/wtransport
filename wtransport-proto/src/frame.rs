@@ -582,6 +582,7 @@ mod tests {
             frame.into_owned()
         }
 
+        #[cfg(feature = "async")]
         pub async fn assert_serde_async(frame: Frame<'_>) -> Frame {
             let mut buffer = Vec::new();
 
