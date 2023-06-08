@@ -12,7 +12,7 @@ pub enum DatagramReadError {
     /// Error when QUIC datagram is too short.
     TooShort,
 
-    /// Error for invalid QStream ID.
+    /// Error for invalid QStream ID (too large).
     InvalidQStreamId,
 }
 
