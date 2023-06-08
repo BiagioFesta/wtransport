@@ -666,6 +666,16 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn parse_varint_async() {
+        for (varint_buffer, value_expect) in utils::VARINT_TEST_CASES {
+            let mut reader = utils::StepReader::new(varint_buffer);
+            let value = reader.get_varint().await.unwrap();
+            assert_eq!(value, value_expect);
+        }
+    }
+
     #[test]
     fn write_varint() {
         let mut buffer = [0; VarInt::MAX_SIZE];
@@ -684,17 +694,7 @@ mod tests {
 
     #[cfg(feature = "async")]
     #[tokio::test]
-    async fn parse_varint_tokio() {
-        for (varint_buffer, value_expect) in utils::VARINT_TEST_CASES {
-            let mut reader = utils::StepReader::new(varint_buffer);
-            let value = reader.get_varint().await.unwrap();
-            assert_eq!(value, value_expect);
-        }
-    }
-
-    #[cfg(feature = "async")]
-    #[tokio::test]
-    async fn write_varint_tokio() {
+    async fn write_varint_async() {
         for (varint_buffer, value) in utils::VARINT_TEST_CASES {
             let mut writer = utils::StepWriter::new(Some(8));
 
@@ -757,7 +757,7 @@ mod tests {
 
     #[cfg(feature = "async")]
     #[tokio::test]
-    async fn none_tokio() {
+    async fn none_async() {
         let mut reader = utils::StepReader::new(vec![]);
         assert!(reader.get_varint().await.is_err());
         assert!(reader.get_buffer(&mut [0x0]).await.is_err());
