@@ -9,6 +9,9 @@ pub enum ErrorCode {
     /// H3_DATAGRAM_ERROR.
     Datagram,
 
+    /// H3_NO_ERROR.
+    NoError,
+
     /// H3_STREAM_CREATION_ERROR.
     StreamCreation,
 
@@ -48,6 +51,7 @@ impl ErrorCode {
     pub fn to_code(self) -> VarInt {
         match self {
             ErrorCode::Datagram => h3_error_codes::H3_DATAGRAM_ERROR,
+            ErrorCode::NoError => h3_error_codes::H3_NO_ERROR,
             ErrorCode::StreamCreation => h3_error_codes::H3_STREAM_CREATION_ERROR,
             ErrorCode::ClosedCriticalStream => h3_error_codes::H3_CLOSED_CRITICAL_STREAM,
             ErrorCode::FrameUnexpected => h3_error_codes::H3_FRAME_UNEXPECTED,
@@ -75,6 +79,7 @@ impl Display for ErrorCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ErrorCode::Datagram => write!(f, "DatagramError"),
+            ErrorCode::NoError => write!(f, "NoError"),
             ErrorCode::StreamCreation => write!(f, "StreamCreationError"),
             ErrorCode::ClosedCriticalStream => write!(f, "ClosedCriticalStreamError"),
             ErrorCode::FrameUnexpected => write!(f, "FrameUnexpectedError"),
@@ -96,6 +101,7 @@ mod h3_error_codes {
     use crate::varint::VarInt;
 
     pub const H3_DATAGRAM_ERROR: VarInt = VarInt::from_u32(0x33);
+    pub const H3_NO_ERROR: VarInt = VarInt::from_u32(0x0100);
     pub const H3_STREAM_CREATION_ERROR: VarInt = VarInt::from_u32(0x0103);
     pub const H3_CLOSED_CRITICAL_STREAM: VarInt = VarInt::from_u32(0x0104);
     pub const H3_FRAME_UNEXPECTED: VarInt = VarInt::from_u32(0x0105);
