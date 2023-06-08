@@ -17,7 +17,7 @@ use tokio::sync::watch;
 use tokio::sync::Mutex;
 use wtransport_proto::ids::SessionId;
 use wtransport_proto::settings::Settings;
-use wtransport_proto::stream::StreamHeader;
+use wtransport_proto::stream_header::StreamHeader;
 
 pub(crate) struct Engine {
     quic_connection: quinn::Connection,

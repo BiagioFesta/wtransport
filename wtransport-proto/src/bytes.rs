@@ -17,7 +17,7 @@ pub trait BytesReader<'a> {
     /// Returns [`None`] if not enough capacity (offset is not advanced in that case).
     fn get_varint(&mut self) -> Option<VarInt>;
 
-    /// Reads `len` bytes from the current offset without copying and advances
+    /// Reads `len` bytes from the current offset **without copying** and advances
     /// the offset.
     ///
     /// Returns [`None`] if not enough capacity (offset is not advanced in that case).
@@ -155,7 +155,8 @@ impl<'a> BytesReader<'a> for BufferReader<'a> {
 
 /// It acts like a copy of a parent [`BufferReader`].
 ///
-/// You can create this from [`BufferReader::child`].
+/// You can create this from [`BufferReader::child`]. The child offset will be set
+/// to `0`, but its underlying buffer will start from the current parent's offset.
 ///
 /// Having a copy it allows reading the buffer preserving the parent's original offset.
 ///
@@ -167,7 +168,7 @@ pub struct BufferReaderChild<'a, 'b> {
 }
 
 impl<'a, 'b> BufferReaderChild<'a, 'b> {
-    /// Advances the parent [`BufferReader`] offset of the amount read on this child.
+    /// Advances the parent [`BufferReader`] offset of the amount read with this child.
     #[inline(always)]
     pub fn commit(self) {
         self.parent
@@ -256,28 +257,61 @@ pub mod r#async {
     use super::*;
     use std::future::Future;
     use std::io::ErrorKind as IoErrorKind;
-    use std::io::Result as IoResult;
     use std::pin::Pin;
     use std::task::ready;
     use std::task::Context;
     use std::task::Poll;
 
-    /// Error during I/O async operation.
+    /// Error during read operations.
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     #[derive(Debug)]
-    pub enum IoError {
-        /// The operation failed because it was not connected yet.
-        NotConnected,
+    pub enum IoReadError {
+        /// Read failed because immediate EOF (attempt reading the first byte).
+        ///
+        /// In this case, *zero* bytes have been read during the operation.
+        ImmediateFin,
 
-        /// The operation did not completed because underlying transport was closed.
-        Closed,
+        /// Read failed because EOF reached in the middle of operation.
+        ///
+        /// In this case, *at least* one byte has been read during the operation.
+        UnexpectedFin,
+
+        /// Read failed because peer interrupted operation (at any point).
+        ///
+        /// In this case, zero or more bytes might be have read during the operation.
+        Reset,
+
+        /// Read failed because peer not is not connected, or disconnected (at any point).
+        ///
+        /// In this case, zero or more bytes might be have read during the operation.
+        NotConnected,
     }
 
-    impl From<std::io::Error> for IoError {
+    /// Error during write operation.
+    #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+    #[derive(Debug)]
+    pub enum IoWriteError {
+        /// Write failed because peer stopped operation.
+        Stopped,
+
+        /// Write failed because peer not is not connected.
+        NotConnected,
+    }
+
+    impl From<std::io::Error> for IoReadError {
         fn from(error: std::io::Error) -> Self {
             match error.kind() {
-                IoErrorKind::NotConnected => IoError::NotConnected,
-                _ => IoError::Closed,
+                IoErrorKind::ConnectionReset => IoReadError::Reset,
+                _ => IoReadError::NotConnected,
+            }
+        }
+    }
+
+    impl From<std::io::Error> for IoWriteError {
+        fn from(error: std::io::Error) -> Self {
+            match error.kind() {
+                IoErrorKind::ConnectionReset => IoWriteError::Stopped,
+                _ => IoWriteError::NotConnected,
             }
         }
     }
@@ -285,56 +319,117 @@ pub mod r#async {
     /// Reads bytes from a source.
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub trait AsyncRead {
-        /// Attempt to read from the source **copying** into `buf`.
+        /// Attempt to read from the source into `buf`.
         ///
-        /// * On success, returns `Poll::Ready(num_bytes_read)`.
-        /// * It returns `0` (i.e., `num_bytes_read == 0`) if:
-        ///   - `buf.len() == 0` (output buffer is empty);
-        ///   - EOF.
+        /// Generally, an implementation will perform a **copy**.
+        ///
+        /// On success, it returns `Ok(num_bytes_read)`, that is the
+        /// lenght of bytes written into `buf`.
+        ///
+        /// It returns `0` if and only if:
+        ///   * `buf` is empty.
+        ///   * The source reached its end (the stream is exhausted / EOF).
+        ///
+        /// An implementation SHOULD only generates the following errors:
+        ///   * [`std::io::ErrorKind::ConnectionReset`] if the read operation was explicitly truncated
+        ///      by the source.
+        ///   * [`std::io::ErrorKind::NotConnected`] if the read operation aborted at any point because
+        ///      lack of communication with the source.
         fn poll_read(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
             buf: &mut [u8],
-        ) -> Poll<IoResult<usize>>;
+        ) -> Poll<std::io::Result<usize>>;
     }
 
-    /// Writes bytes into a source.
+    impl AsyncRead for &[u8] {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<std::io::Result<usize>> {
+            let amt = std::cmp::min(self.len(), buf.len());
+            let (a, b) = self.split_at(amt);
+            buf[..amt].copy_from_slice(a);
+            *self = b;
+            Poll::Ready(Ok(amt))
+        }
+    }
+
+    /// Writes bytes into a destination.
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub trait AsyncWrite {
-        /// Attempt to write bytes into the source copying from `buf`.
+        /// Attempt to write `buf` into the destination.
         ///
-        /// On success, returns `Poll::Ready(num_bytes_written)`.
+        /// Generally, an implementation will perform a **copy**.
         ///
-        /// **Note**: this should never return `Ok(0)` if `buf.len() > 0`.
+        /// On success, it returns `Ok(num_bytes_written)`, that is the number
+        /// of bytes written.
+        /// Note that, it is possible that not the entire `buf` will be written (for instance,
+        /// because of a mechanism of flow controller or limited capacity).
+        ///
+        /// An implementation SHOULD never return `Ok(0)` if `buf` is not empty.
+        ///
+        /// An implementation SHOULD only generates the following errors:
+        ///   * [`std::io::ErrorKind::ConnectionReset`] if the write operation was explicitly stopped
+        ///      by the destination.
+        ///   * [`std::io::ErrorKind::NotConnected`] if the write operation aborted at any point because
+        ///      lack of communication with the destionation.
+        // TODO(bfesta): change return time from `usize` to `NonZero`.
         fn poll_write(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
             buf: &[u8],
-        ) -> Poll<IoResult<usize>>;
+        ) -> Poll<std::io::Result<usize>>;
+    }
+
+    impl AsyncWrite for Vec<u8> {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            self.extend_from_slice(buf);
+            Poll::Ready(std::io::Result::Ok(buf.len()))
+        }
     }
 
     /// Reads bytes or varints asynchronously.
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub trait BytesReaderAsync {
-        /// Reads an unsigned variable-length integer in network byte-order from
-        /// the source advancing the buffer's internal cursor.
-        fn get_varint(&mut self) -> GetVarint<Self>;
+        /// Reads an unsigned variable-length integer in network byte-order from a source.
+        ///
+        /// If EOF is reached during read the very **first** byte:
+        ///   * [`IoReadError::ImmediateFin`] is returned if `unexpected_fin_first` is false.
+        ///   * [`IoReadError::UnexpectedFin`] is returned if `unexpected_fin_first` is true.
+        fn get_varint(&mut self, unexpected_fin_first: bool) -> GetVarint<Self>;
 
-        /// Pulls some bytes from this source into the specified buffer
-        /// advancing the buffer’s internal cursor.
-        fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<Self>;
+        /// Reads the source until `buffer` is completly filled.
+        ///
+        /// If EOF is reached during read the very **first** byte:
+        ///   * [`IoReadError::ImmediateFin`] is returned if `unexpected_fin_first` is false.
+        ///   * [`IoReadError::UnexpectedFin`] is returned if `unexpected_fin_first` is true.
+        fn get_buffer<'a>(
+            &'a mut self,
+            buffer: &'a mut [u8],
+            unexpected_fin_first: bool,
+        ) -> GetBuffer<Self>;
     }
 
     impl<T> BytesReaderAsync for T
     where
         T: AsyncRead + ?Sized,
     {
-        fn get_varint(&mut self) -> GetVarint<Self> {
-            GetVarint::new(self)
+        fn get_varint(&mut self, unexpected_fin_first: bool) -> GetVarint<Self> {
+            GetVarint::new(self, unexpected_fin_first)
         }
 
-        fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<Self> {
-            GetBuffer::new(self, buffer)
+        fn get_buffer<'a>(
+            &'a mut self,
+            buffer: &'a mut [u8],
+            unexpected_fin_first: bool,
+        ) -> GetBuffer<Self> {
+            GetBuffer::new(self, buffer, unexpected_fin_first)
         }
     }
 
@@ -356,8 +451,6 @@ pub mod r#async {
     pub trait BytesWriterAsync {
         /// Writes an unsigned variable-length integer in network byte-order to
         /// the source advancing the buffer's internal cursor.
-        ///
-        /// On succes, return the number of bytes written (the varint lenght of encoded value).
         fn put_varint(&mut self, varint: VarInt) -> PutVarint<Self>;
 
         /// Pushes some bytes into ths source advancing the buffer’s internal cursor.
@@ -373,18 +466,20 @@ pub mod r#async {
         buffer: [u8; VarInt::MAX_SIZE],
         offset: usize,
         varint_size: usize,
+        unexpected_fin_first: bool,
     }
 
     impl<'a, R> GetVarint<'a, R>
     where
         R: AsyncRead + ?Sized,
     {
-        fn new(reader: &'a mut R) -> Self {
+        fn new(reader: &'a mut R, unexpected_fin_first: bool) -> Self {
             Self {
                 reader,
                 buffer: [0; VarInt::MAX_SIZE],
                 offset: 0,
                 varint_size: 0,
+                unexpected_fin_first,
             }
         }
     }
@@ -393,7 +488,7 @@ pub mod r#async {
     where
         R: AsyncRead + Unpin + ?Sized,
     {
-        type Output = Result<VarInt, IoError>;
+        type Output = Result<VarInt, IoReadError>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let this = self.get_mut();
@@ -413,8 +508,10 @@ pub mod r#async {
                     this.offset = 1;
                     this.varint_size = VarInt::parse_size(this.buffer[0]);
                     debug_assert_ne!(this.varint_size, 0);
+                } else if this.unexpected_fin_first {
+                    return Poll::Ready(Err(IoReadError::UnexpectedFin));
                 } else {
-                    return Poll::Ready(Err(IoError::Closed));
+                    return Poll::Ready(Err(IoReadError::ImmediateFin));
                 }
             }
 
@@ -425,10 +522,12 @@ pub mod r#async {
                     &mut this.buffer[this.offset..this.varint_size]
                 ))?;
 
+                debug_assert!(read <= this.varint_size - this.offset);
+
                 if read > 0 {
                     this.offset += read;
                 } else {
-                    return Poll::Ready(Err(IoError::Closed));
+                    return Poll::Ready(Err(IoReadError::UnexpectedFin));
                 }
             }
 
@@ -448,17 +547,19 @@ pub mod r#async {
         reader: &'a mut R,
         buffer: &'a mut [u8],
         offset: usize,
+        unexpected_fin_first: bool,
     }
 
     impl<'a, R> GetBuffer<'a, R>
     where
         R: AsyncRead + ?Sized,
     {
-        fn new(reader: &'a mut R, buffer: &'a mut [u8]) -> Self {
+        fn new(reader: &'a mut R, buffer: &'a mut [u8], unexpected_fin_first: bool) -> Self {
             Self {
                 reader,
                 buffer,
                 offset: 0,
+                unexpected_fin_first,
             }
         }
     }
@@ -467,7 +568,7 @@ pub mod r#async {
     where
         R: AsyncRead + Unpin + ?Sized,
     {
-        type Output = Result<(), IoError>;
+        type Output = Result<(), IoReadError>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let this = self.get_mut();
@@ -479,10 +580,14 @@ pub mod r#async {
                     &mut this.buffer[this.offset..],
                 ))?;
 
+                debug_assert!(read <= this.buffer.len() - this.offset);
+
                 if read > 0 {
                     this.offset += read;
+                } else if this.offset > 0 || this.unexpected_fin_first {
+                    return Poll::Ready(Err(IoReadError::UnexpectedFin));
                 } else {
-                    return Poll::Ready(Err(IoError::Closed));
+                    return Poll::Ready(Err(IoReadError::ImmediateFin));
                 }
             }
 
@@ -528,7 +633,7 @@ pub mod r#async {
     where
         W: AsyncWrite + Unpin + ?Sized,
     {
-        type Output = Result<usize, IoError>;
+        type Output = Result<(), IoWriteError>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let this = self.get_mut();
@@ -546,7 +651,7 @@ pub mod r#async {
                 this.offset += written;
             }
 
-            Poll::Ready(Ok(this.varint_size))
+            Poll::Ready(Ok(()))
         }
     }
 
@@ -577,7 +682,7 @@ pub mod r#async {
     where
         W: AsyncWrite + Unpin + ?Sized,
     {
-        type Output = Result<(), IoError>;
+        type Output = Result<(), IoWriteError>;
 
         fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
             let this = self.get_mut();
@@ -598,37 +703,6 @@ pub mod r#async {
             Poll::Ready(Ok(()))
         }
     }
-
-    // TODO(bfesta): move this under trait def. same for below writer
-    impl AsyncRead for &[u8] {
-        fn poll_read(
-            mut self: Pin<&mut Self>,
-            _cx: &mut Context<'_>,
-            buf: &mut [u8],
-        ) -> Poll<IoResult<usize>> {
-            let amt = std::cmp::min(self.len(), buf.len());
-            let (a, b) = self.split_at(amt);
-
-            if !a.is_empty() {
-                buf.copy_from_slice(a);
-            }
-
-            *self = b;
-
-            Poll::Ready(Ok(amt))
-        }
-    }
-
-    impl AsyncWrite for Vec<u8> {
-        fn poll_write(
-            mut self: Pin<&mut Self>,
-            _cx: &mut Context<'_>,
-            buf: &[u8],
-        ) -> Poll<IoResult<usize>> {
-            self.extend_from_slice(buf);
-            Poll::Ready(IoResult::Ok(buf.len()))
-        }
-    }
 }
 
 #[cfg(feature = "async")]
@@ -644,7 +718,10 @@ pub use r#async::BytesReaderAsync;
 pub use r#async::BytesWriterAsync;
 
 #[cfg(feature = "async")]
-pub use r#async::IoError;
+pub use r#async::IoReadError;
+
+#[cfg(feature = "async")]
+pub use r#async::IoWriteError;
 
 #[cfg(test)]
 mod tests {
@@ -671,7 +748,7 @@ mod tests {
     async fn parse_varint_async() {
         for (varint_buffer, value_expect) in utils::VARINT_TEST_CASES {
             let mut reader = utils::StepReader::new(varint_buffer);
-            let value = reader.get_varint().await.unwrap();
+            let value = reader.get_varint(false).await.unwrap();
             assert_eq!(value, value_expect);
         }
     }
@@ -698,8 +775,8 @@ mod tests {
         for (varint_buffer, value) in utils::VARINT_TEST_CASES {
             let mut writer = utils::StepWriter::new(Some(8));
 
-            let varint_len = writer.put_varint(value).await.unwrap();
-            assert_eq!(varint_len, writer.written().len());
+            writer.put_varint(value).await.unwrap();
+            assert_eq!(value.size(), writer.written().len());
             assert_eq!(writer.written(), varint_buffer);
         }
     }
@@ -759,8 +836,8 @@ mod tests {
     #[tokio::test]
     async fn none_async() {
         let mut reader = utils::StepReader::new(vec![]);
-        assert!(reader.get_varint().await.is_err());
-        assert!(reader.get_buffer(&mut [0x0]).await.is_err());
+        assert!(reader.get_varint(false).await.is_err());
+        assert!(reader.get_buffer(&mut [0x0], false).await.is_err());
 
         let mut writer = utils::StepWriter::new(Some(0));
         assert!(writer.put_varint(VarInt::from_u32(0)).await.is_err());

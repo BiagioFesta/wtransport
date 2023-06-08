@@ -21,8 +21,8 @@ use wtransport_proto::frame::Frame;
 use wtransport_proto::frame::FrameKind;
 use wtransport_proto::headers::Headers;
 use wtransport_proto::settings::Settings;
-use wtransport_proto::stream::StreamHeader;
-use wtransport_proto::stream::StreamKind;
+use wtransport_proto::stream_header::StreamHeader;
+use wtransport_proto::stream_header::StreamKind;
 use wtransport_proto::varint::VarInt;
 
 type WorkerResult<T> = Result<T, WorkerError>;

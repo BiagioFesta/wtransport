@@ -14,11 +14,11 @@ use crate::bytes::AsyncRead;
 use crate::bytes::AsyncWrite;
 
 #[cfg(feature = "async")]
-use crate::bytes::IoError;
+use crate::bytes;
 
-/// Error stream header read operation.
+/// Error stream header parsing.
 #[derive(Debug)]
-pub enum StreamHeaderReadError {
+pub enum ParseError {
     /// Error for unknown stream type.
     UnknownStream,
 
@@ -26,24 +26,29 @@ pub enum StreamHeaderReadError {
     InvalidSessionId,
 }
 
-/// An error during async stream header read operation.
+/// An error during stream header I/O read operation.
 #[cfg(feature = "async")]
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 #[derive(Debug)]
-pub enum StreamHeaderReadAsyncError {
+pub enum IoReadError {
     /// Error during parsing stream header.
-    StreamHeader(StreamHeaderReadError),
+    Parse(ParseError),
 
     /// Error due to I/O operation.
-    IO(IoError),
+    IO(bytes::IoReadError),
 }
 
 #[cfg(feature = "async")]
-impl From<IoError> for StreamHeaderReadAsyncError {
-    fn from(io_error: IoError) -> Self {
-        StreamHeaderReadAsyncError::IO(io_error)
+impl From<bytes::IoReadError> for IoReadError {
+    #[inline(always)]
+    fn from(io_error: bytes::IoReadError) -> Self {
+        IoReadError::IO(io_error)
     }
 }
+
+/// An error during stream header I/O write operation.
+#[cfg(feature = "async")]
+pub type IoWriteError = bytes::IoWriteError;
 
 /// An HTTP3 stream type.
 #[derive(Copy, Clone, Debug)]
@@ -108,13 +113,15 @@ impl StreamHeader {
     /// Creates a new stream header of type [`StreamKind::Control`].
     #[inline(always)]
     pub fn new_control() -> Self {
-        Self::new(StreamKind::Control, None)
+        // SAFETY: Control stream with None sesison id is valid.
+        unsafe { Self::new(StreamKind::Control, None) }
     }
 
     /// Creates a new stream header of type [`StreamKind::WebTransport`].
     #[inline(always)]
     pub fn new_webtransport(session_id: SessionId) -> Self {
-        Self::new(StreamKind::WebTransport, Some(session_id))
+        // SAFETY: WebTransport with session id argument is valid.
+        unsafe { Self::new(StreamKind::WebTransport, Some(session_id)) }
     }
 
     /// Reads a [`StreamHeader`] from a [`BytesReader`].
@@ -123,20 +130,20 @@ impl StreamHeader {
     /// to parse an entire header.
     ///
     /// In case [`None`] or [`Err`], `bytes_reader` might be partially read.
-    pub fn read<'a, R>(bytes_reader: &mut R) -> Option<Result<Self, StreamHeaderReadError>>
+    pub fn read<'a, R>(bytes_reader: &mut R) -> Option<Result<Self, ParseError>>
     where
         R: BytesReader<'a>,
     {
         let kind_id = bytes_reader.get_varint()?;
         let kind = match StreamKind::parse(kind_id) {
             Some(kind) => kind,
-            None => return Some(Err(StreamHeaderReadError::UnknownStream)),
+            None => return Some(Err(ParseError::UnknownStream)),
         };
 
         let session_id = if matches!(kind, StreamKind::WebTransport) {
             let session_id = match SessionId::try_from_varint(bytes_reader.get_varint()?) {
                 Ok(session_id) => session_id,
-                Err(InvalidSessionId) => return Some(Err(StreamHeaderReadError::InvalidSessionId)),
+                Err(InvalidSessionId) => return Some(Err(ParseError::InvalidSessionId)),
             };
 
             Some(session_id)
@@ -144,38 +151,34 @@ impl StreamHeader {
             None
         };
 
-        Some(Ok(Self::new(kind, session_id)))
+        // SAFETY: kind and session id have been validate during parsing
+        Some(Ok(unsafe { Self::new(kind, session_id) }))
     }
 
     /// Reads a [`StreamHeader`] from a `reader`.
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    pub async fn read_async<R>(reader: &mut R) -> Result<Self, StreamHeaderReadAsyncError>
+    pub async fn read_async<R>(reader: &mut R) -> Result<Self, IoReadError>
     where
         R: AsyncRead + Unpin + ?Sized,
     {
         use crate::bytes::BytesReaderAsync;
 
-        let kind_id = reader.get_varint().await?;
-        let kind = StreamKind::parse(kind_id).ok_or(StreamHeaderReadAsyncError::StreamHeader(
-            StreamHeaderReadError::UnknownStream,
-        ))?;
+        let kind_id = reader.get_varint(false).await?;
+        let kind =
+            StreamKind::parse(kind_id).ok_or(IoReadError::Parse(ParseError::UnknownStream))?;
 
         let session_id = if matches!(kind, StreamKind::WebTransport) {
-            let session_id = SessionId::try_from_varint(reader.get_varint().await?).map_err(
-                |InvalidSessionId| {
-                    StreamHeaderReadAsyncError::StreamHeader(
-                        StreamHeaderReadError::InvalidSessionId,
-                    )
-                },
-            )?;
+            let session_id = SessionId::try_from_varint(reader.get_varint(true).await?)
+                .map_err(|InvalidSessionId| IoReadError::Parse(ParseError::InvalidSessionId))?;
 
             Some(session_id)
         } else {
             None
         };
 
-        Ok(Self::new(kind, session_id))
+        // SAFETY: kind and session id have been validate during parsing
+        Ok(unsafe { Self::new(kind, session_id) })
     }
 
     /// Reads a [`StreamHeader`] from a [`BufferReader`].
@@ -184,9 +187,7 @@ impl StreamHeader {
     /// to parse an entire header.
     ///
     /// In case [`None`] or [`Err`], `buffer_reader` offset if not advanced.
-    pub fn read_from_buffer(
-        buffer_reader: &mut BufferReader,
-    ) -> Option<Result<Self, StreamHeaderReadError>> {
+    pub fn read_from_buffer(buffer_reader: &mut BufferReader) -> Option<Result<Self, ParseError>> {
         let mut buffer_reader_child = buffer_reader.child();
 
         match Self::read(&mut *buffer_reader_child)? {
@@ -221,7 +222,7 @@ impl StreamHeader {
     /// Writes a [`StreamHeader`] into a `writer`.
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    pub async fn write_async<W>(&self, writer: &mut W) -> Result<(), IoError>
+    pub async fn write_async<W>(&self, writer: &mut W) -> Result<(), IoWriteError>
     where
         W: AsyncWrite + Unpin + ?Sized,
     {
@@ -275,14 +276,51 @@ impl StreamHeader {
         })
     }
 
-    fn new(kind: StreamKind, session_id: Option<SessionId>) -> Self {
+    /// Creates a new stream header
+    ///
+    /// # Safety:
+    ///
+    /// * If `StreamKind::Exercise` then id must be valid.
+    /// * If `StreamKind::WebTransport` then `session_id` must be provided, if not must be `None`.
+    pub(crate) unsafe fn new(kind: StreamKind, session_id: Option<SessionId>) -> Self {
         if let StreamKind::Exercise(id) = kind {
-            debug_assert!(StreamKind::is_id_exercise(id))
+            debug_assert!(StreamKind::is_id_exercise(id));
+            debug_assert!(session_id.is_none());
         } else if let StreamKind::WebTransport = kind {
-            debug_assert!(session_id.is_some())
+            debug_assert!(session_id.is_some());
+        } else {
+            debug_assert!(session_id.is_none());
         }
 
         Self { kind, session_id }
+    }
+
+    #[cfg(test)]
+    fn serialize_any(kind: VarInt) -> Vec<u8> {
+        let mut buffer = Vec::new();
+
+        Self {
+            kind: StreamKind::Exercise(kind),
+            session_id: None,
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        buffer
+    }
+
+    #[cfg(test)]
+    fn serialize_webtransport(session_id: SessionId) -> Vec<u8> {
+        let mut buffer = Vec::new();
+
+        Self {
+            kind: StreamKind::WebTransport,
+            session_id: Some(session_id),
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        buffer
     }
 }
 
@@ -351,98 +389,69 @@ mod tests {
 
     #[test]
     fn read_eof() {
-        let mut buffer = Vec::new();
-        StreamHeader::new_control().write(&mut buffer).unwrap();
+        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
         assert!(StreamHeader::read(&mut &buffer[..buffer.len() - 1]).is_none());
     }
 
     #[cfg(feature = "async")]
     #[tokio::test]
     async fn read_eof_async() {
-        let mut buffer = Vec::new();
-        StreamHeader::new_control().write(&mut buffer).unwrap();
+        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
+
+        assert!(matches!(
+            StreamHeader::read_async(&mut &buffer[..0]).await,
+            Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
+        ));
+
+        assert!(buffer.len() > 1);
 
         assert!(matches!(
             StreamHeader::read_async(&mut &buffer[..buffer.len() - 1]).await,
-            Err(StreamHeaderReadAsyncError::IO(IoError::Closed))
+            Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin))
         ));
     }
 
     #[test]
     fn unknown_stream() {
-        let mut buffer = Vec::new();
-
-        StreamHeader {
-            kind: StreamKind::Exercise(VarInt::from_u32(0x42)),
-            session_id: None,
-        }
-        .write(&mut buffer)
-        .unwrap();
+        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
 
         assert!(matches!(
             StreamHeader::read(&mut buffer.as_slice()).unwrap(),
-            Err(StreamHeaderReadError::UnknownStream)
+            Err(ParseError::UnknownStream)
         ));
     }
 
     #[cfg(feature = "async")]
     #[tokio::test]
-    async fn unknown_fame_async() {
-        let mut buffer = Vec::new();
-
-        StreamHeader {
-            kind: StreamKind::Exercise(VarInt::from_u32(0x42)),
-            session_id: None,
-        }
-        .write(&mut buffer)
-        .unwrap();
+    async fn unknown_stream_async() {
+        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
 
         assert!(matches!(
             StreamHeader::read_async(&mut buffer.as_slice()).await,
-            Err(StreamHeaderReadAsyncError::StreamHeader(
-                StreamHeaderReadError::UnknownStream
-            ))
+            Err(IoReadError::Parse(ParseError::UnknownStream))
         ));
     }
 
     #[test]
     fn invalid_session_id() {
-        let mut buffer = Vec::new();
-
         let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
-
-        StreamHeader {
-            kind: StreamKind::WebTransport,
-            session_id: Some(invalid_session_id),
-        }
-        .write(&mut buffer)
-        .unwrap();
+        let buffer = StreamHeader::serialize_webtransport(invalid_session_id);
 
         assert!(matches!(
             StreamHeader::read(&mut buffer.as_slice()).unwrap(),
-            Err(StreamHeaderReadError::InvalidSessionId)
+            Err(ParseError::InvalidSessionId)
         ));
     }
 
     #[cfg(feature = "async")]
     #[tokio::test]
     async fn invalid_session_id_async() {
-        let mut buffer = Vec::new();
-
         let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
-
-        StreamHeader {
-            kind: StreamKind::WebTransport,
-            session_id: Some(invalid_session_id),
-        }
-        .write(&mut buffer)
-        .unwrap();
+        let buffer = StreamHeader::serialize_webtransport(invalid_session_id);
 
         assert!(matches!(
             StreamHeader::read_async(&mut buffer.as_slice()).await,
-            Err(StreamHeaderReadAsyncError::StreamHeader(
-                StreamHeaderReadError::InvalidSessionId
-            ))
+            Err(IoReadError::Parse(ParseError::InvalidSessionId))
         ));
     }
 

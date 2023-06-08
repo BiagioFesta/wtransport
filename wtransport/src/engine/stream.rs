@@ -4,15 +4,15 @@ use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::ReadBuf;
+use wtransport_proto::bytes;
 use wtransport_proto::bytes::AsyncRead;
 use wtransport_proto::bytes::AsyncWrite;
-use wtransport_proto::bytes::IoError;
+use wtransport_proto::frame;
 use wtransport_proto::frame::Frame;
 use wtransport_proto::ids::SessionId;
 use wtransport_proto::ids::StreamId;
-use wtransport_proto::stream::StreamHeader;
-use wtransport_proto::stream::StreamHeaderReadAsyncError;
-use wtransport_proto::stream::StreamHeaderReadError;
+use wtransport_proto::stream_header;
+use wtransport_proto::stream_header::StreamHeader;
 use wtransport_proto::varint::VarInt;
 
 pub(crate) struct Raw;
@@ -442,25 +442,34 @@ pub(crate) enum UpgradeError {
     EndOfStream,
 }
 
-impl From<IoError> for UpgradeError {
-    fn from(error: IoError) -> Self {
+impl From<frame::IoWriteError> for UpgradeError {
+    fn from(error: frame::IoWriteError) -> Self {
         match error {
-            IoError::NotConnected => UpgradeError::ConnectionClosed,
-            IoError::Closed => UpgradeError::EndOfStream,
+            bytes::IoWriteError::Stopped => UpgradeError::EndOfStream,
+            bytes::IoWriteError::NotConnected => UpgradeError::ConnectionClosed,
         }
     }
 }
 
-impl From<StreamHeaderReadAsyncError> for UpgradeError {
-    fn from(error: StreamHeaderReadAsyncError) -> Self {
+impl From<stream_header::IoReadError> for UpgradeError {
+    fn from(error: stream_header::IoReadError) -> Self {
         match error {
-            StreamHeaderReadAsyncError::StreamHeader(StreamHeaderReadError::UnknownStream) => {
+            stream_header::IoReadError::Parse(stream_header::ParseError::UnknownStream) => {
                 UpgradeError::UnknownStream
             }
-            StreamHeaderReadAsyncError::StreamHeader(StreamHeaderReadError::InvalidSessionId) => {
+            stream_header::IoReadError::Parse(stream_header::ParseError::InvalidSessionId) => {
                 UpgradeError::InvalidSessionId
             }
-            StreamHeaderReadAsyncError::IO(io_error) => io_error.into(),
+            stream_header::IoReadError::IO(bytes::IoReadError::ImmediateFin) => {
+                UpgradeError::EndOfStream
+            }
+            stream_header::IoReadError::IO(bytes::IoReadError::UnexpectedFin) => {
+                UpgradeError::EndOfStream
+            }
+            stream_header::IoReadError::IO(bytes::IoReadError::Reset) => UpgradeError::EndOfStream,
+            stream_header::IoReadError::IO(bytes::IoReadError::NotConnected) => {
+                UpgradeError::ConnectionClosed
+            }
         }
     }
 }
@@ -472,27 +481,23 @@ pub(crate) enum FrameReadError {
     ConnectionClosed,
 }
 
-impl From<IoError> for FrameReadError {
-    fn from(error: IoError) -> Self {
+impl From<frame::IoReadError> for FrameReadError {
+    fn from(error: frame::IoReadError) -> Self {
         match error {
-            IoError::NotConnected => FrameReadError::ConnectionClosed,
-            IoError::Closed => FrameReadError::EndOfStream,
-        }
-    }
-}
-
-impl From<wtransport_proto::frame::FrameReadAsyncError> for FrameReadError {
-    fn from(error: wtransport_proto::frame::FrameReadAsyncError) -> Self {
-        use wtransport_proto::frame;
-
-        match error {
-            frame::FrameReadAsyncError::Frame(frame::FrameReadError::UnknownFrame) => {
+            frame::IoReadError::Parse(frame::ParseError::UnknownFrame) => {
                 FrameReadError::UnknownFrame
             }
-            frame::FrameReadAsyncError::Frame(frame::FrameReadError::InvalidSessionId) => {
+            frame::IoReadError::Parse(frame::ParseError::InvalidSessionId) => {
                 FrameReadError::InvalidSessionId
             }
-            frame::FrameReadAsyncError::IO(io_error) => io_error.into(),
+            frame::IoReadError::IO(bytes::IoReadError::ImmediateFin) => FrameReadError::EndOfStream,
+            frame::IoReadError::IO(bytes::IoReadError::UnexpectedFin) => {
+                FrameReadError::EndOfStream
+            }
+            frame::IoReadError::IO(bytes::IoReadError::Reset) => FrameReadError::EndOfStream,
+            frame::IoReadError::IO(bytes::IoReadError::NotConnected) => {
+                FrameReadError::ConnectionClosed
+            }
         }
     }
 }
@@ -503,11 +508,11 @@ pub(crate) enum FrameWriteError {
     ConnectionClosed,
 }
 
-impl From<IoError> for FrameWriteError {
-    fn from(error: IoError) -> Self {
+impl From<frame::IoWriteError> for FrameWriteError {
+    fn from(error: frame::IoWriteError) -> Self {
         match error {
-            IoError::NotConnected => FrameWriteError::ConnectionClosed,
-            IoError::Closed => FrameWriteError::EndOfStream,
+            frame::IoWriteError::Stopped => FrameWriteError::EndOfStream,
+            frame::IoWriteError::NotConnected => FrameWriteError::ConnectionClosed,
         }
     }
 }

@@ -15,11 +15,11 @@ use crate::bytes::AsyncRead;
 use crate::bytes::AsyncWrite;
 
 #[cfg(feature = "async")]
-use crate::bytes::IoError;
+use crate::bytes;
 
-/// Error frame read operation.
+/// Error frame parsing.
 #[derive(Debug)]
-pub enum FrameReadError {
+pub enum ParseError {
     /// Error for unknown frame ID.
     UnknownFrame,
 
@@ -27,24 +27,29 @@ pub enum FrameReadError {
     InvalidSessionId,
 }
 
-/// An error during async frame read operation.
+/// An error during frame I/O read operation.
 #[cfg(feature = "async")]
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
 #[derive(Debug)]
-pub enum FrameReadAsyncError {
+pub enum IoReadError {
     /// Error during parsing a frame.
-    Frame(FrameReadError),
+    Parse(ParseError),
 
     /// Error due to I/O operation.
-    IO(IoError),
+    IO(bytes::IoReadError),
 }
 
 #[cfg(feature = "async")]
-impl From<IoError> for FrameReadAsyncError {
-    fn from(io_error: IoError) -> Self {
-        FrameReadAsyncError::IO(io_error)
+impl From<bytes::IoReadError> for IoReadError {
+    #[inline(always)]
+    fn from(io_error: bytes::IoReadError) -> Self {
+        IoReadError::IO(io_error)
     }
 }
+
+/// An error during frame I/O write operation.
+#[cfg(feature = "async")]
+pub type IoWriteError = bytes::IoWriteError;
 
 /// An HTTP3 [`Frame`] type.
 #[derive(Copy, Clone, Debug)]
@@ -149,20 +154,20 @@ impl<'a> Frame<'a> {
     /// to parse an entire frame.
     ///
     /// In case [`None`] or [`Err`], `bytes_reader` might be partially read.
-    pub fn read<R>(bytes_reader: &mut R) -> Option<Result<Self, FrameReadError>>
+    pub fn read<R>(bytes_reader: &mut R) -> Option<Result<Self, ParseError>>
     where
         R: BytesReader<'a>,
     {
         let kind_id = bytes_reader.get_varint()?;
         let kind = match FrameKind::parse(kind_id) {
             Some(kind) => kind,
-            None => return Some(Err(FrameReadError::UnknownFrame)),
+            None => return Some(Err(ParseError::UnknownFrame)),
         };
 
         if matches!(kind, FrameKind::WebTransport) {
             let session_id = match SessionId::try_from_varint(bytes_reader.get_varint()?) {
                 Ok(session_id) => session_id,
-                Err(InvalidSessionId) => return Some(Err(FrameReadError::InvalidSessionId)),
+                Err(InvalidSessionId) => return Some(Err(ParseError::InvalidSessionId)),
             };
 
             Some(Ok(Self::new_webtransport(session_id)))
@@ -177,27 +182,25 @@ impl<'a> Frame<'a> {
     /// Reads a [`Frame`] from a `reader`.
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    pub async fn read_async<R>(reader: &mut R) -> Result<Frame<'a>, FrameReadAsyncError>
+    pub async fn read_async<R>(reader: &mut R) -> Result<Frame<'a>, IoReadError>
     where
         R: AsyncRead + Unpin + ?Sized,
     {
         use crate::bytes::BytesReaderAsync;
 
-        let kind_id = reader.get_varint().await?;
-        let kind = FrameKind::parse(kind_id)
-            .ok_or(FrameReadAsyncError::Frame(FrameReadError::UnknownFrame))?;
+        let kind_id = reader.get_varint(false).await?;
+        let kind = FrameKind::parse(kind_id).ok_or(IoReadError::Parse(ParseError::UnknownFrame))?;
 
         if matches!(kind, FrameKind::WebTransport) {
-            let session_id = SessionId::try_from_varint(reader.get_varint().await?).map_err(
-                |InvalidSessionId| FrameReadAsyncError::Frame(FrameReadError::InvalidSessionId),
-            )?;
+            let session_id = SessionId::try_from_varint(reader.get_varint(true).await?)
+                .map_err(|InvalidSessionId| IoReadError::Parse(ParseError::InvalidSessionId))?;
 
             Ok(Self::new_webtransport(session_id))
         } else {
-            let payload_len = reader.get_varint().await?.into_inner() as usize;
+            let payload_len = reader.get_varint(true).await?.into_inner() as usize;
             let mut payload = vec![0; payload_len];
 
-            reader.get_buffer(&mut payload).await?;
+            reader.get_buffer(&mut payload, true).await?;
 
             payload.shrink_to_fit();
 
@@ -213,7 +216,7 @@ impl<'a> Frame<'a> {
     /// In case [`None`] or [`Err`], `buffer_reader` offset if not advanced.
     pub fn read_from_buffer(
         buffer_reader: &mut BufferReader<'a>,
-    ) -> Option<Result<Self, FrameReadError>> {
+    ) -> Option<Result<Self, ParseError>> {
         let mut buffer_reader_child = buffer_reader.child();
 
         match Self::read(&mut *buffer_reader_child)? {
@@ -262,7 +265,7 @@ impl<'a> Frame<'a> {
     /// Panics if the payload size if greater than [`VarInt::MAX`].
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    pub async fn write_async<W>(&self, writer: &mut W) -> Result<(), IoError>
+    pub async fn write_async<W>(&self, writer: &mut W) -> Result<(), IoWriteError>
     where
         W: AsyncWrite + Unpin + ?Sized,
     {
@@ -365,6 +368,36 @@ impl<'a> Frame<'a> {
             payload: Cow::Owned(self.payload.into_owned()),
             session_id: self.session_id,
         }
+    }
+
+    #[cfg(test)]
+    fn serialize_any(kind: VarInt, payload: &[u8]) -> Vec<u8> {
+        let mut buffer = Vec::new();
+
+        Self {
+            kind: FrameKind::Exercise(kind),
+            payload: Cow::Owned(payload.to_vec()),
+            session_id: None,
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        buffer
+    }
+
+    #[cfg(test)]
+    fn serialize_webtransport(session_id: SessionId) -> Vec<u8> {
+        let mut buffer = Vec::new();
+
+        Self {
+            kind: FrameKind::WebTransport,
+            payload: Cow::Owned(Default::default()),
+            session_id: Some(session_id),
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        buffer
     }
 }
 
@@ -481,107 +514,69 @@ mod tests {
 
     #[test]
     fn read_eof() {
-        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
-
-        let mut buffer = Vec::new();
-        Frame::new_webtransport(session_id)
-            .write(&mut buffer)
-            .unwrap();
-
+        let buffer = Frame::serialize_any(FrameKind::Data.id(), b"This is a test payload");
         assert!(Frame::read(&mut &buffer[..buffer.len() - 1]).is_none());
     }
 
     #[cfg(feature = "async")]
     #[tokio::test]
     async fn read_eof_async() {
-        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+        let buffer = Frame::serialize_any(FrameKind::Data.id(), b"This is a test payload");
 
-        let mut buffer = Vec::new();
-        Frame::new_webtransport(session_id)
-            .write(&mut buffer)
-            .unwrap();
+        assert!(matches!(
+            Frame::read_async(&mut &buffer[..0]).await,
+            Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
+        ));
+
+        assert!(buffer.len() > 1);
 
         assert!(matches!(
             Frame::read_async(&mut &buffer[..buffer.len() - 1]).await,
-            Err(FrameReadAsyncError::IO(IoError::Closed))
+            Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin))
         ));
     }
 
     #[test]
     fn unknown_frame() {
-        let mut buffer = Vec::new();
-
-        Frame {
-            kind: FrameKind::Exercise(VarInt::from_u32(0x42)),
-            payload: Cow::Owned(b"PAYLOAD".to_vec()),
-            session_id: None,
-        }
-        .write(&mut buffer)
-        .unwrap();
+        let buffer = Frame::serialize_any(VarInt::from_u32(0x424242), b"This is a test payload");
 
         assert!(matches!(
             Frame::read(&mut buffer.as_slice()).unwrap(),
-            Err(FrameReadError::UnknownFrame)
+            Err(ParseError::UnknownFrame)
         ));
     }
 
     #[cfg(feature = "async")]
     #[tokio::test]
     async fn unknown_frame_async() {
-        let mut buffer = Vec::new();
-
-        Frame {
-            kind: FrameKind::Exercise(VarInt::from_u32(0x42)),
-            payload: Cow::Owned(b"PAYLOAD".to_vec()),
-            session_id: None,
-        }
-        .write(&mut buffer)
-        .unwrap();
+        let buffer = Frame::serialize_any(VarInt::from_u32(0x424242), b"This is a test payload");
 
         assert!(matches!(
             Frame::read_async(&mut buffer.as_slice()).await,
-            Err(FrameReadAsyncError::Frame(FrameReadError::UnknownFrame))
+            Err(IoReadError::Parse(ParseError::UnknownFrame))
         ));
     }
 
     #[test]
     fn invalid_session_id() {
-        let mut buffer = Vec::new();
-
         let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
-
-        Frame {
-            kind: FrameKind::WebTransport,
-            payload: Default::default(),
-            session_id: Some(invalid_session_id),
-        }
-        .write(&mut buffer)
-        .unwrap();
+        let buffer = Frame::serialize_webtransport(invalid_session_id);
 
         assert!(matches!(
             Frame::read(&mut buffer.as_slice()).unwrap(),
-            Err(FrameReadError::InvalidSessionId)
+            Err(ParseError::InvalidSessionId)
         ));
     }
 
     #[cfg(feature = "async")]
     #[tokio::test]
     async fn invalid_session_id_async() {
-        let mut buffer = Vec::new();
-
         let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
-
-        Frame {
-            kind: FrameKind::WebTransport,
-            payload: Default::default(),
-            session_id: Some(invalid_session_id),
-        }
-        .write(&mut buffer)
-        .unwrap();
+        let buffer = Frame::serialize_webtransport(invalid_session_id);
 
         assert!(matches!(
             Frame::read_async(&mut buffer.as_slice()).await,
-            Err(FrameReadAsyncError::Frame(FrameReadError::InvalidSessionId))
+            Err(IoReadError::Parse(ParseError::InvalidSessionId))
         ));
     }
 
