@@ -103,7 +103,7 @@ pub struct StreamHeader {
 
 impl StreamHeader {
     /// Maximum number of bytes a [`StreamHeader`] can take over network.
-    pub const MAX_LEN: usize = 16;
+    pub const MAX_SIZE: usize = 16;
 
     /// Creates a new stream header of type [`StreamKind::Control`].
     #[inline(always)]
@@ -454,7 +454,7 @@ mod tests {
 
             stream_header.write(&mut buffer).unwrap();
             assert_eq!(buffer.len(), stream_header.write_size());
-            assert!(buffer.len() <= StreamHeader::MAX_LEN);
+            assert!(buffer.len() <= StreamHeader::MAX_SIZE);
 
             let mut buffer = buffer.as_slice();
             let stream_header = StreamHeader::read(&mut buffer).unwrap().unwrap();
@@ -469,7 +469,7 @@ mod tests {
 
             stream_header.write_async(&mut buffer).await.unwrap();
             assert_eq!(buffer.len(), stream_header.write_size());
-            assert!(buffer.len() <= StreamHeader::MAX_LEN);
+            assert!(buffer.len() <= StreamHeader::MAX_SIZE);
 
             let mut buffer = buffer.as_slice();
             let stream_header = StreamHeader::read_async(&mut buffer).await.unwrap();
