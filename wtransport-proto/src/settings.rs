@@ -164,6 +164,11 @@ impl Settings {
         Ok(Frame::new_settings(Cow::Borrowed(&buffer[..offset])))
     }
 
+    /// Returns the value of a setting.
+    pub fn get(&self, id: SettingId) -> Option<VarInt> {
+        self.0.get(&id).copied()
+    }
+
     fn new() -> Self {
         Self(HashMap::new())
     }
