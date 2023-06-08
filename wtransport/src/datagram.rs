@@ -1,11 +1,9 @@
 use bytes::Bytes;
 use std::ops::Deref;
 use wtransport_proto::datagram::Datagram as H3Datagram;
+use wtransport_proto::datagram::DatagramReadError;
 use wtransport_proto::ids::QStreamId;
 use wtransport_proto::ids::SessionId;
-
-#[derive(Debug)]
-pub(crate) struct DgramError;
 
 /// An application Datagram.
 pub struct Datagram {
@@ -17,8 +15,8 @@ impl Datagram {
     pub(crate) fn read(
         session_id: SessionId,
         quic_dgram: Bytes,
-    ) -> Result<Option<Self>, DgramError> {
-        let h3dgram = H3Datagram::read(&quic_dgram).map_err(|_| DgramError)?;
+    ) -> Result<Option<Self>, DatagramReadError> {
+        let h3dgram = H3Datagram::read(&quic_dgram)?;
 
         let stream_id = h3dgram.qstream_id().into_stream_id();
         if session_id.session_stream() != stream_id {
@@ -34,10 +32,7 @@ impl Datagram {
     }
 
     pub(crate) fn write(session_id: SessionId, payload: &[u8]) -> Self {
-        let h3dgram = H3Datagram::new(
-            QStreamId::from_stream_id(session_id.session_stream()),
-            payload,
-        );
+        let h3dgram = H3Datagram::new(QStreamId::from_session_id(session_id), payload);
 
         let mut buffer = vec![0; h3dgram.write_size()].into_boxed_slice();
         h3dgram.write(&mut buffer).expect("Preallocated capacity");

@@ -158,10 +158,10 @@ impl QStreamId {
     // SAFETY: value is less than max varint
     pub const MAX: QStreamId = unsafe { Self(VarInt::from_u64_unchecked(1152921504606846975)) };
 
-    /// Creates a quarter stream id from its corresponding [`StreamId`].
+    /// Creates a quarter stream id from its corresponding [`SessionId`]
     #[inline(always)]
-    pub const fn from_stream_id(stream_id: StreamId) -> QStreamId {
-        let value = stream_id.into_u64() >> 2;
+    pub const fn from_session_id(session_id: SessionId) -> Self {
+        let value = session_id.into_u64() >> 2;
         debug_assert!(value <= Self::MAX.into_u64());
 
         // SAFETY: after bitwise operation from stream id, result is surely a varint
@@ -182,6 +182,18 @@ impl QStreamId {
         };
 
         StreamId::new(varint)
+    }
+
+    /// Returns its corresponding [`SessionId`].
+    #[inline(always)]
+    pub const fn into_session_id(self) -> SessionId {
+        let stream_id = self.into_stream_id();
+
+        // SAFETY: corresponding stream for qstream is bidirection and client-initiated
+        unsafe {
+            debug_assert!(stream_id.is_bidirectional() && stream_id.is_client_initiated());
+            SessionId::from_session_stream_unchecked(stream_id)
+        }
     }
 
     /// Returns the integer value as `u64`.
@@ -210,16 +222,16 @@ impl QStreamId {
     }
 }
 
-impl From<StreamId> for QStreamId {
+impl fmt::Debug for QStreamId {
     #[inline(always)]
-    fn from(stream_id: StreamId) -> Self {
-        QStreamId::from_stream_id(stream_id)
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }
 
-impl From<QStreamId> for StreamId {
+impl fmt::Display for QStreamId {
     #[inline(always)]
-    fn from(qstream_id: QStreamId) -> Self {
-        qstream_id.into_stream_id()
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
     }
 }

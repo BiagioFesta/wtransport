@@ -1,5 +1,4 @@
 use crate::datagram::Datagram;
-use crate::datagram::DgramError;
 use crate::engine::session::SessionLocalRequest;
 use crate::engine::session::SessionRemoteRequest;
 use crate::engine::stream::BiLocal;
@@ -18,6 +17,7 @@ use quinn::VarInt;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
+use wtransport_proto::datagram::DatagramReadError;
 use wtransport_proto::ids::SessionId;
 use wtransport_proto::settings::Settings;
 use wtransport_proto::stream::StreamHeader;
@@ -141,9 +141,18 @@ impl Engine {
                 Err(_) => return Err(self.worker_result().await),
             };
 
-            if let Some(dgram) = Datagram::read(session_id, quic_dgram).map_err(|DgramError| {
-                WorkerError::LocalClosed(H3Error::new(H3Code::Datagram, "Error reading datagram"))
-            })? {
+            if let Some(dgram) =
+                Datagram::read(session_id, quic_dgram).map_err(|dgram_error| match dgram_error {
+                    DatagramReadError::TooShort => WorkerError::LocalClosed(H3Error::new(
+                        H3Code::Datagram,
+                        "Error reading datagram (too short)",
+                    )),
+                    DatagramReadError::InvalidQStreamId => WorkerError::LocalClosed(H3Error::new(
+                        H3Code::Datagram,
+                        "Error reading datagram (qstream id too large)",
+                    )),
+                })?
+            {
                 return Ok(dgram);
             }
         }
