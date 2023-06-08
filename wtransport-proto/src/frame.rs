@@ -132,6 +132,17 @@ impl<'a> Frame<'a> {
         )
     }
 
+    /// Creates a new frame of type [`FrameKind::Exercise`].
+    ///
+    /// # Panics
+    ///
+    /// * Panics if the `payload` size if greater than [`VarInt::MAX`].
+    /// * Panics if `id` is not a valid exercise (see [`FrameKind::is_id_exercise`]).
+    pub fn new_exercise(id: VarInt, payload: Cow<'a, [u8]>) -> Self {
+        assert!(FrameKind::is_id_exercise(id));
+        Self::new(FrameKind::Exercise(id), payload, None)
+    }
+
     /// Reads a [`Frame`] from a [`BytesReader`].
     ///
     /// It returns [`None`] if the `bytes_reader` does not contain enough bytes
