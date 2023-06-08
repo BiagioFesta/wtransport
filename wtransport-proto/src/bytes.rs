@@ -599,6 +599,7 @@ pub mod r#async {
         }
     }
 
+    // TODO(bfesta): move this under trait def. same for below writer
     impl AsyncRead for &[u8] {
         fn poll_read(
             mut self: Pin<&mut Self>,
@@ -607,7 +608,11 @@ pub mod r#async {
         ) -> Poll<IoResult<usize>> {
             let amt = std::cmp::min(self.len(), buf.len());
             let (a, b) = self.split_at(amt);
-            buf.copy_from_slice(a);
+
+            if !a.is_empty() {
+                buf.copy_from_slice(a);
+            }
+
             *self = b;
 
             Poll::Ready(Ok(amt))
