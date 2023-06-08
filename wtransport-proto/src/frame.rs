@@ -338,6 +338,15 @@ impl<'a> Frame<'a> {
             session_id,
         }
     }
+
+    #[cfg(test)]
+    fn into_owned<'b>(self) -> Frame<'b> {
+        Frame {
+            kind: self.kind,
+            payload: Cow::Owned(self.payload.into_owned()),
+            session_id: self.session_id,
+        }
+    }
 }
 
 mod frame_kind_ids {
@@ -347,4 +356,243 @@ mod frame_kind_ids {
     pub const HEADERS: VarInt = VarInt::from_u32(0x01);
     pub const SETTINGS: VarInt = VarInt::from_u32(0x04);
     pub const WEBTRANSPORT_STREAM: VarInt = VarInt::from_u32(0x41);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::headers::Headers;
+    use crate::ids::StreamId;
+    use crate::settings::Settings;
+
+    #[test]
+    fn settings() {
+        let settings = Settings::builder()
+            .qpack_blocked_streams(VarInt::from_u32(1))
+            .qpack_max_table_capacity(VarInt::from_u32(2))
+            .enable_h3_datagrams()
+            .enable_webtransport()
+            .build();
+
+        let frame = settings.generate_frame();
+        assert!(frame.session_id().is_none());
+        assert!(matches!(frame.kind(), FrameKind::Settings));
+
+        let frame = utils::assert_serde(frame);
+        Settings::with_frame(&frame).unwrap();
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn settings_async() {
+        let settings = Settings::builder()
+            .qpack_blocked_streams(VarInt::from_u32(1))
+            .qpack_max_table_capacity(VarInt::from_u32(2))
+            .enable_h3_datagrams()
+            .enable_webtransport()
+            .build();
+
+        let frame = settings.generate_frame();
+        assert!(frame.session_id().is_none());
+        assert!(matches!(frame.kind(), FrameKind::Settings));
+
+        let frame = utils::assert_serde_async(frame).await;
+        Settings::with_frame(&frame).unwrap();
+    }
+
+    #[test]
+    fn headers() {
+        let stream_id = StreamId::new(VarInt::from_u32(0));
+        let headers = Headers::from_iter([("key1", "value1")]);
+
+        let frame = headers.generate_frame(stream_id);
+        assert!(frame.session_id().is_none());
+        assert!(matches!(frame.kind(), FrameKind::Headers));
+
+        let frame = utils::assert_serde(frame);
+        Headers::with_frame(&frame, stream_id).unwrap();
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn headers_async() {
+        let stream_id = StreamId::new(VarInt::from_u32(0));
+        let headers = Headers::from_iter([("key1", "value1")]);
+
+        let frame = headers.generate_frame(stream_id);
+        assert!(frame.session_id().is_none());
+        assert!(matches!(frame.kind(), FrameKind::Headers));
+
+        let frame = utils::assert_serde_async(frame).await;
+        Headers::with_frame(&frame, stream_id).unwrap();
+    }
+
+    #[test]
+    fn webtransport() {
+        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+        let frame = Frame::new_webtransport(session_id);
+
+        assert!(frame.payload().is_empty());
+        assert!(matches!(frame.session_id(), Some(x) if x == session_id));
+        assert!(matches!(frame.kind(), FrameKind::WebTransport));
+
+        let frame = utils::assert_serde(frame);
+
+        assert!(frame.payload().is_empty());
+        assert!(matches!(frame.session_id(), Some(x) if x == session_id));
+        assert!(matches!(frame.kind(), FrameKind::WebTransport));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn webtransport_async() {
+        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+        let frame = Frame::new_webtransport(session_id);
+
+        assert!(frame.payload().is_empty());
+        assert!(matches!(frame.session_id(), Some(x) if x == session_id));
+        assert!(matches!(frame.kind(), FrameKind::WebTransport));
+
+        let frame = utils::assert_serde_async(frame).await;
+
+        assert!(frame.payload().is_empty());
+        assert!(matches!(frame.session_id(), Some(x) if x == session_id));
+        assert!(matches!(frame.kind(), FrameKind::WebTransport));
+    }
+
+    #[test]
+    fn read_eof() {
+        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+
+        let mut buffer = Vec::new();
+        Frame::new_webtransport(session_id)
+            .write(&mut buffer)
+            .unwrap();
+
+        assert!(Frame::read(&mut &buffer[..buffer.len() - 1]).is_none());
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn read_eof_async() {
+        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+
+        let mut buffer = Vec::new();
+        Frame::new_webtransport(session_id)
+            .write(&mut buffer)
+            .unwrap();
+
+        assert!(matches!(
+            Frame::read_async(&mut &buffer[..buffer.len() - 1]).await,
+            Err(FrameReadAsyncError::IO(IoError::Closed))
+        ));
+    }
+
+    #[test]
+    fn unknown_fame() {
+        let mut buffer = Vec::new();
+
+        Frame {
+            kind: FrameKind::Exercise(VarInt::from_u32(0x42)),
+            payload: Cow::Owned(b"PAYLOAD".to_vec()),
+            session_id: None,
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        assert!(matches!(
+            Frame::read(&mut buffer.as_slice()).unwrap(),
+            Err(FrameReadError::UnknownFrame)
+        ));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn unknown_fame_async() {
+        let mut buffer = Vec::new();
+
+        Frame {
+            kind: FrameKind::Exercise(VarInt::from_u32(0x42)),
+            payload: Cow::Owned(b"PAYLOAD".to_vec()),
+            session_id: None,
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        assert!(matches!(
+            Frame::read_async(&mut buffer.as_slice()).await,
+            Err(FrameReadAsyncError::Frame(FrameReadError::UnknownFrame))
+        ));
+    }
+
+    #[test]
+    fn invalid_session_id() {
+        let mut buffer = Vec::new();
+
+        let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
+
+        Frame {
+            kind: FrameKind::WebTransport,
+            payload: Default::default(),
+            session_id: Some(invalid_session_id),
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        assert!(matches!(
+            Frame::read(&mut buffer.as_slice()).unwrap(),
+            Err(FrameReadError::InvalidSessionId)
+        ));
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn invalid_session_id_async() {
+        let mut buffer = Vec::new();
+
+        let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
+
+        Frame {
+            kind: FrameKind::WebTransport,
+            payload: Default::default(),
+            session_id: Some(invalid_session_id),
+        }
+        .write(&mut buffer)
+        .unwrap();
+
+        assert!(matches!(
+            Frame::read_async(&mut buffer.as_slice()).await,
+            Err(FrameReadAsyncError::Frame(FrameReadError::InvalidSessionId))
+        ));
+    }
+
+    mod utils {
+        use super::*;
+
+        pub fn assert_serde(frame: Frame) -> Frame {
+            let mut buffer = Vec::new();
+
+            frame.write(&mut buffer).unwrap();
+            assert_eq!(buffer.len(), frame.write_size());
+
+            let mut buffer = buffer.as_slice();
+            let frame = Frame::read(&mut buffer).unwrap().unwrap();
+            assert!(buffer.is_empty());
+
+            frame.into_owned()
+        }
+
+        pub async fn assert_serde_async(frame: Frame<'_>) -> Frame {
+            let mut buffer = Vec::new();
+
+            frame.write_async(&mut buffer).await.unwrap();
+            assert_eq!(buffer.len(), frame.write_size());
+
+            let mut buffer = buffer.as_slice();
+            let frame = Frame::read_async(&mut buffer).await.unwrap();
+            assert!(buffer.is_empty());
+
+            frame.into_owned()
+        }
+    }
 }
