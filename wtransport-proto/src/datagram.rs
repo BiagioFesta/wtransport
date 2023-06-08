@@ -94,3 +94,99 @@ impl<'a> Datagram<'a> {
         self.payload
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::varint::VarInt;
+    use utils::build_datagram;
+    use utils::QStreamIdType;
+    use utils::PAYLOAD;
+
+    #[test]
+    fn read_ok() {
+        let dgram = build_datagram(QStreamIdType::Valid, PAYLOAD);
+        let qstream_id = dgram.qstream_id();
+
+        let mut buffer = vec![0; dgram.write_size() + 42];
+        let written = dgram.write(&mut buffer).unwrap();
+
+        let dgram = Datagram::read(&buffer[..written]).unwrap();
+        assert_eq!(dgram.qstream_id(), qstream_id);
+        assert_eq!(dgram.payload(), PAYLOAD);
+    }
+
+    #[test]
+    fn read_too_short() {
+        let dgram = build_datagram(QStreamIdType::Valid, PAYLOAD);
+
+        let mut buffer = vec![0; dgram.write_size() + 42];
+        dgram.write(&mut buffer).unwrap();
+
+        assert!(matches!(
+            Datagram::read(&buffer[..1]),
+            Err(DatagramReadError::TooShort)
+        ));
+    }
+
+    #[test]
+    fn read_invalid_qstream_id() {
+        let dgram = build_datagram(QStreamIdType::Invalid, PAYLOAD);
+
+        let mut buffer = vec![0; dgram.write_size() + 42];
+        let written = dgram.write(&mut buffer).unwrap();
+
+        assert!(matches!(
+            Datagram::read(&buffer[..written]),
+            Err(DatagramReadError::InvalidQStreamId)
+        ));
+    }
+
+    #[test]
+    fn write_ok() {
+        let dgram = build_datagram(QStreamIdType::Valid, PAYLOAD);
+        let dgram_write_size = dgram.write_size();
+
+        let mut buffer = vec![0; dgram_write_size];
+        let written = dgram.write(&mut buffer).unwrap();
+        assert_eq!(written, dgram_write_size);
+    }
+
+    #[test]
+    fn write_out() {
+        let dgram = build_datagram(QStreamIdType::Valid, PAYLOAD);
+        let dgram_write_size = dgram.write_size();
+
+        let mut buffer = vec![0; dgram_write_size - 1];
+        assert!(dgram.write(&mut buffer).is_err());
+    }
+
+    mod utils {
+        use super::*;
+
+        pub const PAYLOAD: &[u8] = b"This is a testing payload";
+
+        pub enum QStreamIdType {
+            Valid,
+            Invalid,
+        }
+
+        impl QStreamIdType {
+            /// This function is for **testing purpose only**; it might produce an invalid `QStreamId`!
+            fn into_session_id(self) -> QStreamId {
+                match self {
+                    QStreamIdType::Valid => QStreamId::MAX,
+                    QStreamIdType::Invalid => {
+                        let varint = VarInt::try_from_u64(QStreamId::MAX.into_u64() + 1).unwrap();
+                        QStreamId::maybe_invalid(varint)
+                    }
+                }
+            }
+        }
+
+        /// This function is for **testing purpose only**; it might produce an invalid `Datagram`!
+        pub fn build_datagram(qstream_id_type: QStreamIdType, payload: &[u8]) -> Datagram {
+            Datagram::new(qstream_id_type.into_session_id(), payload)
+        }
+    }
+}
