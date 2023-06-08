@@ -221,6 +221,10 @@ impl<'a> Frame<'a> {
     /// See [`Self::write_size`] to retrieve the extact amount of required capacity.
     ///
     /// In case [`Err`], `bytes_writer` might be partially written.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the payload size if greater than [`VarInt::MAX`].
     pub fn write<W>(&self, bytes_writer: &mut W) -> Result<(), EndOfBuffer>
     where
         W: BytesWriter,
@@ -241,6 +245,10 @@ impl<'a> Frame<'a> {
     }
 
     /// Writes a [`Frame`] into a `writer`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the payload size if greater than [`VarInt::MAX`].
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn write_async<W>(&self, writer: &mut W) -> Result<(), IoError>
