@@ -53,11 +53,12 @@ impl<'a> Datagram<'a> {
 
     /// Writes a [`Datagram`] as QUIC datagram into `buffer`.
     ///
+    /// It returns the number of bytes written.
     /// It returns [`Err`] if the `buffer` does not have enough capacity.
     /// See [`Self::write_size`].
     ///
     /// In case of [`Err`], `buffer` is not written.
-    pub fn write(&self, buffer: &mut [u8]) -> Result<(), EndOfBuffer> {
+    pub fn write(&self, buffer: &mut [u8]) -> Result<usize, EndOfBuffer> {
         if buffer.len() < self.write_size() {
             return Err(EndOfBuffer);
         }
@@ -72,7 +73,7 @@ impl<'a> Datagram<'a> {
             .put_bytes(self.payload)
             .expect("Buffer has capacity");
 
-        Ok(())
+        Ok(buffer_writer.offset())
     }
 
     /// Returns the needed capacity to write this datagram into a buffer.
