@@ -124,6 +124,11 @@ impl SessionId {
     pub(crate) fn try_from_varint(varint: VarInt) -> Result<Self, InvalidSessionId> {
         Self::try_from_session_stream(StreamId::new(varint))
     }
+
+    #[cfg(test)]
+    pub(crate) fn maybe_invalid(varint: VarInt) -> Self {
+        Self(StreamId::new(varint))
+    }
 }
 
 impl fmt::Debug for SessionId {
@@ -140,7 +145,7 @@ impl fmt::Display for SessionId {
     }
 }
 
-/// Error for invalid Quarter Stream ID value.
+/// Error for invalid Quarter Stream ID value (too large).
 #[derive(Debug)]
 pub struct InvalidQStreamId;
 
@@ -166,6 +171,8 @@ impl QStreamId {
     }
 
     /// Returns its corresponding [`StreamId`].
+    ///
+    /// This is a *client-initiated* *bidirectional* stream.
     #[inline(always)]
     pub const fn into_stream_id(self) -> StreamId {
         // SAFETY: Quarter Stream ID origin from a valid Stream ID
@@ -185,7 +192,7 @@ impl QStreamId {
 
     /// Returns the quarter stream id as [`VarInt`] value.
     #[inline(always)]
-    pub(crate) const fn into_varint(self) -> VarInt {
+    pub const fn into_varint(self) -> VarInt {
         self.0
     }
 
@@ -195,6 +202,11 @@ impl QStreamId {
         } else {
             Err(InvalidQStreamId)
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn maybe_invalid(varint: VarInt) -> QStreamId {
+        Self(varint)
     }
 }
 
