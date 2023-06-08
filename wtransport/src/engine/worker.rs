@@ -10,13 +10,13 @@ use crate::engine::stream::UniRemote;
 use crate::engine::stream::UpgradeError;
 use crate::engine::stream::Wt;
 use crate::engine::stream::H3;
-use crate::error::H3Code;
 use crate::error::H3Error;
 use crate::error::StreamError;
 use std::future::pending;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::task::JoinHandle;
+use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::Frame;
 use wtransport_proto::frame::FrameKind;
 use wtransport_proto::headers::Headers;
@@ -197,7 +197,7 @@ impl Worker {
                 let slot = match self.inc_sessions_channel.try_reserve() {
                     Ok(slot) => slot,
                     Err(_) => {
-                        stream.stop(H3Code::BufferedStreamRejected.to_code());
+                        stream.stop(ErrorCode::BufferedStreamRejected.to_code());
                         return Ok(());
                     }
                 };
@@ -206,7 +206,7 @@ impl Worker {
                 Ok(())
             }
             FrameKind::Settings => Err(WorkerError::LocalClosed(H3Error::new(
-                H3Code::FrameUnexpected,
+                ErrorCode::FrameUnexpected,
                 "Unexpected SETTINGS frame",
             ))),
             FrameKind::WebTransport => unreachable!(),
@@ -230,7 +230,7 @@ impl Worker {
             let h3slot = match h3_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream.stop(H3Code::BufferedStreamRejected.to_code());
+                    stream.stop(ErrorCode::BufferedStreamRejected.to_code());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => unreachable!(),
@@ -239,7 +239,7 @@ impl Worker {
             let w3slot = match self.inc_uni_wt_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream.stop(H3Code::BufferedStreamRejected.to_code());
+                    stream.stop(ErrorCode::BufferedStreamRejected.to_code());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -267,7 +267,7 @@ impl Worker {
             let h3slot = match h3_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream.stop(H3Code::BufferedStreamRejected.to_code());
+                    stream.stop(ErrorCode::BufferedStreamRejected.to_code());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => unreachable!(),
@@ -276,7 +276,7 @@ impl Worker {
             let w3slot = match self.inc_bi_wt_channel.clone().try_reserve_owned() {
                 Ok(slot) => slot,
                 Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream.stop(H3Code::BufferedStreamRejected.to_code());
+                    stream.stop(ErrorCode::BufferedStreamRejected.to_code());
                     continue;
                 }
                 Err(mpsc::error::TrySendError::Closed(_)) => {
@@ -388,7 +388,7 @@ impl LocalSettingsStream {
             Some(ref mut stream) => match stream.stopped().await {
                 Err(StreamError::ConnectionClosed) => Err(WorkerError::RemoteClosed),
                 Ok(()) | Err(StreamError::Stopped) => Err(WorkerError::LocalClosed(H3Error::new(
-                    H3Code::ClosedCriticalStream,
+                    ErrorCode::ClosedCriticalStream,
                     "Closed local control stream",
                 ))),
             },
@@ -413,7 +413,7 @@ impl RemoteSettingsStream {
 
         if self.0.is_some() {
             return Err(WorkerError::LocalClosed(H3Error::new(
-                H3Code::StreamCreation,
+                ErrorCode::StreamCreation,
                 "Duplicate control stream",
             )));
         }
@@ -434,7 +434,7 @@ impl RemoteSettingsStream {
             },
             _ => {
                 return Err(WorkerError::LocalClosed(H3Error::new(
-                    H3Code::MissingSettings,
+                    ErrorCode::MissingSettings,
                     "Unexpected frame on control stream",
                 )));
             }
@@ -458,7 +458,7 @@ impl RemoteSettingsStream {
 
                 if !matches!(frame.kind(), FrameKind::Exercise(_)) {
                     return Err(WorkerError::LocalClosed(H3Error::new(
-                        H3Code::FrameUnexpected,
+                        ErrorCode::FrameUnexpected,
                         "Unexpected frame on remote control stream",
                     )));
                 }
@@ -478,7 +478,7 @@ impl RemoteQPackEncStream {
     fn on_stream_recv(&mut self, stream: Stream<UniRemote, H3>) -> WorkerResult<()> {
         if self.0.is_some() {
             return Err(WorkerError::LocalClosed(H3Error::new(
-                H3Code::StreamCreation,
+                ErrorCode::StreamCreation,
                 "Duplicate QPACK.ENC stream",
             )));
         }
@@ -496,7 +496,7 @@ impl RemoteQPackEncStream {
                     Ok(Some(_)) => {}
                     Ok(None) | Err(StreamError::Stopped) => {
                         return Err(WorkerError::LocalClosed(H3Error::new(
-                            H3Code::ClosedCriticalStream,
+                            ErrorCode::ClosedCriticalStream,
                             "Closed remote QPACK.ENC stream",
                         )));
                     }
@@ -520,7 +520,7 @@ impl RemoteQPackDecStream {
     fn on_stream_recv(&mut self, stream: Stream<UniRemote, H3>) -> WorkerResult<()> {
         if self.0.is_some() {
             return Err(WorkerError::LocalClosed(H3Error::new(
-                H3Code::StreamCreation,
+                ErrorCode::StreamCreation,
                 "Duplicate QPACK.DEC stream",
             )));
         }
@@ -538,7 +538,7 @@ impl RemoteQPackDecStream {
                     Ok(Some(_)) => {}
                     Ok(None) | Err(StreamError::Stopped) => {
                         return Err(WorkerError::LocalClosed(H3Error::new(
-                            H3Code::ClosedCriticalStream,
+                            ErrorCode::ClosedCriticalStream,
                             "Closed remote QPACK.DEC stream",
                         )));
                     }
@@ -559,14 +559,14 @@ impl WorkerError {
     {
         match upgrade_error {
             UpgradeError::UnknownStream => {
-                WorkerError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+                WorkerError::LocalClosed(H3Error::new(ErrorCode::FrameUnexpected, reason))
             }
             UpgradeError::InvalidSessionId => {
-                WorkerError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+                WorkerError::LocalClosed(H3Error::new(ErrorCode::FrameUnexpected, reason))
             }
             UpgradeError::ConnectionClosed => WorkerError::RemoteClosed,
             UpgradeError::EndOfStream => {
-                WorkerError::LocalClosed(H3Error::new(H3Code::ClosedCriticalStream, reason))
+                WorkerError::LocalClosed(H3Error::new(ErrorCode::ClosedCriticalStream, reason))
             }
         }
     }
@@ -577,7 +577,7 @@ impl WorkerError {
     {
         match frame_write_error {
             FrameWriteError::EndOfStream => {
-                WorkerError::LocalClosed(H3Error::new(H3Code::ClosedCriticalStream, reason))
+                WorkerError::LocalClosed(H3Error::new(ErrorCode::ClosedCriticalStream, reason))
             }
             FrameWriteError::ConnectionClosed => WorkerError::RemoteClosed,
         }
@@ -589,13 +589,13 @@ impl WorkerError {
     {
         match frame_read_error {
             FrameReadError::UnknownFrame => {
-                WorkerError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+                WorkerError::LocalClosed(H3Error::new(ErrorCode::FrameUnexpected, reason))
             }
             FrameReadError::InvalidSessionId => {
-                WorkerError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+                WorkerError::LocalClosed(H3Error::new(ErrorCode::FrameUnexpected, reason))
             }
             FrameReadError::EndOfStream => {
-                WorkerError::LocalClosed(H3Error::new(H3Code::ClosedCriticalStream, reason))
+                WorkerError::LocalClosed(H3Error::new(ErrorCode::ClosedCriticalStream, reason))
             }
             FrameReadError::ConnectionClosed => WorkerError::RemoteClosed,
         }

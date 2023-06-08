@@ -3,7 +3,7 @@ use crate::bytes::BufferWriter;
 use crate::bytes::BytesReader;
 use crate::bytes::BytesWriter;
 use crate::bytes::EndOfBuffer;
-use crate::error::Error;
+use crate::error::ErrorCode;
 use crate::frame::Frame;
 use crate::frame::FrameKind;
 use crate::varint::VarInt;
@@ -99,15 +99,15 @@ impl Settings {
     /// # Panics
     ///
     /// Panics if `frame` is not type [`FrameKind::Settings`].
-    pub fn with_frame(frame: &Frame) -> Result<Self, Error> {
+    pub fn with_frame(frame: &Frame) -> Result<Self, ErrorCode> {
         assert!(matches!(frame.kind(), FrameKind::Settings));
 
         let mut settings = Settings::new();
         let mut buffer_reader = BufferReader::new(frame.payload());
 
         while buffer_reader.capacity() > 0 {
-            let id = buffer_reader.get_varint().ok_or(Error::Frame)?;
-            let value = buffer_reader.get_varint().ok_or(Error::Frame)?;
+            let id = buffer_reader.get_varint().ok_or(ErrorCode::Frame)?;
+            let value = buffer_reader.get_varint().ok_or(ErrorCode::Frame)?;
 
             // TODO(bfesta): do we need to validate value?
 
@@ -117,11 +117,11 @@ impl Settings {
                         slot.insert(value);
                     }
                     hash_map::Entry::Occupied(_) => {
-                        return Err(Error::Settings);
+                        return Err(ErrorCode::Settings);
                     }
                 },
                 Err(ParseError::UnknownSetting) => {}
-                Err(ParseError::ReservedSetting) => return Err(Error::Settings),
+                Err(ParseError::ReservedSetting) => return Err(ErrorCode::Settings),
             }
         }
 

@@ -5,7 +5,7 @@ use std::fmt::Formatter;
 
 /// HTTP3 protocol errors.
 #[derive(Clone, Copy)]
-pub enum Error {
+pub enum ErrorCode {
     /// H3_DATAGRAM_ERROR.
     Datagram,
 
@@ -43,52 +43,54 @@ pub enum Error {
     SessionGone,
 }
 
-impl Error {
+impl ErrorCode {
     /// Returns the integer representation (code) of the error.
     pub fn to_code(self) -> VarInt {
         match self {
-            Error::Datagram => h3_error_codes::H3_DATAGRAM_ERROR,
-            Error::StreamCreation => h3_error_codes::H3_STREAM_CREATION_ERROR,
-            Error::ClosedCriticalStream => h3_error_codes::H3_CLOSED_CRITICAL_STREAM,
-            Error::FrameUnexpected => h3_error_codes::H3_FRAME_UNEXPECTED,
-            Error::Frame => h3_error_codes::H3_FRAME_ERROR,
-            Error::Id => h3_error_codes::H3_ID_ERROR,
-            Error::Settings => h3_error_codes::H3_SETTINGS_ERROR,
-            Error::MissingSettings => h3_error_codes::H3_MISSING_SETTINGS,
-            Error::Message => h3_error_codes::H3_MESSAGE_ERROR,
-            Error::Decompression => qpack_error_codes::QPACK_DECOMPRESSION_FAILED,
-            Error::BufferedStreamRejected => wt_error_codes::WEBTRANSPORT_BUFFERED_STREAM_REJECTED,
-            Error::SessionGone => wt_error_codes::WEBTRANSPORT_SESSION_GONE,
+            ErrorCode::Datagram => h3_error_codes::H3_DATAGRAM_ERROR,
+            ErrorCode::StreamCreation => h3_error_codes::H3_STREAM_CREATION_ERROR,
+            ErrorCode::ClosedCriticalStream => h3_error_codes::H3_CLOSED_CRITICAL_STREAM,
+            ErrorCode::FrameUnexpected => h3_error_codes::H3_FRAME_UNEXPECTED,
+            ErrorCode::Frame => h3_error_codes::H3_FRAME_ERROR,
+            ErrorCode::Id => h3_error_codes::H3_ID_ERROR,
+            ErrorCode::Settings => h3_error_codes::H3_SETTINGS_ERROR,
+            ErrorCode::MissingSettings => h3_error_codes::H3_MISSING_SETTINGS,
+            ErrorCode::Message => h3_error_codes::H3_MESSAGE_ERROR,
+            ErrorCode::Decompression => qpack_error_codes::QPACK_DECOMPRESSION_FAILED,
+            ErrorCode::BufferedStreamRejected => {
+                wt_error_codes::WEBTRANSPORT_BUFFERED_STREAM_REJECTED
+            }
+            ErrorCode::SessionGone => wt_error_codes::WEBTRANSPORT_SESSION_GONE,
         }
     }
 }
 
-impl Debug for Error {
+impl Debug for ErrorCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} (code: {})", self, self.to_code())
     }
 }
 
-impl Display for Error {
+impl Display for ErrorCode {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Error::Datagram => write!(f, "DatagramError"),
-            Error::StreamCreation => write!(f, "StreamCreationError"),
-            Error::ClosedCriticalStream => write!(f, "ClosedCriticalStreamError"),
-            Error::FrameUnexpected => write!(f, "FrameUnexpectedError"),
-            Error::Frame => write!(f, "FrameError"),
-            Error::Id => write!(f, "IdError"),
-            Error::Settings => write!(f, "SettingsError"),
-            Error::MissingSettings => write!(f, "MissingSettingsError"),
-            Error::Message => write!(f, "MessageError"),
-            Error::Decompression => write!(f, "DecompressionError"),
-            Error::BufferedStreamRejected => write!(f, "BufferedStreamRejected"),
-            Error::SessionGone => write!(f, "SessionGone"),
+            ErrorCode::Datagram => write!(f, "DatagramError"),
+            ErrorCode::StreamCreation => write!(f, "StreamCreationError"),
+            ErrorCode::ClosedCriticalStream => write!(f, "ClosedCriticalStreamError"),
+            ErrorCode::FrameUnexpected => write!(f, "FrameUnexpectedError"),
+            ErrorCode::Frame => write!(f, "FrameError"),
+            ErrorCode::Id => write!(f, "IdError"),
+            ErrorCode::Settings => write!(f, "SettingsError"),
+            ErrorCode::MissingSettings => write!(f, "MissingSettingsError"),
+            ErrorCode::Message => write!(f, "MessageError"),
+            ErrorCode::Decompression => write!(f, "DecompressionError"),
+            ErrorCode::BufferedStreamRejected => write!(f, "BufferedStreamRejected"),
+            ErrorCode::SessionGone => write!(f, "SessionGone"),
         }
     }
 }
 
-impl std::error::Error for Error {}
+impl std::error::Error for ErrorCode {}
 
 mod h3_error_codes {
     use crate::varint::VarInt;

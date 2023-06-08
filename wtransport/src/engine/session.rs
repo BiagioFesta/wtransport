@@ -6,8 +6,8 @@ use crate::engine::stream::FrameWriteError;
 use crate::engine::stream::Raw;
 use crate::engine::stream::Stream;
 use crate::engine::stream::H3;
-use crate::error::H3Code;
 use crate::error::H3Error;
+use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::FrameKind;
 use wtransport_proto::headers::Headers;
 use wtransport_proto::ids::SessionId;
@@ -52,7 +52,7 @@ impl SessionRemoteRequest {
         let method = headers.get(":method").unwrap_or_default();
         if method != "CONNECT" {
             return Err(SessionError::LocalClosed(H3Error::new(
-                H3Code::Message,
+                ErrorCode::Message,
                 "Method not supported",
             )));
         }
@@ -60,7 +60,7 @@ impl SessionRemoteRequest {
         let protocol = headers.get(":protocol").unwrap_or_default();
         if protocol != "webtransport" {
             return Err(SessionError::LocalClosed(H3Error::new(
-                H3Code::Message,
+                ErrorCode::Message,
                 "Protocol not supported",
             )));
         }
@@ -68,7 +68,7 @@ impl SessionRemoteRequest {
         let scheme = headers.get(":scheme").unwrap_or_default();
         if scheme != "https" {
             return Err(SessionError::LocalClosed(H3Error::new(
-                H3Code::Message,
+                ErrorCode::Message,
                 "Protocol not supported",
             )));
         }
@@ -132,7 +132,7 @@ impl SessionRemoteResponse {
                 FrameKind::Exercise(_) => continue,
                 _ => {
                     return Err(SessionError::LocalClosed(H3Error::new(
-                        H3Code::FrameUnexpected,
+                        ErrorCode::FrameUnexpected,
                         "Unexpected frame on SESSION reply",
                     )));
                 }
@@ -148,7 +148,7 @@ impl SessionRemoteResponse {
         let method = headers.get(":status").unwrap_or_default();
         if method != "200" {
             return Err(SessionError::LocalClosed(H3Error::new(
-                H3Code::Message,
+                ErrorCode::Message,
                 "CONNECT refused",
             )));
         }
@@ -177,7 +177,7 @@ impl SessionError {
     {
         match frame_write_error {
             FrameWriteError::EndOfStream => {
-                SessionError::LocalClosed(H3Error::new(H3Code::ClosedCriticalStream, reason))
+                SessionError::LocalClosed(H3Error::new(ErrorCode::ClosedCriticalStream, reason))
             }
             FrameWriteError::ConnectionClosed => SessionError::RemoteClosed,
         }
@@ -189,13 +189,13 @@ impl SessionError {
     {
         match frame_read_error {
             FrameReadError::UnknownFrame => {
-                SessionError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+                SessionError::LocalClosed(H3Error::new(ErrorCode::FrameUnexpected, reason))
             }
             FrameReadError::InvalidSessionId => {
-                SessionError::LocalClosed(H3Error::new(H3Code::FrameUnexpected, reason))
+                SessionError::LocalClosed(H3Error::new(ErrorCode::FrameUnexpected, reason))
             }
             FrameReadError::EndOfStream => {
-                SessionError::LocalClosed(H3Error::new(H3Code::ClosedCriticalStream, reason))
+                SessionError::LocalClosed(H3Error::new(ErrorCode::ClosedCriticalStream, reason))
             }
             FrameReadError::ConnectionClosed => SessionError::RemoteClosed,
         }

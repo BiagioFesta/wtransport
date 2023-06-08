@@ -1,4 +1,4 @@
-use crate::error::Error;
+use crate::error::ErrorCode;
 use crate::frame::Frame;
 use crate::frame::FrameKind;
 use crate::ids::StreamId;
@@ -19,14 +19,14 @@ impl Headers {
     /// # Panics
     ///
     /// Panics if `frame` is not type [`FrameKind::Headers`].
-    pub fn with_frame(frame: &Frame, stream_id: StreamId) -> Result<Self, Error> {
+    pub fn with_frame(frame: &Frame, stream_id: StreamId) -> Result<Self, ErrorCode> {
         assert!(matches!(frame.kind(), FrameKind::Headers));
 
         let mut decoder = Decoder::new(0, 0);
 
         match decoder
             .decode(stream_id.into(), frame.payload())
-            .map_err(|DecoderError| Error::Decompression)?
+            .map_err(|DecoderError| ErrorCode::Decompression)?
         {
             DecoderOutput::Done(headers) => Ok(headers
                 .into_iter()

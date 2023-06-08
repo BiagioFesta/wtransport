@@ -3,7 +3,7 @@ use crate::bytes::BufferWriter;
 use crate::bytes::BytesReader;
 use crate::bytes::BytesWriter;
 use crate::bytes::EndOfBuffer;
-use crate::error::Error;
+use crate::error::ErrorCode;
 use crate::ids::InvalidQStreamId;
 use crate::ids::QStreamId;
 
@@ -24,13 +24,13 @@ impl<'a> Datagram<'a> {
     }
 
     /// Reads [`Datagram`] from a QUIC datagram.
-    pub fn read(quic_datagram: &'a [u8]) -> Result<Self, Error> {
+    pub fn read(quic_datagram: &'a [u8]) -> Result<Self, ErrorCode> {
         let mut buffer_reader = BufferReader::new(quic_datagram);
 
-        let varint = buffer_reader.get_varint().ok_or(Error::Datagram)?;
+        let varint = buffer_reader.get_varint().ok_or(ErrorCode::Datagram)?;
 
         let qstream_id =
-            QStreamId::try_from_varint(varint).map_err(|InvalidQStreamId| Error::Datagram)?;
+            QStreamId::try_from_varint(varint).map_err(|InvalidQStreamId| ErrorCode::Datagram)?;
 
         let payload = buffer_reader.buffer_remaining();
 
@@ -112,7 +112,10 @@ mod tests {
         let mut buffer = vec![0; dgram.write_size() + 42];
         dgram.write(&mut buffer).unwrap();
 
-        assert!(matches!(Datagram::read(&buffer[..1]), Err(Error::Datagram)));
+        assert!(matches!(
+            Datagram::read(&buffer[..1]),
+            Err(ErrorCode::Datagram)
+        ));
     }
 
     #[test]
@@ -124,7 +127,7 @@ mod tests {
 
         assert!(matches!(
             Datagram::read(&buffer[..written]),
-            Err(Error::Datagram)
+            Err(ErrorCode::Datagram)
         ));
     }
 

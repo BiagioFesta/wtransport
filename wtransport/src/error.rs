@@ -2,10 +2,8 @@ use crate::engine::session::SessionError;
 use crate::engine::worker::WorkerError;
 use std::fmt::Debug;
 use std::fmt::Formatter;
+use wtransport_proto::error::ErrorCode;
 use wtransport_proto::varint::VarInt;
-
-/// HTTP3 Error code.
-pub type H3Code = wtransport_proto::error::Error;
 
 /// An enumeration representing various errors that can occur during a WebTransport connection.
 #[derive(Debug)]
@@ -105,23 +103,23 @@ impl Debug for ConnectionClosed {
 /// A struct representing an error in the HTTP/3 layer.
 #[derive(Clone)]
 pub struct H3Error {
-    code: H3Code,
+    code: ErrorCode,
     reason: String,
 }
 
 impl H3Error {
-    pub(crate) fn new<S>(error_proto: H3Code, reason: S) -> Self
+    pub(crate) fn new<S>(error_code: ErrorCode, reason: S) -> Self
     where
         S: ToString,
     {
         Self {
-            code: error_proto,
+            code: error_code,
             reason: reason.to_string(),
         }
     }
 
     /// The HTTP3 error code.
-    pub fn code(&self) -> H3Code {
+    pub fn code(&self) -> ErrorCode {
         self.code
     }
 
