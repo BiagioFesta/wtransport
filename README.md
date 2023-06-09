@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="imgs/logo.svg" alt="WTransport Logo" />
+  <img src="https://raw.githubusercontent.com/BiagioFesta/wtransport/master/imgs/logo.svg" alt="WTransport Logo" />
 </p>
 
 [![Documentation](https://docs.rs/wtransport/badge.svg)](https://docs.rs/wtransport/)
