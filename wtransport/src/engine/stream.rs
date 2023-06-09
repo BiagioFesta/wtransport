@@ -431,7 +431,7 @@ impl tokio::io::AsyncRead for QuicRecvStream {
         cx: &mut Context<'_>,
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
-        tokio::io::AsyncRead::poll_read(Pin::new(&mut self), cx, buf)
+        tokio::io::AsyncRead::poll_read(Pin::new(&mut self.0), cx, buf)
     }
 }
 
