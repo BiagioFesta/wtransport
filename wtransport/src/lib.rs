@@ -19,6 +19,7 @@
 //! let connection = server.accept().await.unwrap().await.unwrap();
 //! # }
 //! ```
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
 
 /// Client and server configurations.
