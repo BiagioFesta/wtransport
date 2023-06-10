@@ -363,7 +363,7 @@ impl<'a> Frame<'a> {
     }
 
     #[cfg(test)]
-    fn into_owned<'b>(self) -> Frame<'b> {
+    pub(crate) fn into_owned<'b>(self) -> Frame<'b> {
         Frame {
             kind: self.kind,
             payload: Cow::Owned(self.payload.into_owned()),
@@ -372,7 +372,7 @@ impl<'a> Frame<'a> {
     }
 
     #[cfg(test)]
-    fn serialize_any(kind: VarInt, payload: &[u8]) -> Vec<u8> {
+    pub(crate) fn serialize_any(kind: VarInt, payload: &[u8]) -> Vec<u8> {
         let mut buffer = Vec::new();
 
         Self {
@@ -387,7 +387,7 @@ impl<'a> Frame<'a> {
     }
 
     #[cfg(test)]
-    fn serialize_webtransport(session_id: SessionId) -> Vec<u8> {
+    pub(crate) fn serialize_webtransport(session_id: SessionId) -> Vec<u8> {
         let mut buffer = Vec::new();
 
         Self {
