@@ -23,6 +23,9 @@ pub mod ids;
 /// HTTP3 SETTINGS frame payload.
 pub mod settings;
 
+/// HTTP3 stream types.
+pub mod stream;
+
 /// HTTP3 stream header.
 pub mod stream_header;
 
