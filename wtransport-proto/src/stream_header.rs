@@ -113,15 +113,13 @@ impl StreamHeader {
     /// Creates a new stream header of type [`StreamKind::Control`].
     #[inline(always)]
     pub fn new_control() -> Self {
-        // SAFETY: Control stream with None sesison id is valid.
-        unsafe { Self::new(StreamKind::Control, None) }
+        Self::new(StreamKind::Control, None)
     }
 
     /// Creates a new stream header of type [`StreamKind::WebTransport`].
     #[inline(always)]
     pub fn new_webtransport(session_id: SessionId) -> Self {
-        // SAFETY: WebTransport with session id argument is valid.
-        unsafe { Self::new(StreamKind::WebTransport, Some(session_id)) }
+        Self::new(StreamKind::WebTransport, Some(session_id))
     }
 
     /// Reads a [`StreamHeader`] from a [`BytesReader`].
@@ -151,8 +149,7 @@ impl StreamHeader {
             None
         };
 
-        // SAFETY: kind and session id have been validate during parsing
-        Some(Ok(unsafe { Self::new(kind, session_id) }))
+        Some(Ok(Self::new(kind, session_id)))
     }
 
     /// Reads a [`StreamHeader`] from a `reader`.
@@ -177,8 +174,7 @@ impl StreamHeader {
             None
         };
 
-        // SAFETY: kind and session id have been validate during parsing
-        Ok(unsafe { Self::new(kind, session_id) })
+        Ok(Self::new(kind, session_id))
     }
 
     /// Reads a [`StreamHeader`] from a [`BufferReader`].
@@ -276,13 +272,7 @@ impl StreamHeader {
         })
     }
 
-    /// Creates a new stream header
-    ///
-    /// # Safety
-    ///
-    /// * If `StreamKind::Exercise` then id must be valid.
-    /// * If `StreamKind::WebTransport` then `session_id` must be provided, if not must be `None`.
-    pub(crate) unsafe fn new(kind: StreamKind, session_id: Option<SessionId>) -> Self {
+    fn new(kind: StreamKind, session_id: Option<SessionId>) -> Self {
         if let StreamKind::Exercise(id) = kind {
             debug_assert!(StreamKind::is_id_exercise(id));
             debug_assert!(session_id.is_none());
@@ -296,7 +286,7 @@ impl StreamHeader {
     }
 
     #[cfg(test)]
-    fn serialize_any(kind: VarInt) -> Vec<u8> {
+    pub(crate) fn serialize_any(kind: VarInt) -> Vec<u8> {
         let mut buffer = Vec::new();
 
         Self {
@@ -310,7 +300,7 @@ impl StreamHeader {
     }
 
     #[cfg(test)]
-    fn serialize_webtransport(session_id: SessionId) -> Vec<u8> {
+    pub(crate) fn serialize_webtransport(session_id: SessionId) -> Vec<u8> {
         let mut buffer = Vec::new();
 
         Self {
