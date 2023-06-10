@@ -143,6 +143,7 @@ impl<'a> Frame<'a> {
     ///
     /// * Panics if the `payload` size if greater than [`VarInt::MAX`].
     /// * Panics if `id` is not a valid exercise (see [`FrameKind::is_id_exercise`]).
+    #[inline(always)]
     pub fn new_exercise(id: VarInt, payload: Cow<'a, [u8]>) -> Self {
         assert!(FrameKind::is_id_exercise(id));
         Self::new(FrameKind::Exercise(id), payload, None)
