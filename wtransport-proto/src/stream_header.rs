@@ -278,7 +278,7 @@ impl StreamHeader {
 
     /// Creates a new stream header
     ///
-    /// # Safety:
+    /// # Safety
     ///
     /// * If `StreamKind::Exercise` then id must be valid.
     /// * If `StreamKind::WebTransport` then `session_id` must be provided, if not must be `None`.
