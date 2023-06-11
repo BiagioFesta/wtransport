@@ -1,19 +1,25 @@
 use crate::tls::Certificate;
 use quinn::ClientConfig as QuicClientConfig;
 use quinn::ServerConfig as QuicServerConfig;
+use quinn::TransportConfig;
 use rustls::ClientConfig as TlsClientConfig;
 use rustls::RootCertStore;
 use rustls::ServerConfig as TlsServerConfig;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 use wtransport_proto::WEBTRANSPORT_ALPN;
+
+/// Invalid idle timeout.
+#[derive(Debug)]
+pub struct InvalidIdleTimeout;
 
 /// Server configuration.
 ///
 /// Configuration can be created via [`ServerConfig::builder`] function.
 pub struct ServerConfig {
-    pub(crate) quic_config: QuicServerConfig,
     pub(crate) bind_address: SocketAddr,
+    pub(crate) quic_config: QuicServerConfig,
 }
 
 impl ServerConfig {
@@ -53,25 +59,76 @@ impl ServerConfigBuilder<WantsBindAddress> {
 impl ServerConfigBuilder<WantsCertificate> {
     /// Sets the TLS certificate the server will present to incoming
     /// WebTransport connections.
-    pub fn with_certificate(self, certificate: Certificate) -> ServerConfig {
+    pub fn with_certificate(
+        self,
+        certificate: Certificate,
+    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
         let tls_config = Self::build_tls_config(certificate);
-        let quic_config = QuicServerConfig::with_crypto(Arc::new(tls_config));
+        let transport_config = TransportConfig::default();
 
-        ServerConfig {
-            quic_config,
+        ServerConfigBuilder(WantsTransportConfigServer {
             bind_address: self.0.bind_address,
-        }
+            tls_config,
+            transport_config,
+        })
     }
 
     fn build_tls_config(certificate: Certificate) -> TlsServerConfig {
-        let mut config = TlsServerConfig::builder()
+        let mut tls_config = TlsServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certificate.certificates, certificate.key)
             .unwrap(); // TODO(bfesta): handle this error
 
-        config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
-        config
+        tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
+
+        tls_config
+    }
+}
+
+impl ServerConfigBuilder<WantsTransportConfigServer> {
+    /// Completes configuration process.
+    pub fn build(self) -> ServerConfig {
+        let mut quic_config = QuicServerConfig::with_crypto(Arc::new(self.0.tls_config));
+        quic_config.transport_config(Arc::new(self.0.transport_config));
+
+        ServerConfig {
+            bind_address: self.0.bind_address,
+            quic_config,
+        }
+    }
+
+    /// Maximum duration of inactivity to accept before timing out the connection.
+    ///
+    /// The true idle timeout is the minimum of this and the peer's own max idle timeout. `None`
+    /// represents an infinite timeout.
+    ///
+    /// **WARNING**: If a peer or its network path malfunctions or acts maliciously, an infinite
+    /// idle timeout can result in permanently hung futures!
+    pub fn max_idle_timeout(
+        mut self,
+        idle_timeout: Option<Duration>,
+    ) -> Result<Self, InvalidIdleTimeout> {
+        let idle_timeout = idle_timeout
+            .map(quinn::IdleTimeout::try_from)
+            .transpose()
+            .map_err(|_| InvalidIdleTimeout)?;
+
+        self.0.transport_config.max_idle_timeout(idle_timeout);
+
+        Ok(self)
+    }
+
+    /// Period of inactivity before sending a keep-alive packet
+    ///
+    /// Keep-alive packets prevent an inactive but otherwise healthy connection from timing out.
+    ///
+    /// `None` to disable, which is the default. Only one side of any given connection needs keep-alive
+    /// enabled for the connection to be preserved. Must be set lower than the idle_timeout of both
+    /// peers to be effective.
+    pub fn keep_alive_interval(mut self, interval: Option<Duration>) -> Self {
+        self.0.transport_config.keep_alive_interval(interval);
+        self
     }
 }
 
@@ -79,8 +136,8 @@ impl ServerConfigBuilder<WantsCertificate> {
 ///
 /// Configuration can be created via [`ClientConfig::builder`] function.
 pub struct ClientConfig {
-    pub(crate) quic_config: QuicClientConfig,
     pub(crate) bind_address: SocketAddr,
+    pub(crate) quic_config: QuicClientConfig,
 }
 
 impl ClientConfig {
@@ -117,31 +174,36 @@ impl ClientConfigBuilder<WantsBindAddress> {
 
 impl ClientConfigBuilder<WantsRootStore> {
     /// Loads local (native) root certificate for server validation.
-    pub fn with_native_certs(self) -> ClientConfig {
+    pub fn with_native_certs(self) -> ClientConfigBuilder<WantsTransportConfigClient> {
         let tls_config = Self::build_tls_config(Self::native_cert_store());
-        let quic_config = QuicClientConfig::new(Arc::new(tls_config));
+        let transport_config = TransportConfig::default();
 
-        ClientConfig {
-            quic_config,
+        //let mut quic_config = QuicClientConfig::new(Arc::new(tls_config));
+        //quic_config.transport_config(transport_config.clone());
+
+        ClientConfigBuilder(WantsTransportConfigClient {
             bind_address: self.0.bind_address,
-        }
+            tls_config,
+            transport_config,
+        })
     }
 
     /// Skip certificate server validation.
     #[cfg(feature = "dangerous-configuration")]
     #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
-    pub fn with_no_cert_validation(self) -> ClientConfig {
+    pub fn with_no_cert_validation(self) -> ClientConfigBuilder<WantsTransportConfigClient> {
         let mut tls_config = Self::build_tls_config(RootCertStore::empty());
         tls_config
             .dangerous()
             .set_certificate_verifier(Arc::new(dangerous_configuration::NoServerVerification));
 
-        let quic_config = QuicClientConfig::new(Arc::new(tls_config));
+        let transport_config = TransportConfig::default();
 
-        ClientConfig {
-            quic_config,
+        ClientConfigBuilder(WantsTransportConfigClient {
             bind_address: self.0.bind_address,
-        }
+            tls_config,
+            transport_config,
+        })
     }
 
     fn native_cert_store() -> RootCertStore {
@@ -173,6 +235,52 @@ impl ClientConfigBuilder<WantsRootStore> {
     }
 }
 
+impl ClientConfigBuilder<WantsTransportConfigClient> {
+    /// Completes configuration process.
+    pub fn build(self) -> ClientConfig {
+        let mut quic_config = QuicClientConfig::new(Arc::new(self.0.tls_config));
+        quic_config.transport_config(Arc::new(self.0.transport_config));
+
+        ClientConfig {
+            bind_address: self.0.bind_address,
+            quic_config,
+        }
+    }
+
+    /// Maximum duration of inactivity to accept before timing out the connection.
+    ///
+    /// The true idle timeout is the minimum of this and the peer's own max idle timeout. `None`
+    /// represents an infinite timeout.
+    ///
+    /// **WARNING**: If a peer or its network path malfunctions or acts maliciously, an infinite
+    /// idle timeout can result in permanently hung futures!
+    pub fn max_idle_timeout(
+        mut self,
+        idle_timeout: Option<Duration>,
+    ) -> Result<Self, InvalidIdleTimeout> {
+        let idle_timeout = idle_timeout
+            .map(quinn::IdleTimeout::try_from)
+            .transpose()
+            .map_err(|_| InvalidIdleTimeout)?;
+
+        self.0.transport_config.max_idle_timeout(idle_timeout);
+
+        Ok(self)
+    }
+
+    /// Period of inactivity before sending a keep-alive packet
+    ///
+    /// Keep-alive packets prevent an inactive but otherwise healthy connection from timing out.
+    ///
+    /// `None` to disable, which is the default. Only one side of any given connection needs keep-alive
+    /// enabled for the connection to be preserved. Must be set lower than the idle_timeout of both
+    /// peers to be effective.
+    pub fn keep_alive_interval(mut self, interval: Option<Duration>) -> Self {
+        self.0.transport_config.keep_alive_interval(interval);
+        self
+    }
+}
+
 impl Default for ServerConfigBuilder<WantsBindAddress> {
     fn default() -> Self {
         Self(WantsBindAddress {})
@@ -196,6 +304,20 @@ pub struct WantsCertificate {
 /// Config builder state where the caller must supply TLS root store.
 pub struct WantsRootStore {
     bind_address: SocketAddr,
+}
+
+/// Config builder state where transport properties can be set.
+pub struct WantsTransportConfigServer {
+    bind_address: SocketAddr,
+    tls_config: TlsServerConfig,
+    transport_config: quinn::TransportConfig,
+}
+
+/// Config builder state where transport properties can be set.
+pub struct WantsTransportConfigClient {
+    bind_address: SocketAddr,
+    tls_config: TlsClientConfig,
+    transport_config: quinn::TransportConfig,
 }
 
 #[cfg(feature = "dangerous-configuration")]

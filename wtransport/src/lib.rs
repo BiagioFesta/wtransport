@@ -13,7 +13,8 @@
 //! # async fn run() {
 //! let config = ServerConfig::builder()
 //!     .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
-//!     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap());
+//!     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap())
+//!     .build();
 //!
 //! let server = Endpoint::server(config).unwrap();
 //! let connection = server.accept().await.unwrap().await.unwrap();

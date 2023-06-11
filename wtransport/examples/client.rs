@@ -7,7 +7,8 @@ use wtransport::Endpoint;
 async fn main() {
     let config = ClientConfig::builder()
         .with_bind_address(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0))
-        .with_no_cert_validation();
+        .with_no_cert_validation()
+        .build();
 
     let connection = Endpoint::client(config)
         .unwrap()

@@ -1,5 +1,6 @@
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
+use std::time::Duration;
 use wtransport::tls::Certificate;
 use wtransport::Endpoint;
 use wtransport::ServerConfig;
@@ -10,7 +11,9 @@ async fn main() {
 
     let config = ServerConfig::builder()
         .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
-        .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap());
+        .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap())
+        .keep_alive_interval(Some(Duration::from_secs(3)))
+        .build();
 
     let server = Endpoint::server(config).unwrap();
 

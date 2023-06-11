@@ -11,7 +11,7 @@
 
 ## Introduction
 
-WebTransport is a new protocol being developed to enable *low-latency*, *bidirectional* communication between clients and servers over the web. 
+WebTransport is a new protocol being developed to enable *low-latency*, *bidirectional* communication between clients and servers over the web.
 It aims to address the limitations of existing protocols like *HTTP* and *WebSocket* by offering a more *efficient* and *flexible* transport layer.
 
 ### Benefits of WebTransport
@@ -21,8 +21,8 @@ It aims to address the limitations of existing protocols like *HTTP* and *WebSoc
 * :lock: **Security**: WebTransport benefits from the security features provided by the web platform, including transport encryption and same-origin policy.
 
 ### Notes
-Please be aware that WebTransport is still a *draft* and not yet standardized. 
-The *WTransport* library, while functional, is not considered completely production-ready. 
+Please be aware that WebTransport is still a *draft* and not yet standardized.
+The *WTransport* library, while functional, is not considered completely production-ready.
 It should be used with caution and may undergo changes as the WebTransport specification evolves.
 
 ## Simple API
@@ -30,14 +30,15 @@ It should be used with caution and may undergo changes as the WebTransport speci
 async fn server() -> Result<(), Error> {
     let config = ServerConfig::builder()
         .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
-        .with_certificate(Certificate::load("cert.pem", "key.pem")?);
+        .with_certificate(Certificate::load("cert.pem", "key.pem")?)
+        .build();
 
     let server = Endpoint::server(config)?;
 
     println!("Waiting for incoming connections...");
-    loop {    
+    loop {
         let connecting = server.accept().await?;
-        
+
         tokio::spawn(async move {
            println!("New connection");
            let connection = connecting.await?;
@@ -78,10 +79,10 @@ cargo run --example server
 ```
 
 ### 3. Run Client on Browser
-[Latest versions](https://chromestatus.com/feature/4854144902889472) of *Google Chrome* started 
+[Latest versions](https://chromestatus.com/feature/4854144902889472) of *Google Chrome* started
 supporting some implementations of the protocol.
 
-Since the generated certificate is self-signed, it cannot be directly accepted by the browser at the moment. 
+Since the generated certificate is self-signed, it cannot be directly accepted by the browser at the moment.
 In order to allow the local certificate, you need to launch Google Chrome with two additional options:
 ```
 google-chrome \
@@ -89,7 +90,7 @@ google-chrome \
   --ignore-certificate-errors-spki-list=FINGERPRINT
 ```
 
-Replace `FINGERPRINT` with the value obtained in *step 1*. 
+Replace `FINGERPRINT` with the value obtained in *step 1*.
 For example, `OjyqTe//WoGnvBrgiO37tkOQJyuN1r7hhyBzwX0gotg=`.
 
 ### 4. Connect to the Server
