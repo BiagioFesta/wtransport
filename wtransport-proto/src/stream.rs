@@ -441,6 +441,14 @@ pub mod bilocal {
             }
         }
     }
+
+    impl StreamBiLocalWT {
+        /// Returns the [`SessionId`] associated with this stream.
+        #[inline(always)]
+        pub fn session_id(&self) -> SessionId {
+            self.stage.session_id()
+        }
+    }
 }
 
 /// unidirectional remote stream implementations.
@@ -654,6 +662,15 @@ pub mod uniremote {
                 .kind()
         }
 
+        /// Returns the [`SessionId`] if stream is [`StreamKind::WebTransport`],
+        /// otherwise returns [`None`].
+        pub fn session_id(&self) -> Option<SessionId> {
+            self.stage
+                .stream_header()
+                .expect("Unistream has header")
+                .session_id()
+        }
+
         fn validate_frame<'a>(&mut self, frame: Frame<'a>) -> Result<Frame<'a>, ErrorCode> {
             match frame.kind() {
                 FrameKind::Data => Err(ErrorCode::FrameUnexpected),
@@ -827,6 +844,15 @@ pub mod unilocal {
                 .stream_header()
                 .expect("Unistream has header")
                 .kind()
+        }
+
+        /// Returns the [`SessionId`] if stream is [`StreamKind::WebTransport`],
+        /// otherwise returns [`None`].
+        pub fn session_id(&self) -> Option<SessionId> {
+            self.stage
+                .stream_header()
+                .expect("Unistream has header")
+                .session_id()
         }
     }
 
