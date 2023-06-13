@@ -33,6 +33,9 @@ pub enum ErrorCode {
     /// H3_MISSING_SETTINGS.
     MissingSettings,
 
+    /// H3_REQUEST_REJECTED.
+    RequestRejected,
+
     /// H3_MESSAGE_ERROR.
     Message,
 
@@ -59,6 +62,7 @@ impl ErrorCode {
             ErrorCode::Id => h3_error_codes::H3_ID_ERROR,
             ErrorCode::Settings => h3_error_codes::H3_SETTINGS_ERROR,
             ErrorCode::MissingSettings => h3_error_codes::H3_MISSING_SETTINGS,
+            ErrorCode::RequestRejected => h3_error_codes::H3_REQUEST_REJECTED,
             ErrorCode::Message => h3_error_codes::H3_MESSAGE_ERROR,
             ErrorCode::Decompression => qpack_error_codes::QPACK_DECOMPRESSION_FAILED,
             ErrorCode::BufferedStreamRejected => {
@@ -87,6 +91,7 @@ impl Display for ErrorCode {
             ErrorCode::Id => write!(f, "IdError"),
             ErrorCode::Settings => write!(f, "SettingsError"),
             ErrorCode::MissingSettings => write!(f, "MissingSettingsError"),
+            ErrorCode::RequestRejected => write!(f, "RequestRejectedError"),
             ErrorCode::Message => write!(f, "MessageError"),
             ErrorCode::Decompression => write!(f, "DecompressionError"),
             ErrorCode::BufferedStreamRejected => write!(f, "BufferedStreamRejected"),
@@ -109,6 +114,7 @@ mod h3_error_codes {
     pub const H3_ID_ERROR: VarInt = VarInt::from_u32(0x0108);
     pub const H3_SETTINGS_ERROR: VarInt = VarInt::from_u32(0x0109);
     pub const H3_MISSING_SETTINGS: VarInt = VarInt::from_u32(0x010a);
+    pub const H3_REQUEST_REJECTED: VarInt = VarInt::from_u32(0x010b);
     pub const H3_MESSAGE_ERROR: VarInt = VarInt::from_u32(0x010e);
 }
 
