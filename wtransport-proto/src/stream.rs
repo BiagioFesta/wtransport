@@ -406,7 +406,7 @@ pub mod bilocal {
         /// * Panics if any other I/O operation has been performed on this stream before upgrade.
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-        pub async fn upgrade_wt_async<W>(
+        pub async fn upgrade_async<W>(
             mut self,
             session_id: SessionId,
             writer: &mut W,
