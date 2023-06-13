@@ -24,6 +24,7 @@ use crate::bytes;
 /// An error during stream I/O read operation.
 #[cfg(feature = "async")]
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+#[derive(Debug)]
 pub enum IoReadError {
     /// Error on HTTP3 protocol.
     H3(ErrorCode),
