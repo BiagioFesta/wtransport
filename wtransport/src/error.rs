@@ -1,234 +1,186 @@
-use crate::engine::session::SessionError;
-use crate::engine::worker::WorkerError;
-use std::fmt::Debug;
-use std::fmt::Formatter;
+use crate::driver::utils::varint_q2w;
+use crate::driver::DriverError;
+use std::fmt::Display;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::varint::VarInt;
 
 /// An enumeration representing various errors that can occur during a WebTransport connection.
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum ConnectionError {
-    /// The connection was closed by the peer.
-    ConnectionClosed(ConnectionClosed),
+    /// The connection was aborted by the peer (protocol level).
+    #[error("Connection aborted by peer: {0}")]
+    ConnectionClosed(ConnectionClose),
 
-    /// The connection timed out.
-    TimedOut,
+    /// The connection was closed by the peer (application level).
+    #[error("Connection closed by peer: {0}")]
+    ApplicationClosed(ApplicationClose),
 
     /// The connection was locally closed.
+    #[error("Connection locally closed")]
     LocallyClosed,
 
-    /// An error occurred in the HTTP/3 local layer.
-    H3(H3Error),
+    /// The connection was locally closed because an HTTP3 protocol violation.
+    #[error("Connection locally aborted: {0}")]
+    LocalH3Error(H3Error),
 
-    /// An error occurred in the QUIC layer.
-    QuicError,
+    /// The connection timed out.
+    #[error("Connection timed out")]
+    TimedOut,
+
+    /// The connection was closed because a QUIC protocol error.
+    #[error("QUIC protocol error")]
+    QuicProto,
 }
 
 impl ConnectionError {
-    pub(crate) fn close_worker_error(
-        worker_error: WorkerError,
+    pub(crate) fn with_driver_error(
+        driver_error: DriverError,
         quic_connection: &quinn::Connection,
     ) -> Self {
-        match worker_error {
-            WorkerError::LocalClosed(h3error) => {
-                // SAFETY: varint conversion
-                let quic_varint = unsafe {
-                    debug_assert!(
-                        h3error.code().to_code().into_inner() <= quinn::VarInt::MAX.into_inner()
-                    );
-                    quinn::VarInt::from_u64_unchecked(h3error.code().to_code().into_inner())
-                };
-
-                quic_connection.close(quic_varint, h3error.reason().as_bytes());
-                ConnectionError::H3(h3error)
+        match driver_error {
+            DriverError::LocallyClosed(error_code) => {
+                ConnectionError::LocalH3Error(H3Error { code: error_code })
             }
-            WorkerError::RemoteClosed => quic_connection
+            DriverError::NotConnected => quic_connection
                 .close_reason()
-                .expect("Worker closed before connection ended")
-                .into(),
-        }
-    }
-
-    pub(crate) fn close_session_error(
-        session_error: SessionError,
-        quic_connection: &quinn::Connection,
-    ) -> Self {
-        match session_error {
-            SessionError::LocalClosed(h3error) => ConnectionError::H3(h3error),
-            SessionError::RemoteClosed => quic_connection
-                .close_reason()
-                .expect("Worker closed before connection ended")
+                .expect("QUIC connection is still alive on close-cast")
                 .into(),
         }
     }
 }
 
-/// A struct representing the details of a connection closure.
-pub struct ConnectionClosed {
-    code: VarInt,
-    reason: Vec<u8>,
+/// An error that arise from writing to a stream.
+#[derive(thiserror::Error, Debug)]
+pub enum StreamWriteError {
+    /// Connection has been dropped.
+    #[error("Not connected")]
+    NotConnected,
+
+    /// The peer is no longer accepting data on this stream.
+    #[error("Stream stopped (code: {0})")]
+    Stopped(VarInt),
+
+    /// QUIC protocol error.
+    #[error("QUIC protocol error")]
+    QuicProto,
 }
 
-impl ConnectionClosed {
-    /// Varint code.
-    #[inline(always)]
-    pub fn code(&self) -> VarInt {
-        self.code
-    }
+/// An error that arise from reading from a stream.
+#[derive(thiserror::Error, Debug)]
+pub enum StreamReadError {
+    /// Connection has been dropped.
+    #[error("Not connected")]
+    NotConnected,
 
-    /// The reason for the closure, as a byte vector.
-    #[inline(always)]
-    pub fn reason(&self) -> &[u8] {
-        &self.reason
-    }
+    /// The peer abandoned transmitting data on this stream
+    #[error("Stream reset (code: {0})")]
+    Reset(VarInt),
+
+    /// QUIC protocol error.
+    #[error("QUIC protocol error")]
+    QuicProto,
 }
 
-impl Debug for ConnectionClosed {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        let reason = String::from_utf8_lossy(&self.reason);
+/// An error that arise from reading from a stream.
+#[derive(thiserror::Error, Debug)]
+pub enum StreamReadExactError {
+    /// The stream finished before all bytes were read.
+    #[error("Stream finished too early")]
+    FinishedEarly,
 
-        write!(
-            f,
-            "Code: {} ({})",
-            self.code,
-            if self.reason.is_empty() {
-                "N/A"
-            } else {
-                &reason
-            }
-        )
-    }
+    /// A read error occurred.
+    #[error(transparent)]
+    Read(StreamReadError),
 }
 
-/// A struct representing an error in the HTTP/3 layer.
-#[derive(Clone)]
-pub struct H3Error {
-    code: ErrorCode,
-    reason: String,
-}
+/// An error that arise from sending a datagram.
+#[derive(thiserror::Error, Debug)]
+pub enum SendDatagramError {
+    /// Connection has been dropped.
+    #[error("Not connected")]
+    NotConnected,
 
-impl H3Error {
-    pub(crate) fn new<S>(error_code: ErrorCode, reason: S) -> Self
-    where
-        S: ToString,
-    {
-        Self {
-            code: error_code,
-            reason: reason.to_string(),
-        }
-    }
-
-    /// The HTTP3 error code.
-    pub fn code(&self) -> ErrorCode {
-        self.code
-    }
-
-    /// The reason of the failure as human readable string.
-    pub fn reason(&self) -> &str {
-        &self.reason
-    }
-}
-
-impl Debug for H3Error {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Code: {} ({})", self.code, &self.reason)
-    }
-}
-
-/// An enumeration representing various errors that can occur during a WebTransport stream.
-#[derive(Debug)]
-pub enum StreamError {
-    /// The connection associated with the stream was closed.
-    ConnectionClosed,
-
-    /// The stream was stopped.
-    Stopped,
-}
-
-/// Error when dealing with application datagrams.
-#[derive(Debug)]
-pub enum DatagramError {
-    /// The connection has been closed.
-    ConnectionClosed,
-
-    /// Datagrams are not supported by peer.
+    /// The peer does not support receiving datagram frames.
+    #[error("Peer does not support datagrams")]
     UnsupportedByPeer,
 
-    /// Error at QUIC protocol layer.
-    Protocol,
+    /// The datagram is larger than the connection can currently accommodate.
+    #[error("Datagram payload too large")]
+    TooLarge,
+}
+
+/// An error that arise when opening a new stream.
+#[derive(thiserror::Error, Debug)]
+pub enum StreamOpeningError {
+    /// Connection has been dropped.
+    #[error("Not connected")]
+    NotConnected,
+
+    /// The peer refused the stream, stopping it during initialization.
+    #[error("Opening stream refused")]
+    Refused,
+}
+
+/// Reason given by an application for closing the connection
+#[derive(Debug)]
+pub struct ApplicationClose {
+    code: VarInt,
+    reason: Box<[u8]>,
+}
+
+impl Display for ApplicationClose {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.reason.is_empty() {
+            self.code.fmt(f)?;
+        } else {
+            f.write_str(&String::from_utf8_lossy(&self.reason))?;
+            f.write_str(" (code ")?;
+            self.code.fmt(f)?;
+            f.write_str(")")?;
+        }
+        Ok(())
+    }
+}
+
+/// Reason given by the transport for closing the connection.
+#[derive(Debug)]
+pub struct ConnectionClose(quinn::ConnectionClose);
+
+impl Display for ConnectionClose {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+/// A struct representing an error in the HTTP3 layer.
+#[derive(Debug)]
+pub struct H3Error {
+    code: ErrorCode,
+}
+
+impl Display for H3Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.code.fmt(f)
+    }
 }
 
 impl From<quinn::ConnectionError> for ConnectionError {
     fn from(error: quinn::ConnectionError) -> Self {
         match error {
-            quinn::ConnectionError::VersionMismatch => ConnectionError::QuicError,
-            quinn::ConnectionError::TransportError(_) => ConnectionError::QuicError,
-            quinn::ConnectionError::ConnectionClosed(quic_close) => {
-                ConnectionError::ConnectionClosed(ConnectionClosed {
-                    code: VarInt::try_from_u64(u64::from(quic_close.error_code))
-                        .unwrap_or_default(),
-                    reason: quic_close.reason.into(),
+            quinn::ConnectionError::VersionMismatch => ConnectionError::QuicProto,
+            quinn::ConnectionError::TransportError(_) => ConnectionError::QuicProto,
+            quinn::ConnectionError::ConnectionClosed(close) => {
+                ConnectionError::ConnectionClosed(ConnectionClose(close))
+            }
+            quinn::ConnectionError::ApplicationClosed(close) => {
+                ConnectionError::ApplicationClosed(ApplicationClose {
+                    code: varint_q2w(close.error_code),
+                    reason: close.reason.to_vec().into_boxed_slice(),
                 })
             }
-            quinn::ConnectionError::ApplicationClosed(quic_close) => {
-                // SAFETY: varint conversion
-                let code = unsafe {
-                    debug_assert!(quic_close.error_code.into_inner() <= VarInt::MAX.into_inner());
-                    VarInt::from_u64_unchecked(quic_close.error_code.into_inner())
-                };
-
-                ConnectionError::ConnectionClosed(ConnectionClosed {
-                    code,
-                    reason: quic_close.reason.into(),
-                })
-            }
-            quinn::ConnectionError::Reset => ConnectionError::QuicError,
+            quinn::ConnectionError::Reset => ConnectionError::QuicProto,
             quinn::ConnectionError::TimedOut => ConnectionError::TimedOut,
             quinn::ConnectionError::LocallyClosed => ConnectionError::LocallyClosed,
-        }
-    }
-}
-
-impl From<quinn::WriteError> for StreamError {
-    fn from(error: quinn::WriteError) -> Self {
-        match error {
-            quinn::WriteError::Stopped(_) => StreamError::Stopped,
-            quinn::WriteError::ConnectionLost(_) => StreamError::ConnectionClosed,
-            quinn::WriteError::UnknownStream => StreamError::Stopped,
-            quinn::WriteError::ZeroRttRejected => StreamError::Stopped,
-        }
-    }
-}
-
-impl From<quinn::ReadError> for StreamError {
-    fn from(error: quinn::ReadError) -> Self {
-        match error {
-            quinn::ReadError::Reset(_) => StreamError::Stopped,
-            quinn::ReadError::ConnectionLost(_) => StreamError::ConnectionClosed,
-            quinn::ReadError::UnknownStream => StreamError::Stopped,
-            quinn::ReadError::IllegalOrderedRead => StreamError::Stopped,
-            quinn::ReadError::ZeroRttRejected => StreamError::Stopped,
-        }
-    }
-}
-
-impl From<quinn::StoppedError> for StreamError {
-    fn from(error: quinn::StoppedError) -> Self {
-        match error {
-            quinn::StoppedError::ConnectionLost(_) => StreamError::ConnectionClosed,
-            quinn::StoppedError::UnknownStream => StreamError::Stopped,
-            quinn::StoppedError::ZeroRttRejected => StreamError::Stopped,
-        }
-    }
-}
-
-impl From<quinn::SendDatagramError> for DatagramError {
-    fn from(error: quinn::SendDatagramError) -> Self {
-        match error {
-            quinn::SendDatagramError::UnsupportedByPeer => DatagramError::UnsupportedByPeer,
-            quinn::SendDatagramError::Disabled => Self::Protocol,
-            quinn::SendDatagramError::TooLarge => Self::Protocol,
-            quinn::SendDatagramError::ConnectionLost(_) => DatagramError::ConnectionClosed,
         }
     }
 }

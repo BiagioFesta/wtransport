@@ -44,7 +44,7 @@ async fn main() {
 
                     println!("Received (uni) '{str_data}' from client");
 
-                    let mut stream = connection.open_uni().await.unwrap();
+                    let mut stream = connection.open_uni().await.unwrap().await.unwrap();
                     stream.write_all(b"ACK").await.unwrap();
                 }
                 dgram = connection.receive_datagram() => {

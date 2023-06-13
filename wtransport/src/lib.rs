@@ -59,5 +59,5 @@ pub use stream::RecvStream;
 #[doc(inline)]
 pub use stream::SendStream;
 
+mod driver;
 mod endpoint;
-mod engine;

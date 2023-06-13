@@ -20,7 +20,7 @@ async fn main() {
         .await
         .unwrap();
 
-    let mut stream = connection.open_bi().await.unwrap();
+    let mut stream = connection.open_bi().await.unwrap().await.unwrap();
     stream.0.write_all(b"HELLO").await.unwrap();
     stream.0.finish().await.unwrap();
 }

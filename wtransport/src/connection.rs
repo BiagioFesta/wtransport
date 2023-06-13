@@ -1,8 +1,9 @@
 use crate::datagram::Datagram;
-use crate::engine::session::Session;
-use crate::engine::Engine;
+use crate::driver::Driver;
 use crate::error::ConnectionError;
-use crate::error::DatagramError;
+use crate::error::SendDatagramError;
+use crate::stream::OpeningBiStream;
+use crate::stream::OpeningUniStream;
 use crate::stream::RecvStream;
 use crate::stream::SendStream;
 use std::future::Future;
@@ -19,81 +20,31 @@ pub struct Connecting(
 
 impl Connecting {
     pub(crate) fn new(is_server: bool, quic_connecting: quinn::Connecting) -> Self {
-        if is_server {
-            Self(Box::pin(async {
-                Self::connect_as_server(quic_connecting).await
-            }))
-        } else {
-            Self(Box::pin(async {
-                Self::connect_as_client(quic_connecting).await
-            }))
-        }
+        Self(Box::pin(async move {
+            Self::connect(is_server, quic_connecting).await
+        }))
     }
 
-    async fn connect_as_server(
+    async fn connect(
+        is_server: bool,
         quic_connecting: quinn::Connecting,
     ) -> Result<Connection, ConnectionError> {
         let quic_connection = quic_connecting.await?;
-        let engine = Engine::new(quic_connection.clone());
 
-        let _remote_settings = engine.remote_settings().await.map_err(|worker_error| {
-            ConnectionError::close_worker_error(worker_error, &quic_connection)
-        })?;
-
-        // TODO(bfesta): validate settings
-
-        let session = engine
-            .accept_session()
+        let driver = Driver::init(is_server, quic_connection.clone())
             .await
-            .map_err(|worker_error| {
-                ConnectionError::close_worker_error(worker_error, &quic_connection)
-            })?
-            .accept()
-            .await
-            .map_err(|session_error| {
-                ConnectionError::close_session_error(session_error, &quic_connection)
+            .map_err(|driver_error| {
+                ConnectionError::with_driver_error(driver_error, &quic_connection)
             })?;
+
+        let session_id = driver.accept_session_id().await.map_err(|driver_error| {
+            ConnectionError::with_driver_error(driver_error, &quic_connection)
+        })?;
 
         Ok(Connection {
             quic_connection,
-            engine,
-            session,
-        })
-    }
-
-    async fn connect_as_client(
-        quic_connecting: quinn::Connecting,
-    ) -> Result<Connection, ConnectionError> {
-        let quic_connection = quic_connecting.await?;
-        let engine = Engine::new(quic_connection.clone());
-
-        let _remote_settings = engine.remote_settings().await.map_err(|worker_error| {
-            ConnectionError::close_worker_error(worker_error, &quic_connection)
-        })?;
-
-        // TODO(bfesta): validate settings
-
-        let session = engine
-            .connect_session()
-            .await
-            .map_err(|worker_error| {
-                ConnectionError::close_worker_error(worker_error, &quic_connection)
-            })?
-            .request()
-            .await
-            .map_err(|session_error| {
-                ConnectionError::close_session_error(session_error, &quic_connection)
-            })?
-            .confirm()
-            .await
-            .map_err(|session_error| {
-                ConnectionError::close_session_error(session_error, &quic_connection)
-            })?;
-
-        Ok(Connection {
-            quic_connection,
-            engine,
-            session,
+            driver,
+            session_id,
         })
     }
 }
@@ -109,80 +60,75 @@ impl Future for Connecting {
 /// A WebTransport session connection.
 pub struct Connection {
     quic_connection: quinn::Connection,
-    engine: Engine,
-    session: Session,
+    driver: Driver,
+    session_id: SessionId,
 }
 
 impl Connection {
     /// Accepts the next uni-directional stream.
     pub async fn accept_bi(&self) -> Result<(SendStream, RecvStream), ConnectionError> {
-        let wtstream = self.engine.accept_bi().await.map_err(|worker_error| {
-            ConnectionError::close_worker_error(worker_error, &self.quic_connection)
-        })?;
+        let stream = self
+            .driver
+            .accept_bi()
+            .await
+            .map_err(|driver_error| {
+                ConnectionError::with_driver_error(driver_error, &self.quic_connection)
+            })?
+            .into_stream();
 
-        let raw_stream = wtstream.raw();
-
-        Ok((SendStream::new(raw_stream.0), RecvStream::new(raw_stream.1)))
+        Ok((SendStream::new(stream.0), RecvStream::new(stream.1)))
     }
 
     /// Accepts the next bi-directional stream.
     pub async fn accept_uni(&self) -> Result<RecvStream, ConnectionError> {
-        let wtstream = self.engine.accept_uni().await.map_err(|worker_error| {
-            ConnectionError::close_worker_error(worker_error, &self.quic_connection)
-        })?;
+        let stream = self
+            .driver
+            .accept_uni()
+            .await
+            .map_err(|driver_error| {
+                ConnectionError::with_driver_error(driver_error, &self.quic_connection)
+            })?
+            .into_stream();
 
-        let raw_stream = wtstream.raw();
-
-        Ok(RecvStream::new(raw_stream))
+        Ok(RecvStream::new(stream))
     }
 
     /// Initiates a new outgoing unidirectional stream.
-    pub async fn open_bi(&self) -> Result<(SendStream, RecvStream), ConnectionError> {
-        let wtstream = self
-            .engine
-            .open_bi(self.session.id())
+    pub async fn open_bi(&self) -> Result<OpeningBiStream, ConnectionError> {
+        self.driver
+            .open_bi(self.session_id)
             .await
-            .map_err(|worker_error| {
-                ConnectionError::close_worker_error(worker_error, &self.quic_connection)
-            })?;
-
-        let raw_stream = wtstream.raw();
-
-        Ok((SendStream::new(raw_stream.0), RecvStream::new(raw_stream.1)))
+            .map_err(|driver_error| {
+                ConnectionError::with_driver_error(driver_error, &self.quic_connection)
+            })
     }
 
     /// Initiates a new outgoing bidirectional stream.
-    pub async fn open_uni(&self) -> Result<SendStream, ConnectionError> {
-        let wtstream = self
-            .engine
-            .open_uni(self.session.id())
+    pub async fn open_uni(&self) -> Result<OpeningUniStream, ConnectionError> {
+        self.driver
+            .open_uni(self.session_id)
             .await
-            .map_err(|worker_error| {
-                ConnectionError::close_worker_error(worker_error, &self.quic_connection)
-            })?;
-
-        let raw_stream = wtstream.raw();
-
-        Ok(SendStream::new(raw_stream))
+            .map_err(|driver_error| {
+                ConnectionError::with_driver_error(driver_error, &self.quic_connection)
+            })
     }
 
     /// Receives an application datagram.
-    pub async fn receive_datagram(&self) -> Result<Datagram, DatagramError> {
-        self.engine
-            .receive_datagram(self.session.id())
+    pub async fn receive_datagram(&self) -> Result<Datagram, ConnectionError> {
+        self.driver
+            .receive_datagram(self.session_id)
             .await
-            .map_err(|worker_error| {
-                ConnectionError::close_worker_error(worker_error, &self.quic_connection);
-                DatagramError::ConnectionClosed
+            .map_err(|driver_error| {
+                ConnectionError::with_driver_error(driver_error, &self.quic_connection)
             })
     }
 
     /// Sends an application datagram.
-    pub fn send_datagram<D>(&self, data: D) -> Result<(), DatagramError>
+    pub fn send_datagram<D>(&self, payload: D) -> Result<(), SendDatagramError>
     where
         D: AsRef<[u8]>,
     {
-        self.engine.send_datagram(data.as_ref(), self.session.id())
+        self.driver.send_datagram(self.session_id, payload.as_ref())
     }
 
     /// Waits for the connection to be closed for any reason.
@@ -193,7 +139,7 @@ impl Connection {
     /// Returns the WebTransport session identifier.
     #[inline(always)]
     pub fn session_id(&self) -> SessionId {
-        self.session.id()
+        self.session_id
     }
 
     /// Returns the peer's UDP address.
