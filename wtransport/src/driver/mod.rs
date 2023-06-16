@@ -274,7 +274,7 @@ impl DriverWorker {
     }
 
     async fn send_settings(&mut self) -> Result<(), DriverError> {
-        debug_assert!(self.local_session_stream.is_none());
+        debug_assert!(self.local_settings_stream.is_none());
 
         let h3_stream = match Stream::open_uni(&self.quic_connection)
             .await
