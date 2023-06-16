@@ -1,91 +1,103 @@
+use crate::driver::result::DriverError;
 use crate::driver::streams::bilocal::StreamBiLocalH3;
 use crate::driver::streams::biremote::StreamBiRemoteH3;
 use crate::driver::streams::ProtoReadError;
-use crate::driver::DriverError;
-use crate::error::StreamWriteError;
+use crate::session::SessionInfo;
+use std::future::pending;
 use wtransport_proto::bytes;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::Frame;
 use wtransport_proto::frame::FrameKind;
 use wtransport_proto::ids::SessionId;
 
-pub struct RemoteSessionStream {
-    stream: StreamBiRemoteH3,
+pub struct SessionStream {
+    info: Option<SessionInfo>,
+    local: Option<StreamBiLocalH3>,
+    remote: Option<StreamBiRemoteH3>,
 }
 
-impl RemoteSessionStream {
-    pub fn new(stream: StreamBiRemoteH3) -> Self {
-        assert!(stream.id().is_bidirectional() && stream.id().is_client_initiated());
-        Self { stream }
-    }
-
-    pub fn session_id(&self) -> SessionId {
-        let stream_id = self.stream.id();
-
-        // SAFETY: stream is session by construction
-        unsafe {
-            debug_assert!(stream_id.is_bidirectional() && stream_id.is_client_initiated());
-            SessionId::from_session_stream_unchecked(stream_id)
+impl SessionStream {
+    pub fn empty() -> Self {
+        Self {
+            info: None,
+            local: None,
+            remote: None,
         }
     }
 
-    pub async fn done(&mut self) -> DriverError {
+    pub fn is_empty(&self) -> bool {
+        self.info.is_none()
+    }
+
+    pub fn client(stream: StreamBiLocalH3) -> Self {
+        assert!(stream.id().is_bidirectional() && stream.id().is_client_initiated());
+
+        // SAFETY: stream is session by construction
+        let session_id = unsafe {
+            debug_assert!(stream.id().is_bidirectional() && stream.id().is_client_initiated());
+            SessionId::from_session_stream_unchecked(stream.id())
+        };
+
+        Self {
+            info: Some(SessionInfo::new(session_id)),
+            local: Some(stream),
+            remote: None,
+        }
+    }
+
+    pub fn server(stream: StreamBiRemoteH3) -> Self {
+        assert!(stream.id().is_bidirectional() && stream.id().is_client_initiated());
+
+        // SAFETY: stream is session by construction
+        let session_id = unsafe {
+            debug_assert!(stream.id().is_bidirectional() && stream.id().is_client_initiated());
+            SessionId::from_session_stream_unchecked(stream.id())
+        };
+
+        Self {
+            info: Some(SessionInfo::new(session_id)),
+            local: None,
+            remote: Some(stream),
+        }
+    }
+
+    pub fn session_info(&self) -> Option<&SessionInfo> {
+        self.info.as_ref()
+    }
+
+    pub async fn run(&mut self) -> DriverError {
         loop {
             let frame = match self.read_frame().await {
-                Ok(frame) => frame,
+                Ok(Some(frame)) => frame,
+                Ok(None) => pending().await,
                 Err(driver_error) => return driver_error,
             };
 
             if !matches!(frame.kind(), FrameKind::Exercise(_) | FrameKind::Data) {
-                return DriverError::LocallyClosed(ErrorCode::FrameUnexpected);
+                return DriverError::Proto(ErrorCode::FrameUnexpected);
             }
         }
     }
 
-    async fn read_frame<'a>(&mut self) -> Result<Frame<'a>, DriverError> {
-        self.stream.read_frame().await.map_err(|error| match error {
-            ProtoReadError::H3(error_code) => DriverError::LocallyClosed(error_code),
-            ProtoReadError::IO(io_error) => match io_error {
+    async fn read_frame<'a>(&mut self) -> Result<Option<Frame<'a>>, DriverError> {
+        let frame = match (self.local.as_mut(), self.remote.as_mut()) {
+            (Some(stream), None) => stream.read_frame().await,
+            (None, Some(stream)) => stream.read_frame().await,
+            (None, None) => return Ok(None),
+            _ => unreachable!(),
+        };
+
+        match frame {
+            Ok(frame) => Ok(Some(frame)),
+            Err(ProtoReadError::H3(error_code)) => Err(DriverError::Proto(error_code)),
+            Err(ProtoReadError::IO(io_error)) => match io_error {
                 bytes::IoReadError::ImmediateFin
                 | bytes::IoReadError::UnexpectedFin
                 | bytes::IoReadError::Reset => {
-                    DriverError::LocallyClosed(ErrorCode::ClosedCriticalStream)
+                    Err(DriverError::Proto(ErrorCode::ClosedCriticalStream))
                 }
-                bytes::IoReadError::NotConnected => DriverError::NotConnected,
+                bytes::IoReadError::NotConnected => Err(DriverError::NotConnected),
             },
-        })
-    }
-}
-
-pub struct LocalSessionStream {
-    stream: StreamBiLocalH3,
-}
-
-impl LocalSessionStream {
-    pub fn new(stream: StreamBiLocalH3) -> Self {
-        assert!(stream.id().is_bidirectional() && stream.id().is_client_initiated());
-        Self { stream }
-    }
-
-    pub fn session_id(&self) -> SessionId {
-        let stream_id = self.stream.id();
-
-        // SAFETY: stream is session by construction
-        unsafe {
-            debug_assert!(stream_id.is_bidirectional() && stream_id.is_client_initiated());
-            SessionId::from_session_stream_unchecked(stream_id)
-        }
-    }
-
-    pub async fn done(&mut self) -> DriverError {
-        match self.stream.stopped().await {
-            StreamWriteError::NotConnected => DriverError::NotConnected,
-            StreamWriteError::Stopped(_) => {
-                DriverError::LocallyClosed(ErrorCode::ClosedCriticalStream)
-            }
-            StreamWriteError::QuicProto => {
-                DriverError::LocallyClosed(ErrorCode::ClosedCriticalStream)
-            }
         }
     }
 }

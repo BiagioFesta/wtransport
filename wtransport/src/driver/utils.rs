@@ -1,5 +1,6 @@
-use std::future::Future;
-use tokio::task::JoinHandle;
+use std::sync::Arc;
+use tokio::sync::watch;
+use tokio::sync::Mutex;
 use wtransport_proto::ids::StreamId;
 use wtransport_proto::varint::VarInt;
 
@@ -31,75 +32,54 @@ pub fn streamid_q2w(stream_id: quinn::StreamId) -> StreamId {
     StreamId::new(varint)
 }
 
-pub struct WorkerHandler<T> {
-    join_handle: Option<JoinHandle<T>>,
-    result: Option<T>,
-}
+#[derive(Clone)]
+pub struct SharedResultSet<T>(Arc<watch::Sender<Option<T>>>);
 
-impl<T> WorkerHandler<T>
+impl<T> SharedResultSet<T>
 where
     T: Copy,
 {
-    pub fn spawn<W>(worker: W) -> Self
-    where
-        W: Future<Output = T> + Send + 'static,
-        T: Send + 'static,
-    {
-        let join_handle = tokio::spawn(worker);
-
-        Self {
-            join_handle: Some(join_handle),
-            result: None,
-        }
+    pub fn new() -> Self {
+        Self(Arc::new(watch::channel(None).0))
     }
 
-    pub async fn abort_with_result(&mut self, try_result: T) -> T {
-        if let Some(result) = self.result {
-            return result;
-        }
-
-        let join_handle = self.join_handle.take().expect("Worker is executing");
-
-        if join_handle.is_finished() {
-            match join_handle.await {
-                Ok(result) => {
-                    self.result = Some(result);
-                    result
-                }
-                Err(join_error) => {
-                    std::panic::resume_unwind(join_error.into_panic());
-                }
+    pub fn set(&self, result: T) -> bool {
+        self.0.send_if_modified(|state| {
+            if state.is_none() {
+                *state = Some(result);
+                true
+            } else {
+                false
             }
-        } else {
-            join_handle.abort();
-            self.result = Some(try_result);
-            try_result
-        }
+        })
     }
 
-    pub async fn result(&mut self) -> T {
-        if let Some(result) = self.result {
-            return result;
-        }
+    pub async fn closed(&self) {
+        self.0.closed().await
+    }
 
-        let join_handle = self.join_handle.take().expect("Worker is executing");
-
-        match join_handle.await {
-            Ok(result) => {
-                self.result = Some(result);
-                result
-            }
-            Err(join_error) => {
-                std::panic::resume_unwind(join_error.into_panic());
-            }
-        }
+    pub fn subscribe(&self) -> SharedResultGet<T> {
+        SharedResultGet(Mutex::new(self.0.subscribe()))
     }
 }
 
-impl<T> Drop for WorkerHandler<T> {
-    fn drop(&mut self) {
-        if let Some(join_handle) = self.join_handle.take() {
-            join_handle.abort()
+pub struct SharedResultGet<T>(Mutex<watch::Receiver<Option<T>>>);
+
+impl<T> SharedResultGet<T>
+where
+    T: Copy,
+{
+    pub async fn result(&self) -> Option<T> {
+        let mut lock = self.0.lock().await;
+
+        loop {
+            if let Some(result) = *lock.borrow() {
+                return Some(result);
+            }
+
+            if lock.changed().await.is_err() {
+                return None;
+            }
         }
     }
 }

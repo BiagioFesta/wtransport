@@ -1,10 +1,7 @@
-use crate::driver::response::Response;
-use crate::driver::streams::biremote::StreamBiRemoteH3;
-use crate::driver::streams::session::RemoteSessionStream;
-use crate::driver::streams::ProtoWriteError;
-use crate::driver::DriverError;
-use wtransport_proto::error::ErrorCode;
 use wtransport_proto::headers::Headers;
+
+#[derive(Debug)]
+pub struct MalformedRequest;
 
 pub struct Request {
     headers: Headers,
@@ -20,68 +17,43 @@ impl Request {
         .into_iter()
         .collect::<Headers>();
 
-        Self::with_headers(headers)
+        Self::with_headers(headers).expect("Well-formed request")
     }
 
-    pub fn with_headers(headers: Headers) -> Self {
-        Self { headers }
+    pub fn with_headers(headers: Headers) -> Result<Self, MalformedRequest> {
+        if headers.get(":method").is_none() {
+            return Err(MalformedRequest);
+        }
+
+        if headers.get(":method").unwrap_or_default() != "CONNECT"
+            && (headers.get(":scheme").is_none() || headers.get(":path").is_none())
+        {
+            return Err(MalformedRequest);
+        }
+
+        Ok(Self { headers })
     }
 
-    pub fn is_method_connect(&self) -> bool {
-        self.headers.get(":method").unwrap_or_default() == "CONNECT"
+    pub fn method(&self) -> Option<&str> {
+        self.headers.get(":method")
     }
 
-    pub fn protocol(&self) -> Result<&str, DriverError> {
-        self.headers
-            .get(":protocol")
-            .ok_or(DriverError::LocallyClosed(ErrorCode::Message))
+    pub fn protocol(&self) -> Option<&str> {
+        self.headers.get(":protocol")
     }
 
-    pub fn scheme(&self) -> Result<&str, DriverError> {
-        self.headers
-            .get(":scheme")
-            .ok_or(DriverError::LocallyClosed(ErrorCode::Message))
+    pub fn scheme(&self) -> Option<&str> {
+        self.headers.get(":scheme")
     }
 
     pub fn headers(&self) -> &Headers {
         &self.headers
     }
 
-    pub async fn try_accept_webtransport(
-        mut stream: StreamBiRemoteH3,
-        headers: Headers,
-    ) -> Result<Option<RemoteSessionStream>, DriverError> {
-        let request = Self::with_headers(headers);
-
-        if !request.is_method_connect() {
-            stream
-                .stop(ErrorCode::RequestRejected.to_code())
-                .expect("Not already stopped");
-
-            return Ok(None);
-        }
-
-        if request.protocol()? != "webtransport" {
-            return Err(DriverError::LocallyClosed(ErrorCode::Message));
-        }
-
-        if request.scheme()? != "https" {
-            return Err(DriverError::LocallyClosed(ErrorCode::Message));
-        }
-
-        // TODO(bfesta): validate :authority and the :path
-
-        let response = Response::new_webtransport(200);
-
-        match stream
-            .write_frame(response.headers().generate_frame(stream.id()))
-            .await
-        {
-            Ok(()) => Ok(Some(RemoteSessionStream::new(stream))),
-            Err(ProtoWriteError::Stopped) => {
-                Err(DriverError::LocallyClosed(ErrorCode::ClosedCriticalStream))
-            }
-            Err(ProtoWriteError::NotConnected) => Err(DriverError::NotConnected),
-        }
+    pub fn is_webtransport_connect(&self) -> bool {
+        // TODO(bfesta): check path and authority
+        self.method().unwrap_or_default() == "CONNECT"
+            && self.protocol().unwrap_or_default() == "webtransport"
+            && self.scheme().unwrap_or_default() == "https"
     }
 }

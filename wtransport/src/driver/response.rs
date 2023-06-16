@@ -1,5 +1,3 @@
-use crate::driver::DriverError;
-use wtransport_proto::error::ErrorCode;
 use wtransport_proto::headers::Headers;
 
 pub struct Response {
@@ -22,15 +20,8 @@ impl Response {
         Self { headers }
     }
 
-    pub fn status(&self) -> Result<u32, DriverError> {
-        let status = self
-            .headers
-            .get(":status")
-            .ok_or(DriverError::LocallyClosed(ErrorCode::Message))?;
-
-        status
-            .parse()
-            .map_err(|_| DriverError::LocallyClosed(ErrorCode::Message))
+    pub fn status(&self) -> Option<u32> {
+        self.headers.get(":status")?.parse().ok()
     }
 
     pub fn headers(&self) -> &Headers {

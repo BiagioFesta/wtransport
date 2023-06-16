@@ -2,6 +2,7 @@ use crate::datagram::Datagram;
 use crate::driver::Driver;
 use crate::error::ConnectionError;
 use crate::error::SendDatagramError;
+use crate::session::SessionInfo;
 use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
 use crate::stream::RecvStream;
@@ -11,7 +12,6 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
-use wtransport_proto::ids::SessionId;
 
 /// [`Future`] for an in-progress connection attempt.
 pub struct Connecting(
@@ -31,20 +31,16 @@ impl Connecting {
     ) -> Result<Connection, ConnectionError> {
         let quic_connection = quic_connecting.await?;
 
-        let driver = Driver::init(is_server, quic_connection.clone())
-            .await
-            .map_err(|driver_error| {
-                ConnectionError::with_driver_error(driver_error, &quic_connection)
-            })?;
+        let driver = Driver::init(is_server, quic_connection.clone());
 
-        let session_id = driver.accept_session_id().await.map_err(|driver_error| {
+        let session_info = driver.accept_session().await.map_err(|driver_error| {
             ConnectionError::with_driver_error(driver_error, &quic_connection)
         })?;
 
         Ok(Connection {
             quic_connection,
             driver,
-            session_id,
+            session_info,
         })
     }
 }
@@ -61,7 +57,7 @@ impl Future for Connecting {
 pub struct Connection {
     quic_connection: quinn::Connection,
     driver: Driver,
-    session_id: SessionId,
+    session_info: SessionInfo,
 }
 
 impl Connection {
@@ -96,7 +92,7 @@ impl Connection {
     /// Initiates a new outgoing unidirectional stream.
     pub async fn open_bi(&self) -> Result<OpeningBiStream, ConnectionError> {
         self.driver
-            .open_bi(self.session_id)
+            .open_bi(self.session_info.id())
             .await
             .map_err(|driver_error| {
                 ConnectionError::with_driver_error(driver_error, &self.quic_connection)
@@ -106,7 +102,7 @@ impl Connection {
     /// Initiates a new outgoing bidirectional stream.
     pub async fn open_uni(&self) -> Result<OpeningUniStream, ConnectionError> {
         self.driver
-            .open_uni(self.session_id)
+            .open_uni(self.session_info.id())
             .await
             .map_err(|driver_error| {
                 ConnectionError::with_driver_error(driver_error, &self.quic_connection)
@@ -116,7 +112,7 @@ impl Connection {
     /// Receives an application datagram.
     pub async fn receive_datagram(&self) -> Result<Datagram, ConnectionError> {
         self.driver
-            .receive_datagram(self.session_id)
+            .receive_datagram(self.session_info.id())
             .await
             .map_err(|driver_error| {
                 ConnectionError::with_driver_error(driver_error, &self.quic_connection)
@@ -128,7 +124,8 @@ impl Connection {
     where
         D: AsRef<[u8]>,
     {
-        self.driver.send_datagram(self.session_id, payload.as_ref())
+        self.driver
+            .send_datagram(self.session_info.id(), payload.as_ref())
     }
 
     /// Waits for the connection to be closed for any reason.
@@ -136,10 +133,10 @@ impl Connection {
         let _ = self.quic_connection.closed().await;
     }
 
-    /// Returns the WebTransport session identifier.
+    /// Returns the WebTransport session information.
     #[inline(always)]
-    pub fn session_id(&self) -> SessionId {
-        self.session_id
+    pub fn session_info(&self) -> &SessionInfo {
+        &self.session_info
     }
 
     /// Returns the peer's UDP address.

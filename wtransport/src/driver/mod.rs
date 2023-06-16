@@ -1,123 +1,88 @@
+use self::result::DriverError;
+use self::result::DriverHandler;
+use self::result::DriverResultSet;
+use self::worker::Worker;
 use crate::datagram::Datagram;
-use crate::driver::request::Request;
-use crate::driver::response::Response;
-use crate::driver::stream_acceptor::StreamAcceptor;
-use crate::driver::streams::biremote::StreamBiRemoteH3;
 use crate::driver::streams::biremote::StreamBiRemoteWT;
-use crate::driver::streams::qpack::RemoteQPackDecStream;
-use crate::driver::streams::qpack::RemoteQPackEncStream;
-use crate::driver::streams::session::LocalSessionStream;
-use crate::driver::streams::session::RemoteSessionStream;
-use crate::driver::streams::settings::LocalSettingsStream;
-use crate::driver::streams::settings::RemoteSettingsStream;
-use crate::driver::streams::uniremote::StreamUniRemoteH3;
 use crate::driver::streams::uniremote::StreamUniRemoteWT;
-use crate::driver::streams::ProtoReadError;
-use crate::driver::streams::ProtoWriteError;
 use crate::driver::streams::Stream;
-use crate::driver::utils::varint_w2q;
-use crate::driver::utils::WorkerHandler;
 use crate::error::SendDatagramError;
+use crate::session::SessionInfo;
 use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
-use std::future::pending;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
-use wtransport_proto::bytes;
 use wtransport_proto::error::ErrorCode;
-use wtransport_proto::frame::Frame;
-use wtransport_proto::frame::FrameKind;
-use wtransport_proto::headers::Headers;
 use wtransport_proto::ids::SessionId;
-use wtransport_proto::stream_header::StreamHeader;
-use wtransport_proto::stream_header::StreamKind;
-
-#[derive(Clone, Copy, Debug)]
-pub enum DriverError {
-    LocallyClosed(ErrorCode),
-    NotConnected,
-}
 
 pub struct Driver {
     quic_connection: quinn::Connection,
-    worker_handler: Mutex<WorkerHandler<DriverError>>,
-    ready_uni_streams: Mutex<mpsc::Receiver<StreamUniRemoteWT>>,
-    ready_bi_streams: Mutex<mpsc::Receiver<StreamBiRemoteWT>>,
-    ready_session_ids: Mutex<mpsc::Receiver<SessionId>>,
+    ready_sessions: Mutex<mpsc::Receiver<SessionInfo>>,
+    ready_uni_wt_streams: Mutex<mpsc::Receiver<StreamUniRemoteWT>>,
+    ready_bi_wt_streams: Mutex<mpsc::Receiver<StreamBiRemoteWT>>,
+    driver_handler: result::DriverHandler,
 }
 
 impl Driver {
-    pub async fn init(
-        is_server: bool,
-        quic_connection: quinn::Connection,
-    ) -> Result<Self, DriverError> {
-        let stream_acceptor = StreamAcceptor::start(1024, quic_connection.clone());
+    pub fn init(is_server: bool, quic_connection: quinn::Connection) -> Self {
+        let ready_sessions = mpsc::channel(1);
+        let ready_uni_wt_streams = mpsc::channel(4);
+        let ready_bi_wt_streams = mpsc::channel(1);
+        let driver_handler = DriverHandler::new();
 
-        let ready_uni_streams = mpsc::channel(1);
-        let ready_bi_streams = mpsc::channel(1);
-        let ready_session_ids = mpsc::channel(1);
+        tokio::spawn(
+            Worker::new(
+                is_server,
+                quic_connection.clone(),
+                ready_sessions.0,
+                ready_uni_wt_streams.0,
+                ready_bi_wt_streams.0,
+                driver_handler.setter(),
+            )
+            .run(),
+        );
 
-        let worker_handler = WorkerHandler::spawn({
-            let quic_connection = quic_connection.clone();
-
-            async move {
-                DriverWorker {
-                    is_server,
-                    quic_connection,
-                    stream_acceptor,
-                    local_settings_stream: None,
-                    remote_settings_stream: None,
-                    remote_qpack_enc_stream: None,
-                    remote_qpack_dec_stream: None,
-                    local_session_stream: None,
-                    remote_session_stream: None,
-                    ready_uni_streams: ready_uni_streams.0,
-                    ready_bi_streams: ready_bi_streams.0,
-                    ready_session_ids: ready_session_ids.0,
-                }
-                .run()
-                .await
-            }
-        });
-
-        Ok(Self {
+        Self {
             quic_connection,
-            worker_handler: Mutex::new(worker_handler),
-            ready_bi_streams: Mutex::new(ready_bi_streams.1),
-            ready_uni_streams: Mutex::new(ready_uni_streams.1),
-            ready_session_ids: Mutex::new(ready_session_ids.1),
-        })
+            ready_sessions: Mutex::new(ready_sessions.1),
+            ready_uni_wt_streams: Mutex::new(ready_uni_wt_streams.1),
+            ready_bi_wt_streams: Mutex::new(ready_bi_wt_streams.1),
+            driver_handler,
+        }
     }
 
-    pub async fn accept_session_id(&self) -> Result<SessionId, DriverError> {
-        let mut lock = self.ready_session_ids.lock().await;
+    pub async fn accept_session(&self) -> Result<SessionInfo, DriverError> {
+        let mut lock = self.ready_sessions.lock().await;
+
         match lock.recv().await {
-            Some(session_id) => Ok(session_id),
+            Some(session_info) => Ok(session_info),
             None => {
                 drop(lock);
-                Err(self.result().await)
+                Err(self.driver_handler.result().await)
             }
         }
     }
 
     pub async fn accept_uni(&self) -> Result<StreamUniRemoteWT, DriverError> {
-        let mut lock = self.ready_uni_streams.lock().await;
+        let mut lock = self.ready_uni_wt_streams.lock().await;
+
         match lock.recv().await {
             Some(stream) => Ok(stream),
             None => {
                 drop(lock);
-                Err(self.result().await)
+                Err(self.driver_handler.result().await)
             }
         }
     }
 
     pub async fn accept_bi(&self) -> Result<StreamBiRemoteWT, DriverError> {
-        let mut lock = self.ready_bi_streams.lock().await;
+        let mut lock = self.ready_bi_wt_streams.lock().await;
+
         match lock.recv().await {
             Some(stream) => Ok(stream),
             None => {
                 drop(lock);
-                Err(self.result().await)
+                Err(self.driver_handler.result().await)
             }
         }
     }
@@ -126,25 +91,17 @@ impl Driver {
         loop {
             let quic_dgram = match self.quic_connection.read_datagram().await {
                 Ok(quic_dgram) => quic_dgram,
-                Err(_) => return Err(self.result().await),
+                Err(_) => return Err(self.driver_handler.result().await),
             };
 
             match Datagram::read(session_id, quic_dgram) {
                 Ok(Some(datagram)) => return Ok(datagram),
                 Ok(None) => continue,
                 Err(error_code) => {
-                    let mut lock = self.worker_handler.lock().await;
+                    self.driver_handler
+                        .set_proto_error(error_code, &self.quic_connection);
 
-                    let error = lock
-                        .abort_with_result(DriverError::LocallyClosed(error_code))
-                        .await;
-
-                    if let DriverError::LocallyClosed(error_code) = error {
-                        self.quic_connection
-                            .close(varint_w2q(error_code.to_code()), b"");
-                    }
-
-                    return Err(error);
+                    return Err(self.driver_handler.result().await);
                 }
             }
         }
@@ -191,380 +148,554 @@ impl Driver {
             }
         }
     }
-
-    pub async fn result(&self) -> DriverError {
-        let mut lock = self.worker_handler.lock().await;
-        lock.result().await
-    }
 }
 
-struct DriverWorker {
-    is_server: bool,
-    quic_connection: quinn::Connection,
-    stream_acceptor: StreamAcceptor,
-    local_settings_stream: Option<LocalSettingsStream>,
-    remote_settings_stream: Option<RemoteSettingsStream>,
-    remote_qpack_enc_stream: Option<RemoteQPackEncStream>,
-    remote_qpack_dec_stream: Option<RemoteQPackDecStream>,
-    local_session_stream: Option<LocalSessionStream>,
-    remote_session_stream: Option<RemoteSessionStream>,
-    ready_uni_streams: mpsc::Sender<StreamUniRemoteWT>,
-    ready_bi_streams: mpsc::Sender<StreamBiRemoteWT>,
-    ready_session_ids: mpsc::Sender<SessionId>,
-}
+mod worker {
+    use super::*;
+    use crate::driver::request::MalformedRequest;
+    use crate::driver::request::Request;
+    use crate::driver::response::Response;
+    use crate::driver::streams::biremote::StreamBiRemoteH3;
+    use crate::driver::streams::qpack::RemoteQPackDecStream;
+    use crate::driver::streams::qpack::RemoteQPackEncStream;
+    use crate::driver::streams::session::SessionStream;
+    use crate::driver::streams::settings::LocalSettingsStream;
+    use crate::driver::streams::settings::RemoteSettingsStream;
+    use crate::driver::streams::uniremote::StreamUniRemoteH3;
+    use crate::driver::streams::ProtoReadError;
+    use crate::driver::streams::ProtoWriteError;
+    use wtransport_proto::bytes;
+    use wtransport_proto::frame::Frame;
+    use wtransport_proto::frame::FrameKind;
+    use wtransport_proto::headers::Headers;
+    use wtransport_proto::settings::Settings;
+    use wtransport_proto::stream_header::StreamKind;
 
-impl DriverWorker {
-    async fn run(mut self) -> DriverError {
-        let driver_error = self.run_impl().await;
-
-        if let Err(DriverError::LocallyClosed(error_code)) = &driver_error {
-            self.quic_connection
-                .close(varint_w2q(error_code.to_code()), b"");
-        }
-
-        driver_error.unwrap_err()
+    pub struct Worker {
+        is_server: bool,
+        quic_connection: quinn::Connection,
+        ready_sessions: mpsc::Sender<SessionInfo>,
+        ready_uni_wt_streams: mpsc::Sender<StreamUniRemoteWT>,
+        ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
+        driver_result_set: DriverResultSet,
+        local_settings_stream: LocalSettingsStream,
+        remote_settings_stream: RemoteSettingsStream,
+        remote_qpack_enc_stream: RemoteQPackEncStream,
+        remote_qpack_dec_stream: RemoteQPackDecStream,
+        session_stream: SessionStream,
     }
 
-    async fn run_impl(&mut self) -> Result<(), DriverError> {
-        let mut inc_session = mpsc::channel(1);
-
-        self.send_settings().await?;
-
-        if !self.is_server {
-            self.send_session().await?;
-        }
-
-        loop {
-            tokio::select! {
-                driver_error = Self::ctrl_streams_error(&mut self.local_settings_stream,
-                                                        &mut self.remote_settings_stream,
-                                                        &mut self.remote_qpack_enc_stream,
-                                                        &mut self.remote_qpack_dec_stream,
-                                                        &mut self.local_session_stream,
-                                                        &mut self.remote_session_stream) => {
-                    return Err(driver_error);
-                }
-                result = self.stream_acceptor.accept_uni_h3() => {
-                    let stream_uni_remote_h3 = result?;
-                    self.handle_uni_stream_h3(stream_uni_remote_h3)?;
-                }
-                result = self.stream_acceptor.accept_bi_h3() => {
-                    let (stream_bi_remote_h3, first_frame) = result?;
-                    self.handle_bi_stream_h3(stream_bi_remote_h3, first_frame, &inc_session.0)?
-                }
-                result = Self::accept_uni_wt(&self.stream_acceptor, &self.ready_uni_streams) => {
-                    result?;
-                }
-                result = Self::accept_bi_wt(&self.stream_acceptor, &self.ready_bi_streams) => {
-                    result?;
-                }
-                inc_session = inc_session.1.recv() => {
-                    let slot = match self.ready_session_ids.try_reserve() {
-                        Ok(slot) => slot,
-                        Err(mpsc::error::TrySendError::Closed(_)) => return Err(DriverError::NotConnected),
-                        Err(mpsc::error::TrySendError::Full(_)) => unreachable!(),
-                    };
-                    let remote_session_stream = inc_session.expect("Sender cannot be dropped")?;
-                    self.remote_session_stream = Some(remote_session_stream);
-                    slot.send(self.remote_session_stream.as_ref().expect("Just set").session_id());
-
-                }
-            }
-        }
-    }
-
-    async fn send_settings(&mut self) -> Result<(), DriverError> {
-        debug_assert!(self.local_settings_stream.is_none());
-
-        let h3_stream = match Stream::open_uni(&self.quic_connection)
-            .await
-            .ok_or(DriverError::NotConnected)?
-            .upgrade(StreamHeader::new_control())
-            .await
-        {
-            Ok(h3_stream) => h3_stream,
-            Err(ProtoWriteError::NotConnected) => return Err(DriverError::NotConnected),
-            Err(ProtoWriteError::Stopped) => {
-                return Err(DriverError::LocallyClosed(ErrorCode::ClosedCriticalStream));
-            }
-        };
-
-        let mut local_settings_stream = LocalSettingsStream::new(h3_stream);
-
-        match local_settings_stream.send_settings().await {
-            Ok(()) => {
-                self.local_settings_stream = Some(local_settings_stream);
-                Ok(())
-            }
-            Err(ProtoWriteError::NotConnected) => Err(DriverError::NotConnected),
-            Err(ProtoWriteError::Stopped) => {
-                Err(DriverError::LocallyClosed(ErrorCode::ClosedCriticalStream))
-            }
-        }
-    }
-
-    async fn send_session(&mut self) -> Result<(), DriverError> {
-        debug_assert!(self.local_session_stream.is_none());
-
-        let slot = match self.ready_session_ids.try_reserve() {
-            Ok(slot) => slot,
-            Err(mpsc::error::TrySendError::Closed(_)) => return Err(DriverError::NotConnected),
-            Err(mpsc::error::TrySendError::Full(_)) => unreachable!(),
-        };
-
-        let mut h3_stream = Stream::open_bi(&self.quic_connection)
-            .await
-            .ok_or(DriverError::NotConnected)?
-            .upgrade();
-
-        let request = Request::new_webtransport();
-
-        match h3_stream
-            .write_frame(request.headers().generate_frame(h3_stream.id()))
-            .await
-        {
-            Ok(()) => {}
-            Err(ProtoWriteError::Stopped) => {
-                return Err(DriverError::LocallyClosed(ErrorCode::ClosedCriticalStream));
-            }
-            Err(ProtoWriteError::NotConnected) => {
-                return Err(DriverError::NotConnected);
+    impl Worker {
+        pub fn new(
+            is_server: bool,
+            quic_connection: quinn::Connection,
+            ready_sessions: mpsc::Sender<SessionInfo>,
+            ready_uni_wt_streams: mpsc::Sender<StreamUniRemoteWT>,
+            ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
+            driver_result_set: DriverResultSet,
+        ) -> Self {
+            Self {
+                is_server,
+                quic_connection,
+                ready_sessions,
+                ready_uni_wt_streams,
+                ready_bi_wt_streams,
+                driver_result_set,
+                local_settings_stream: LocalSettingsStream::new(),
+                remote_settings_stream: RemoteSettingsStream::empty(),
+                remote_qpack_enc_stream: RemoteQPackEncStream::empty(),
+                remote_qpack_dec_stream: RemoteQPackDecStream::empty(),
+                session_stream: SessionStream::empty(),
             }
         }
 
-        let frame = match h3_stream.read_frame().await {
-            Ok(frame) => frame,
-            Err(ProtoReadError::H3(error_code)) => {
-                return Err(DriverError::LocallyClosed(error_code))
-            }
-            Err(ProtoReadError::IO(io_error)) => match io_error {
-                bytes::IoReadError::ImmediateFin
-                | bytes::IoReadError::UnexpectedFin
-                | bytes::IoReadError::Reset => {
-                    return Err(DriverError::LocallyClosed(ErrorCode::ClosedCriticalStream));
+        pub async fn run(mut self) {
+            let error = self
+                .run_impl()
+                .await
+                .expect_err("Worker must return an error");
+
+            match error {
+                DriverError::Proto(error_code) => {
+                    self.driver_result_set
+                        .set_proto_error(error_code, &self.quic_connection);
                 }
-                bytes::IoReadError::NotConnected => {
-                    return Err(DriverError::NotConnected);
+                DriverError::NotConnected => {
+                    self.driver_result_set.set_not_connected();
                 }
-            },
-        };
-
-        let headers = match frame.kind() {
-            FrameKind::Headers => {
-                Headers::with_frame(&frame, h3_stream.id()).map_err(DriverError::LocallyClosed)?
             }
-            _ => {
-                return Err(DriverError::LocallyClosed(ErrorCode::FrameUnexpected));
-            }
-        };
-
-        let response_code = Response::with_headers(headers).status()?;
-
-        if !(200..300).contains(&response_code) {
-            return Err(DriverError::LocallyClosed(ErrorCode::RequestRejected));
         }
 
-        self.local_session_stream = Some(LocalSessionStream::new(h3_stream));
+        async fn run_impl(&mut self) -> Result<(), DriverError> {
+            let mut ready_uni_h3_streams = mpsc::channel(4);
+            let mut ready_bi_h3_streams = mpsc::channel(1);
+            let mut incoming_sessions = mpsc::channel(1);
 
-        slot.send(
-            self.local_session_stream
-                .as_ref()
-                .expect("Just set")
-                .session_id(),
-        );
+            self.local_settings_stream
+                .send_settings(&self.quic_connection)
+                .await?;
 
-        Ok(())
-    }
+            loop {
+                tokio::select! {
+                    result = Self::accept_uni(&self.quic_connection,
+                                              &ready_uni_h3_streams.0,
+                                              &self.ready_uni_wt_streams) => {
+                        result?;
+                    }
 
-    async fn ctrl_streams_error(
-        local_settings: &mut Option<LocalSettingsStream>,
-        remote_settings: &mut Option<RemoteSettingsStream>,
-        remote_qpack_enc: &mut Option<RemoteQPackEncStream>,
-        remote_qpack_dec: &mut Option<RemoteQPackDecStream>,
-        local_session: &mut Option<LocalSessionStream>,
-        remote_session: &mut Option<RemoteSessionStream>,
-    ) -> DriverError {
-        let local_settings_err = async {
-            match local_settings {
-                Some(s) => s.done().await,
-                None => pending().await,
-            }
-        };
+                    result = Self::accept_bi(&self.quic_connection,
+                                             &ready_bi_h3_streams.0,
+                                             &self.ready_bi_wt_streams) => {
+                        result?;
+                    }
 
-        let remote_settings_err = async {
-            match remote_settings {
-                Some(s) => s.done().await,
-                None => pending().await,
-            }
-        };
+                    uni_h3_stream = ready_uni_h3_streams.1.recv() => {
+                        let uni_h3_stream = uni_h3_stream.expect("Sender cannot be dropped")?;
+                        self.handle_uni_h3_stream(uni_h3_stream)?;
+                    }
 
-        let remote_qpack_enc_err = async {
-            match remote_qpack_enc {
-                Some(s) => s.done().await,
-                None => pending().await,
-            }
-        };
+                    bi_h3_stream = ready_bi_h3_streams.1.recv() => {
+                        let (bi_h3_stream, first_frame) = bi_h3_stream.expect("Sender cannot be dropped")?;
+                        self.handle_bi_h3_stream(bi_h3_stream, first_frame, &incoming_sessions.0)?;
+                    }
 
-        let remote_qpack_dec_err = async {
-            match remote_qpack_dec {
-                Some(s) => s.done().await,
-                None => pending().await,
-            }
-        };
+                    settings = Self::run_control_streams(&mut self.local_settings_stream,
+                                                         &mut self.remote_settings_stream,
+                                                         &mut self.remote_qpack_enc_stream,
+                                                         &mut self.remote_qpack_dec_stream,
+                                                         &mut self.session_stream) => {
+                        self.handle_remote_settings(settings?, &incoming_sessions.0)?;
+                    }
 
-        let local_session_err = async {
-            match local_session {
-                Some(s) => s.done().await,
-                None => pending().await,
-            }
-        };
+                    incoming_session = incoming_sessions.1.recv() => {
+                        let incoming_session = incoming_session.expect("Sender cannot be dropped")?;
+                        self.handle_incoming_session(incoming_session)?;
+                    }
 
-        let remote_session_err = async {
-            match remote_session {
-                Some(s) => s.done().await,
-                None => pending().await,
-            }
-        };
-
-        tokio::select! {
-            error = local_settings_err => error,
-            error = remote_settings_err => error,
-            error = remote_qpack_enc_err => error,
-            error = remote_qpack_dec_err => error,
-            error = local_session_err => error,
-            error = remote_session_err => error,
-        }
-    }
-
-    fn handle_uni_stream_h3(&mut self, stream: StreamUniRemoteH3) -> Result<(), DriverError> {
-        match stream.kind() {
-            StreamKind::Control => {
-                if self.remote_session_stream.is_some() {
-                    return Err(DriverError::LocallyClosed(ErrorCode::StreamCreation));
+                    _ = self.driver_result_set.closed() => {
+                        return Err(DriverError::NotConnected);
+                    }
                 }
-                self.remote_settings_stream = Some(RemoteSettingsStream::new(stream));
             }
-            StreamKind::QPackEncoder => {
-                if self.remote_qpack_enc_stream.is_some() {
-                    return Err(DriverError::LocallyClosed(ErrorCode::StreamCreation));
-                }
-                self.remote_qpack_enc_stream = Some(RemoteQPackEncStream::new(stream));
-            }
-            StreamKind::QPackDecoder => {
-                if self.remote_qpack_dec_stream.is_some() {
-                    return Err(DriverError::LocallyClosed(ErrorCode::StreamCreation));
-                }
-                self.remote_qpack_dec_stream = Some(RemoteQPackDecStream::new(stream));
-            }
-            StreamKind::WebTransport => unreachable!(),
-            StreamKind::Exercise(_) => {}
         }
 
-        Ok(())
-    }
+        async fn accept_uni(
+            quic_connection: &quinn::Connection,
+            ready_uni_h3_streams: &mpsc::Sender<Result<StreamUniRemoteH3, DriverError>>,
+            ready_uni_wt_streams: &mpsc::Sender<StreamUniRemoteWT>,
+        ) -> Result<(), DriverError> {
+            let h3_slot = ready_uni_h3_streams
+                .clone()
+                .reserve_owned()
+                .await
+                .expect("Receiver cannot be dropped");
 
-    fn handle_bi_stream_h3(
-        &mut self,
-        stream: StreamBiRemoteH3,
-        first_frame: Frame<'static>,
-        inc_session: &mpsc::Sender<Result<RemoteSessionStream, DriverError>>,
-    ) -> Result<(), DriverError> {
-        match first_frame.kind() {
-            FrameKind::Data => Ok(()),
-            FrameKind::Headers => {
-                let headers = match Headers::with_frame(&first_frame, stream.id()) {
-                    Ok(headers) => headers,
-                    Err(error_code) => return Err(DriverError::LocallyClosed(error_code)),
-                };
-
-                self.process_h3_request(stream, headers, inc_session)
-            }
-            FrameKind::Settings => Err(DriverError::LocallyClosed(ErrorCode::FrameUnexpected)),
-            FrameKind::WebTransport => unreachable!(),
-            FrameKind::Exercise(_) => Ok(()),
-        }
-    }
-
-    async fn accept_uni_wt(
-        stream_acceptor: &StreamAcceptor,
-        ready_uni_streams: &mpsc::Sender<StreamUniRemoteWT>,
-    ) -> Result<(), DriverError> {
-        let slot = match ready_uni_streams.clone().reserve_owned().await {
-            Ok(slot) => slot,
-            Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
-        };
-
-        let stream = stream_acceptor.accept_uni_wt().await?;
-
-        slot.send(stream);
-
-        Ok(())
-    }
-
-    async fn accept_bi_wt(
-        stream_acceptor: &StreamAcceptor,
-        ready_bi_streams: &mpsc::Sender<StreamBiRemoteWT>,
-    ) -> Result<(), DriverError> {
-        let slot = match ready_bi_streams.clone().reserve_owned().await {
-            Ok(slot) => slot,
-            Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
-        };
-
-        let stream = stream_acceptor.accept_bi_wt().await?;
-
-        slot.send(stream);
-
-        Ok(())
-    }
-
-    fn process_h3_request(
-        &mut self,
-        mut stream: StreamBiRemoteH3,
-        headers: Headers,
-        inc_session: &mpsc::Sender<Result<RemoteSessionStream, DriverError>>,
-    ) -> Result<(), DriverError> {
-        if self.is_server {
-            if self.remote_session_stream.is_some() {
-                stream
-                    .stop(ErrorCode::RequestRejected.to_code())
-                    .expect("Cannot be already stopped");
-                return Ok(());
-            }
-
-            let slot = match inc_session.clone().try_reserve_owned() {
-                Ok(slot) => slot,
-                Err(mpsc::error::TrySendError::Full(_)) => {
-                    stream
-                        .stop(ErrorCode::RequestRejected.to_code())
-                        .expect("Cannot be already stopped");
-                    return Ok(());
-                }
-                Err(mpsc::error::TrySendError::Closed(_)) => {
-                    return Err(DriverError::NotConnected);
-                }
+            let wt_slot = match ready_uni_wt_streams.clone().reserve_owned().await {
+                Ok(wt_slot) => wt_slot,
+                Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
             };
 
+            let stream_quic = Stream::accept_uni(quic_connection)
+                .await
+                .ok_or(DriverError::NotConnected)?;
+
             tokio::spawn(async move {
-                match Request::try_accept_webtransport(stream, headers).await {
-                    Ok(Some(session_stream)) => {
-                        slot.send(Ok(session_stream));
+                let stream_h3 = match stream_quic.upgrade().await {
+                    Ok(stream_h3) => stream_h3,
+                    Err(ProtoReadError::H3(error_code)) => {
+                        h3_slot.send(Err(DriverError::Proto(error_code)));
+                        return;
                     }
-                    Ok(None) => {}
-                    Err(driver_error) => {
-                        slot.send(Err(driver_error));
+                    Err(ProtoReadError::IO(_)) => {
+                        return;
+                    }
+                };
+
+                if matches!(stream_h3.kind(), StreamKind::WebTransport) {
+                    let stream_wt = stream_h3.upgrade();
+                    wt_slot.send(stream_wt);
+                } else {
+                    h3_slot.send(Ok(stream_h3));
+                }
+            });
+
+            Ok(())
+        }
+
+        async fn accept_bi(
+            quic_connection: &quinn::Connection,
+            ready_bi_h3_streams: &mpsc::Sender<
+                Result<(StreamBiRemoteH3, Frame<'static>), DriverError>,
+            >,
+            ready_bi_wt_streams: &mpsc::Sender<StreamBiRemoteWT>,
+        ) -> Result<(), DriverError> {
+            let h3_slot = ready_bi_h3_streams
+                .clone()
+                .reserve_owned()
+                .await
+                .expect("Receiver cannot be dropped");
+
+            let wt_slot = match ready_bi_wt_streams.clone().reserve_owned().await {
+                Ok(wt_slot) => wt_slot,
+                Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
+            };
+
+            let stream_quic = Stream::accept_bi(quic_connection)
+                .await
+                .ok_or(DriverError::NotConnected)?;
+
+            tokio::spawn(async move {
+                let mut stream_h3 = stream_quic.upgrade();
+
+                let frame = match stream_h3.read_frame().await {
+                    Ok(frame) => frame,
+                    Err(ProtoReadError::H3(error_code)) => {
+                        h3_slot.send(Err(DriverError::Proto(error_code)));
+                        return;
+                    }
+                    Err(ProtoReadError::IO(_)) => {
+                        return;
+                    }
+                };
+
+                match frame.session_id() {
+                    Some(session_id) => {
+                        let stream_wt = stream_h3.upgrade(session_id);
+                        wt_slot.send(stream_wt);
+                    }
+                    None => {
+                        h3_slot.send(Ok((stream_h3, frame)));
                     }
                 }
             });
 
             Ok(())
-        } else {
-            Err(DriverError::LocallyClosed(ErrorCode::StreamCreation))
+        }
+
+        fn handle_uni_h3_stream(&mut self, stream: StreamUniRemoteH3) -> Result<(), DriverError> {
+            match stream.kind() {
+                StreamKind::Control => {
+                    if !self.remote_settings_stream.is_empty() {
+                        return Err(DriverError::Proto(ErrorCode::StreamCreation));
+                    }
+
+                    self.remote_settings_stream = RemoteSettingsStream::with_stream(stream);
+                }
+                StreamKind::QPackEncoder => {
+                    if !self.remote_qpack_enc_stream.is_empty() {
+                        return Err(DriverError::Proto(ErrorCode::StreamCreation));
+                    }
+
+                    self.remote_qpack_enc_stream = RemoteQPackEncStream::with_stream(stream);
+                }
+                StreamKind::QPackDecoder => {
+                    if !self.remote_qpack_dec_stream.is_empty() {
+                        return Err(DriverError::Proto(ErrorCode::StreamCreation));
+                    }
+
+                    self.remote_qpack_dec_stream = RemoteQPackDecStream::with_stream(stream);
+                }
+                StreamKind::WebTransport => unreachable!(),
+                StreamKind::Exercise(_) => {}
+            }
+
+            Ok(())
+        }
+
+        fn handle_bi_h3_stream(
+            &mut self,
+            stream: StreamBiRemoteH3,
+            first_frame: Frame<'static>,
+            incoming_sessions: &mpsc::Sender<Result<SessionStream, DriverError>>,
+        ) -> Result<(), DriverError> {
+            match first_frame.kind() {
+                FrameKind::Data => {
+                    return Err(DriverError::Proto(ErrorCode::FrameUnexpected));
+                }
+                FrameKind::Headers => {
+                    tokio::spawn(Self::handle_h3_request(
+                        stream,
+                        first_frame,
+                        incoming_sessions.clone(),
+                    ));
+                }
+                FrameKind::Settings => {
+                    return Err(DriverError::Proto(ErrorCode::FrameUnexpected));
+                }
+                FrameKind::WebTransport => unreachable!(),
+                FrameKind::Exercise(_) => {}
+            }
+
+            Ok(())
+        }
+
+        fn handle_incoming_session(
+            &mut self,
+            session_stream: SessionStream,
+        ) -> Result<(), DriverError> {
+            debug_assert!(!session_stream.is_empty());
+
+            let slot = match self.ready_sessions.try_reserve() {
+                Ok(slot) => slot,
+                Err(mpsc::error::TrySendError::Closed(_)) => return Err(DriverError::NotConnected),
+                Err(mpsc::error::TrySendError::Full(_)) => return Ok(()),
+            };
+
+            if self.session_stream.is_empty() {
+                self.session_stream = session_stream;
+                slot.send(
+                    self.session_stream
+                        .session_info()
+                        .expect("Session is not empty")
+                        .clone(),
+                );
+            }
+
+            Ok(())
+        }
+
+        async fn run_control_streams(
+            local_settings: &mut LocalSettingsStream,
+            remote_settings: &mut RemoteSettingsStream,
+            remote_qpack_enc: &mut RemoteQPackEncStream,
+            remote_qpack_dec: &mut RemoteQPackDecStream,
+            session: &mut SessionStream,
+        ) -> Result<Settings, DriverError> {
+            tokio::select! {
+                error = local_settings.run() => Err(error),
+                settings = remote_settings.run() => settings,
+                error = remote_qpack_enc.run() => Err(error),
+                error = remote_qpack_dec.run() => Err(error),
+                error = session.run() => Err(error),
+            }
+        }
+
+        async fn handle_h3_request(
+            mut stream: StreamBiRemoteH3,
+            first_frame: Frame<'static>,
+            incoming_sessions: mpsc::Sender<Result<SessionStream, DriverError>>,
+        ) {
+            let slot = match incoming_sessions.try_reserve() {
+                Ok(slot) => slot,
+                Err(_) => {
+                    stream
+                        .stop(ErrorCode::RequestRejected.to_code())
+                        .expect("Stream not already stopped");
+                    return;
+                }
+            };
+
+            let headers = match Headers::with_frame(&first_frame, stream.id()) {
+                Ok(headers) => headers,
+                Err(error_code) => {
+                    slot.send(Err(DriverError::Proto(error_code)));
+                    return;
+                }
+            };
+
+            let request = match Request::with_headers(headers) {
+                Ok(request) => request,
+                Err(MalformedRequest) => {
+                    stream
+                        .stop(ErrorCode::Message.to_code())
+                        .expect("Stream not already stopped");
+                    return;
+                }
+            };
+
+            if !request.is_webtransport_connect() {
+                stream
+                    .stop(ErrorCode::RequestRejected.to_code())
+                    .expect("Stream not already stopped");
+                return;
+            }
+
+            let response = Response::new_webtransport(200);
+
+            match stream
+                .write_frame(response.headers().generate_frame(stream.id()))
+                .await
+            {
+                Ok(()) => {
+                    slot.send(Ok(SessionStream::server(stream)));
+                }
+                Err(ProtoWriteError::Stopped) => {
+                    slot.send(Err(DriverError::Proto(ErrorCode::ClosedCriticalStream)));
+                }
+                Err(ProtoWriteError::NotConnected) => {
+                    slot.send(Err(DriverError::NotConnected));
+                }
+            }
+        }
+
+        fn handle_remote_settings(
+            &mut self,
+            _settings: Settings,
+            incoming_sessions: &mpsc::Sender<Result<SessionStream, DriverError>>,
+        ) -> Result<(), DriverError> {
+            // TODO(bfesta): validate settings
+
+            if !self.is_server {
+                tokio::spawn(Self::send_session_request(
+                    self.quic_connection.clone(),
+                    incoming_sessions.clone(),
+                ));
+            }
+
+            Ok(())
+        }
+
+        async fn send_session_request(
+            quic_connection: quinn::Connection,
+            incoming_sessions: mpsc::Sender<Result<SessionStream, DriverError>>,
+        ) {
+            let slot = match incoming_sessions.try_reserve() {
+                Ok(slot) => slot,
+                Err(_) => {
+                    return;
+                }
+            };
+
+            let mut stream = match Stream::open_bi(&quic_connection).await {
+                Some(quic_stream) => quic_stream.upgrade(),
+                None => {
+                    slot.send(Err(DriverError::NotConnected));
+                    return;
+                }
+            };
+
+            let request = Request::new_webtransport();
+
+            match stream
+                .write_frame(request.headers().generate_frame(stream.id()))
+                .await
+            {
+                Ok(()) => {}
+                Err(ProtoWriteError::Stopped) => {
+                    slot.send(Err(DriverError::Proto(ErrorCode::ClosedCriticalStream)));
+                    return;
+                }
+                Err(ProtoWriteError::NotConnected) => {
+                    slot.send(Err(DriverError::NotConnected));
+                    return;
+                }
+            }
+
+            let frame = match stream.read_frame().await {
+                Ok(frame) => frame,
+                Err(ProtoReadError::H3(error_code)) => {
+                    slot.send(Err(DriverError::Proto(error_code)));
+                    return;
+                }
+                Err(ProtoReadError::IO(io_error)) => match io_error {
+                    bytes::IoReadError::ImmediateFin
+                    | bytes::IoReadError::UnexpectedFin
+                    | bytes::IoReadError::Reset => {
+                        slot.send(Err(DriverError::Proto(ErrorCode::ClosedCriticalStream)));
+                        return;
+                    }
+                    bytes::IoReadError::NotConnected => {
+                        slot.send(Err(DriverError::NotConnected));
+                        return;
+                    }
+                },
+            };
+
+            if !matches!(frame.kind(), FrameKind::Headers) {
+                slot.send(Err(DriverError::Proto(ErrorCode::FrameUnexpected)));
+                return;
+            }
+
+            let headers = match Headers::with_frame(&frame, stream.id()) {
+                Ok(headers) => headers,
+                Err(error_code) => {
+                    slot.send(Err(DriverError::Proto(error_code)));
+                    return;
+                }
+            };
+
+            let response = Response::with_headers(headers);
+
+            match response.status() {
+                Some(status) if (200..300).contains(&status) => {
+                    slot.send(Ok(SessionStream::client(stream)));
+                }
+                Some(_) => {
+                    slot.send(Err(DriverError::Proto(ErrorCode::RequestRejected)));
+                }
+                None => {
+                    slot.send(Err(DriverError::Proto(ErrorCode::Message)));
+                }
+            }
+        }
+    }
+}
+
+pub mod result {
+    use super::*;
+    use crate::driver::utils::varint_w2q;
+    use crate::driver::utils::SharedResultGet;
+    use crate::driver::utils::SharedResultSet;
+
+    #[derive(Copy, Clone)]
+    pub enum DriverError {
+        Proto(ErrorCode),
+        NotConnected,
+    }
+
+    #[derive(Clone)]
+    pub struct DriverResultSet(SharedResultSet<DriverError>);
+
+    impl DriverResultSet {
+        pub fn set_proto_error(&self, error_code: ErrorCode, quic_connection: &quinn::Connection) {
+            if self.0.set(DriverError::Proto(error_code)) {
+                quic_connection.close(varint_w2q(error_code.to_code()), b"");
+            }
+        }
+
+        pub fn set_not_connected(&self) {
+            self.0.set(DriverError::NotConnected);
+        }
+
+        pub async fn closed(&self) {
+            self.0.closed().await
+        }
+    }
+
+    pub struct DriverHandler {
+        result_set: DriverResultSet,
+        result_get: SharedResultGet<DriverError>,
+    }
+
+    impl DriverHandler {
+        pub fn new() -> Self {
+            let result_set = DriverResultSet(SharedResultSet::new());
+            let result_get = result_set.0.subscribe();
+
+            Self {
+                result_set,
+                result_get,
+            }
+        }
+
+        pub fn setter(&self) -> DriverResultSet {
+            self.result_set.clone()
+        }
+
+        pub fn set_proto_error(&self, error_code: ErrorCode, quic_connection: &quinn::Connection) {
+            self.result_set.set_proto_error(error_code, quic_connection)
+        }
+
+        pub async fn result(&self) -> DriverError {
+            self.result_get
+                .result()
+                .await
+                .expect("Sender cannot be dropped")
         }
     }
 }
 
 pub(crate) mod request;
 pub(crate) mod response;
-pub(crate) mod stream_acceptor;
 pub(crate) mod streams;
 pub(crate) mod utils;

@@ -283,10 +283,6 @@ pub mod bilocal {
                 .await
         }
 
-        pub async fn stopped(&mut self) -> StreamWriteError {
-            self.stream.0.stopped().await
-        }
-
         pub async fn upgrade(
             mut self,
             session_id: SessionId,
@@ -408,10 +404,6 @@ pub mod unilocal {
     impl StreamUniLocalH3 {
         pub async fn write_frame<'a>(&mut self, frame: Frame<'a>) -> Result<(), ProtoWriteError> {
             self.proto.write_frame_async(frame, &mut self.stream).await
-        }
-
-        pub fn kind(&self) -> StreamKind {
-            self.proto.kind()
         }
 
         pub async fn stopped(&mut self) -> StreamWriteError {

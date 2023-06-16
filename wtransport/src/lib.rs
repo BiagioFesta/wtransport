@@ -41,6 +41,9 @@ pub mod tls;
 /// Datagrams module.
 pub mod datagram;
 
+/// Session information.
+pub mod session;
+
 #[doc(inline)]
 pub use config::ClientConfig;
 
