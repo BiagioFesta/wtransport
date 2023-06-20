@@ -39,6 +39,7 @@ impl<T> SharedResultSet<T>
 where
     T: Copy,
 {
+    #[inline(always)]
     pub fn new() -> Self {
         Self(Arc::new(watch::channel(None).0))
     }
@@ -61,6 +62,7 @@ where
     }
 
     /// Awaits all subscribers are dead.
+    #[inline(always)]
     pub async fn closed(&self) {
         self.0.closed().await
     }
@@ -69,6 +71,7 @@ where
     ///
     /// A subscriber is able to be notified when the shared result
     /// will be set.
+    #[inline(always)]
     pub fn subscribe(&self) -> SharedResultGet<T> {
         SharedResultGet(Mutex::new(self.0.subscribe()))
     }
