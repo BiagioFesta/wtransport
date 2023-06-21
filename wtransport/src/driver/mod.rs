@@ -227,6 +227,7 @@ mod worker {
         }
 
         async fn run_impl(&mut self) -> Result<(), DriverError> {
+            let mut remote_settings_watcher = self.remote_settings_stream.subscribe();
             let mut ready_uni_h3_streams = mpsc::channel(4);
             let mut ready_bi_h3_streams = mpsc::channel(1);
             let mut incoming_sessions = mpsc::channel(1);
@@ -257,12 +258,17 @@ mod worker {
                         self.handle_bi_h3_stream(bi_h3_stream, first_frame, &incoming_sessions.0)?;
                     }
 
-                    settings = Self::run_control_streams(&mut self.local_settings_stream,
-                                                         &mut self.remote_settings_stream,
-                                                         &mut self.remote_qpack_enc_stream,
-                                                         &mut self.remote_qpack_dec_stream,
-                                                         &mut self.session_stream) => {
-                        self.handle_remote_settings(settings?, &incoming_sessions.0)?;
+                    error = Self::run_control_streams(&mut self.local_settings_stream,
+                                                      &mut self.remote_settings_stream,
+                                                      &mut self.remote_qpack_enc_stream,
+                                                      &mut self.remote_qpack_dec_stream,
+                                                      &mut self.session_stream) => {
+                        return Err(error);
+                    }
+
+                    settings = remote_settings_watcher.accept_settings() => {
+                        let settings = settings.expect("Channel cannot be dropped");
+                        self.handle_remote_settings(settings, &incoming_sessions.0)?;
                     }
 
                     incoming_session = incoming_sessions.1.recv() => {
@@ -270,7 +276,7 @@ mod worker {
                         self.handle_incoming_session(incoming_session)?;
                     }
 
-                    _ = self.driver_result_set.closed() => {
+                    () = self.driver_result_set.closed() => {
                         return Err(DriverError::NotConnected);
                     }
                 }
@@ -397,7 +403,7 @@ mod worker {
                         return Err(DriverError::Proto(ErrorCode::StreamCreation));
                     }
 
-                    self.remote_settings_stream = RemoteSettingsStream::with_stream(stream);
+                    self.remote_settings_stream.set_stream(stream);
                 }
                 StreamKind::QPackEncoder => {
                     if !self.remote_qpack_enc_stream.is_empty() {
@@ -478,13 +484,13 @@ mod worker {
             remote_qpack_enc: &mut RemoteQPackEncStream,
             remote_qpack_dec: &mut RemoteQPackDecStream,
             session: &mut SessionStream,
-        ) -> Result<Settings, DriverError> {
+        ) -> DriverError {
             tokio::select! {
-                error = local_settings.run() => Err(error),
-                settings = remote_settings.run() => settings,
-                error = remote_qpack_enc.run() => Err(error),
-                error = remote_qpack_dec.run() => Err(error),
-                error = session.run() => Err(error),
+                error = local_settings.run() => error,
+                error = remote_settings.run() => error,
+                error = remote_qpack_enc.run() => error,
+                error = remote_qpack_dec.run() => error,
+                error = session.run() => error,
             }
         }
 

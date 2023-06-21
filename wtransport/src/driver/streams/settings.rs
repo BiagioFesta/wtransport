@@ -5,6 +5,7 @@ use crate::driver::streams::ProtoReadError;
 use crate::driver::streams::ProtoWriteError;
 use crate::error::StreamWriteError;
 use std::future::pending;
+use tokio::sync::watch;
 use wtransport_proto::bytes;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::Frame;
@@ -72,14 +73,14 @@ impl LocalSettingsStream {
 
 pub struct RemoteSettingsStream {
     stream: Option<StreamUniRemoteH3>,
-    settings: Option<Settings>,
+    settings: watch::Sender<Option<Settings>>,
 }
 
 impl RemoteSettingsStream {
     pub fn empty() -> Self {
         Self {
             stream: None,
-            settings: None,
+            settings: watch::channel(None).0,
         }
     }
 
@@ -87,51 +88,47 @@ impl RemoteSettingsStream {
         self.stream.is_none()
     }
 
-    pub fn with_stream(stream: StreamUniRemoteH3) -> Self {
+    pub fn set_stream(&mut self, stream: StreamUniRemoteH3) {
         assert!(matches!(stream.kind(), StreamKind::Control));
-
-        let mut this = Self::empty();
-        this.stream = Some(stream);
-        this
+        self.stream = Some(stream);
     }
 
-    pub async fn run(&mut self) -> Result<Settings, DriverError> {
+    pub fn subscribe(&self) -> RemoteSettingsWatcher {
+        RemoteSettingsWatcher(self.settings.subscribe())
+    }
+
+    pub async fn run(&mut self) -> DriverError {
         loop {
             let frame = match self.read_frame().await {
-                Ok(Some(frame)) => frame,
-                Ok(None) => pending().await,
-                Err(driver_error) => return Err(driver_error),
+                Ok(frame) => frame,
+                Err(driver_error) => return driver_error,
             };
 
-            if self.settings.is_none() {
+            if self.settings.borrow().is_none() {
                 if !matches!(frame.kind(), FrameKind::Settings) {
-                    return Err(DriverError::Proto(ErrorCode::MissingSettings));
+                    return DriverError::Proto(ErrorCode::MissingSettings);
                 }
 
                 let settings = match Settings::with_frame(&frame) {
                     Ok(settings) => settings,
-                    Err(error_code) => return Err(DriverError::Proto(error_code)),
+                    Err(error_code) => return DriverError::Proto(error_code),
                 };
 
-                // TODO(bfesta): validate settings
-
-                self.settings = Some(settings.clone());
-
-                return Ok(settings);
+                self.settings.send_replace(Some(settings));
             } else if !matches!(frame.kind(), FrameKind::Exercise(_)) {
-                return Err(DriverError::Proto(ErrorCode::FrameUnexpected));
+                return DriverError::Proto(ErrorCode::FrameUnexpected);
             }
         }
     }
 
-    async fn read_frame<'a>(&mut self) -> Result<Option<Frame<'a>>, DriverError> {
+    async fn read_frame<'a>(&mut self) -> Result<Frame<'a>, DriverError> {
         let stream = match self.stream.as_mut() {
             Some(stream) => stream,
-            None => return Ok(None),
+            None => return pending().await,
         };
 
         match stream.read_frame().await {
-            Ok(frame) => Ok(Some(frame)),
+            Ok(frame) => Ok(frame),
             Err(ProtoReadError::H3(error_code)) => Err(DriverError::Proto(error_code)),
             Err(ProtoReadError::IO(io_error)) => match io_error {
                 bytes::IoReadError::ImmediateFin
@@ -142,5 +139,20 @@ impl RemoteSettingsStream {
                 bytes::IoReadError::NotConnected => Err(DriverError::NotConnected),
             },
         }
+    }
+}
+
+pub struct RemoteSettingsWatcher(watch::Receiver<Option<Settings>>);
+
+impl RemoteSettingsWatcher {
+    pub async fn accept_settings(&mut self) -> Option<Settings> {
+        self.0.changed().await.ok()?;
+
+        Some(
+            self.0
+                .borrow()
+                .clone()
+                .expect("On change settings must be set"),
+        )
     }
 }
