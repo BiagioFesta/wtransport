@@ -237,6 +237,12 @@ pub mod biremote {
     }
 
     impl StreamBiRemoteWT {
+        #[inline(always)]
+        pub fn session_id(&self) -> SessionId {
+            self.proto.session_id()
+        }
+
+        #[inline(always)]
         pub fn into_stream(self) -> (QuicSendStream, QuicRecvStream) {
             self.stream
         }
@@ -360,6 +366,12 @@ pub mod uniremote {
     }
 
     impl StreamUniRemoteWT {
+        #[inline(always)]
+        pub fn session_id(&self) -> SessionId {
+            self.proto.session_id()
+        }
+
+        #[inline(always)]
         pub fn into_stream(self) -> QuicRecvStream {
             self.stream
         }

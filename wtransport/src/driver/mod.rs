@@ -65,33 +65,50 @@ impl Driver {
 
         match lock.recv().await {
             Some(session_info) => Ok(session_info),
-            None => {
-                drop(lock);
-                Err(self.result().await)
-            }
+            None => Err(self.result().await),
         }
     }
 
-    pub async fn accept_uni(&self) -> Result<StreamUniRemoteWT, DriverError> {
+    pub async fn accept_uni(
+        &self,
+        session_id: SessionId,
+    ) -> Result<StreamUniRemoteWT, DriverError> {
         let mut lock = self.ready_uni_wt_streams.lock().await;
 
-        match lock.recv().await {
-            Some(stream) => Ok(stream),
-            None => {
-                drop(lock);
-                Err(self.result().await)
+        loop {
+            let stream = match lock.recv().await {
+                Some(stream) => stream,
+                None => return Err(self.result().await),
+            };
+
+            if stream.session_id() == session_id {
+                return Ok(stream);
+            } else {
+                stream
+                    .into_stream()
+                    .stop(ErrorCode::BufferedStreamRejected.to_code())
+                    .expect("Stream not already stopped");
             }
         }
     }
 
-    pub async fn accept_bi(&self) -> Result<StreamBiRemoteWT, DriverError> {
+    pub async fn accept_bi(&self, session_id: SessionId) -> Result<StreamBiRemoteWT, DriverError> {
         let mut lock = self.ready_bi_wt_streams.lock().await;
 
-        match lock.recv().await {
-            Some(stream) => Ok(stream),
-            None => {
-                drop(lock);
-                Err(self.result().await)
+        loop {
+            let stream = match lock.recv().await {
+                Some(stream) => stream,
+                None => return Err(self.result().await),
+            };
+
+            if stream.session_id() == session_id {
+                return Ok(stream);
+            } else {
+                stream
+                    .into_stream()
+                    .1
+                    .stop(ErrorCode::BufferedStreamRejected.to_code())
+                    .expect("Stream not already stopped");
             }
         }
     }
@@ -103,7 +120,6 @@ impl Driver {
             let datagram = match lock.recv().await {
                 Some(datagram) => datagram,
                 None => {
-                    drop(lock);
                     return Err(self.result().await);
                 }
             };
