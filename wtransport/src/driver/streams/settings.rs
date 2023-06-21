@@ -3,7 +3,6 @@ use crate::driver::streams::unilocal::StreamUniLocalH3;
 use crate::driver::streams::uniremote::StreamUniRemoteH3;
 use crate::driver::streams::ProtoReadError;
 use crate::driver::streams::ProtoWriteError;
-use crate::driver::streams::Stream;
 use crate::error::StreamWriteError;
 use std::future::pending;
 use wtransport_proto::bytes;
@@ -11,7 +10,6 @@ use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::Frame;
 use wtransport_proto::frame::FrameKind;
 use wtransport_proto::settings::Settings;
-use wtransport_proto::stream_header::StreamHeader;
 use wtransport_proto::stream_header::StreamKind;
 use wtransport_proto::varint::VarInt;
 
@@ -21,7 +19,7 @@ pub struct LocalSettingsStream {
 }
 
 impl LocalSettingsStream {
-    pub fn new() -> Self {
+    pub fn empty() -> Self {
         let settings = Settings::builder()
             .qpack_max_table_capacity(VarInt::from_u32(0))
             .qpack_blocked_streams(VarInt::from_u32(0))
@@ -35,31 +33,20 @@ impl LocalSettingsStream {
         }
     }
 
-    pub async fn send_settings(
-        &mut self,
-        quic_connection: &quinn::Connection,
-    ) -> Result<(), DriverError> {
-        if self.stream.is_none() {
-            let stream = match Stream::open_uni(quic_connection)
-                .await
-                .ok_or(DriverError::NotConnected)?
-                .upgrade(StreamHeader::new_control())
-                .await
-            {
-                Ok(h3_stream) => h3_stream,
-                Err(ProtoWriteError::NotConnected) => return Err(DriverError::NotConnected),
-                Err(ProtoWriteError::Stopped) => {
-                    return Err(DriverError::Proto(ErrorCode::ClosedCriticalStream));
-                }
-            };
+    pub fn is_empty(&self) -> bool {
+        self.stream.is_none()
+    }
 
-            self.stream = Some(stream);
-        }
+    pub fn set_stream(&mut self, stream: StreamUniLocalH3) {
+        assert!(matches!(stream.kind(), StreamKind::Control));
+        self.stream = Some(stream);
+    }
 
+    pub async fn send_settings(&mut self) -> Result<(), DriverError> {
         match self
             .stream
             .as_mut()
-            .expect("Stream has been just opened")
+            .expect("Cannot send settings on empty stream")
             .write_frame(self.settings.generate_frame())
             .await
         {

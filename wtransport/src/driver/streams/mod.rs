@@ -406,6 +406,10 @@ pub mod unilocal {
             self.proto.write_frame_async(frame, &mut self.stream).await
         }
 
+        pub fn kind(&self) -> StreamKind {
+            self.proto.kind()
+        }
+
         pub async fn stopped(&mut self) -> StreamWriteError {
             self.stream.stopped().await
         }

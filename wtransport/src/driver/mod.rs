@@ -100,7 +100,6 @@ impl Driver {
                 Err(error_code) => {
                     self.driver_handler
                         .set_proto_error(error_code, &self.quic_connection);
-
                     return Err(self.driver_handler.result().await);
                 }
             }
@@ -169,6 +168,7 @@ mod worker {
     use wtransport_proto::frame::FrameKind;
     use wtransport_proto::headers::Headers;
     use wtransport_proto::settings::Settings;
+    use wtransport_proto::stream_header::StreamHeader;
     use wtransport_proto::stream_header::StreamKind;
 
     pub struct Worker {
@@ -201,7 +201,7 @@ mod worker {
                 ready_uni_wt_streams,
                 ready_bi_wt_streams,
                 driver_result_set,
-                local_settings_stream: LocalSettingsStream::new(),
+                local_settings_stream: LocalSettingsStream::empty(),
                 remote_settings_stream: RemoteSettingsStream::empty(),
                 remote_qpack_enc_stream: RemoteQPackEncStream::empty(),
                 remote_qpack_dec_stream: RemoteQPackDecStream::empty(),
@@ -231,9 +231,7 @@ mod worker {
             let mut ready_bi_h3_streams = mpsc::channel(1);
             let mut incoming_sessions = mpsc::channel(1);
 
-            self.local_settings_stream
-                .send_settings(&self.quic_connection)
-                .await?;
+            self.open_and_send_settings().await?;
 
             loop {
                 tokio::select! {
@@ -277,6 +275,26 @@ mod worker {
                     }
                 }
             }
+        }
+
+        async fn open_and_send_settings(&mut self) -> Result<(), DriverError> {
+            assert!(self.local_settings_stream.is_empty());
+
+            let stream = match Stream::open_uni(&self.quic_connection)
+                .await
+                .ok_or(DriverError::NotConnected)?
+                .upgrade(StreamHeader::new_control())
+                .await
+            {
+                Ok(h3_stream) => h3_stream,
+                Err(ProtoWriteError::NotConnected) => return Err(DriverError::NotConnected),
+                Err(ProtoWriteError::Stopped) => {
+                    return Err(DriverError::Proto(ErrorCode::ClosedCriticalStream));
+                }
+            };
+
+            self.local_settings_stream.set_stream(stream);
+            self.local_settings_stream.send_settings().await
         }
 
         async fn accept_uni(
