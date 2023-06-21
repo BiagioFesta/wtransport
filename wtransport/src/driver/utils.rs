@@ -32,6 +32,15 @@ pub fn streamid_q2w(stream_id: quinn::StreamId) -> StreamId {
     StreamId::new(varint)
 }
 
+pub fn shared_result<T>() -> (SharedResultSet<T>, SharedResultGet<T>)
+where
+    T: Copy,
+{
+    let set = SharedResultSet::new();
+    let get = set.subscribe();
+    (set, get)
+}
+
 #[derive(Clone)]
 pub struct SharedResultSet<T>(Arc<watch::Sender<Option<T>>>);
 

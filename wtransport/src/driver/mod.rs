@@ -2,6 +2,8 @@ use crate::datagram::Datagram;
 use crate::driver::streams::biremote::StreamBiRemoteWT;
 use crate::driver::streams::uniremote::StreamUniRemoteWT;
 use crate::driver::streams::Stream;
+use crate::driver::utils::shared_result;
+use crate::driver::utils::SharedResultGet;
 use crate::driver::utils::SharedResultSet;
 use crate::error::SendDatagramError;
 use crate::session::SessionInfo;
@@ -24,7 +26,7 @@ pub struct Driver {
     ready_uni_wt_streams: Mutex<mpsc::Receiver<StreamUniRemoteWT>>,
     ready_bi_wt_streams: Mutex<mpsc::Receiver<StreamBiRemoteWT>>,
     ready_datagrams: Mutex<mpsc::Receiver<Datagram>>,
-    driver_result: utils::SharedResultGet<DriverError>,
+    driver_result: SharedResultGet<DriverError>,
 }
 
 impl Driver {
@@ -33,8 +35,7 @@ impl Driver {
         let ready_uni_wt_streams = mpsc::channel(4);
         let ready_bi_wt_streams = mpsc::channel(1);
         let ready_datagrams = mpsc::channel(1);
-        let driver_result = SharedResultSet::new();
-        let driver_result_get = driver_result.subscribe();
+        let driver_result = shared_result();
 
         tokio::spawn(
             worker::Worker::new(
@@ -44,7 +45,7 @@ impl Driver {
                 ready_uni_wt_streams.0,
                 ready_bi_wt_streams.0,
                 ready_datagrams.0,
-                driver_result,
+                driver_result.0,
             )
             .run(),
         );
@@ -55,7 +56,7 @@ impl Driver {
             ready_uni_wt_streams: Mutex::new(ready_uni_wt_streams.1),
             ready_bi_wt_streams: Mutex::new(ready_bi_wt_streams.1),
             ready_datagrams: Mutex::new(ready_datagrams.1),
-            driver_result: driver_result_get,
+            driver_result: driver_result.1,
         }
     }
 
