@@ -25,12 +25,9 @@ impl RemoteQPackEncStream {
         self.stream.is_none()
     }
 
-    pub fn with_stream(stream: StreamUniRemoteH3) -> Self {
+    pub fn set_stream(&mut self, stream: StreamUniRemoteH3) {
         assert!(matches!(stream.kind(), StreamKind::QPackEncoder));
-
-        let mut this = Self::empty();
-        this.stream = Some(stream);
-        this
+        self.stream = Some(stream);
     }
 
     pub async fn run(&mut self) -> DriverError {
@@ -77,12 +74,9 @@ impl RemoteQPackDecStream {
         self.stream.is_none()
     }
 
-    pub fn with_stream(stream: StreamUniRemoteH3) -> Self {
+    pub fn set_stream(&mut self, stream: StreamUniRemoteH3) {
         assert!(matches!(stream.kind(), StreamKind::QPackDecoder));
-
-        let mut this = Self::empty();
-        this.stream = Some(stream);
-        this
+        self.stream = Some(stream);
     }
 
     pub async fn run(&mut self) -> DriverError {

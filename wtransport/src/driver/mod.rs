@@ -471,14 +471,14 @@ mod worker {
                         return Err(DriverError::Proto(ErrorCode::StreamCreation));
                     }
 
-                    self.remote_qpack_enc_stream = RemoteQPackEncStream::with_stream(stream);
+                    self.remote_qpack_enc_stream.set_stream(stream);
                 }
                 StreamKind::QPackDecoder => {
                     if !self.remote_qpack_dec_stream.is_empty() {
                         return Err(DriverError::Proto(ErrorCode::StreamCreation));
                     }
 
-                    self.remote_qpack_dec_stream = RemoteQPackDecStream::with_stream(stream);
+                    self.remote_qpack_dec_stream.set_stream(stream);
                 }
                 StreamKind::WebTransport => unreachable!(),
                 StreamKind::Exercise(_) => {}
