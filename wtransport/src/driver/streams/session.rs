@@ -1,7 +1,7 @@
-use crate::driver::result::DriverError;
 use crate::driver::streams::bilocal::StreamBiLocalH3;
 use crate::driver::streams::biremote::StreamBiRemoteH3;
 use crate::driver::streams::ProtoReadError;
+use crate::driver::DriverError;
 use crate::session::SessionInfo;
 use std::future::pending;
 use wtransport_proto::bytes;

@@ -9,26 +9,20 @@ use wtransport_proto::ids::SessionId;
 pub struct Datagram {
     quic_dgram: Bytes,
     payload_offset: usize,
+    session_id: SessionId,
 }
 
 impl Datagram {
-    pub(crate) fn read(
-        session_id: SessionId,
-        quic_dgram: Bytes,
-    ) -> Result<Option<Self>, ErrorCode> {
+    pub(crate) fn read(quic_dgram: Bytes) -> Result<Self, ErrorCode> {
         let h3dgram = H3Datagram::read(&quic_dgram)?;
-
-        let stream_id = h3dgram.qstream_id().into_stream_id();
-        if session_id.session_stream() != stream_id {
-            return Ok(None);
-        }
-
         let payload_offset = quic_dgram.len() - h3dgram.payload().len();
+        let session_id = h3dgram.qstream_id().into_session_id();
 
-        Ok(Some(Self {
+        Ok(Self {
             quic_dgram,
             payload_offset,
-        }))
+            session_id,
+        })
     }
 
     pub(crate) fn write(session_id: SessionId, payload: &[u8]) -> Self {
@@ -44,7 +38,14 @@ impl Datagram {
         Self {
             quic_dgram,
             payload_offset,
+            session_id,
         }
+    }
+
+    /// Returns the associated [`SessionId`].
+    #[inline(always)]
+    pub fn session_id(&self) -> SessionId {
+        self.session_id
     }
 
     #[inline(always)]

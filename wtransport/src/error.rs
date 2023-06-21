@@ -1,5 +1,5 @@
-use crate::driver::result::DriverError;
 use crate::driver::utils::varint_q2w;
+use crate::driver::DriverError;
 use std::fmt::Display;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::varint::VarInt;

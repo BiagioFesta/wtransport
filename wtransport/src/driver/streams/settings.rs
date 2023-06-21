@@ -1,8 +1,8 @@
-use crate::driver::result::DriverError;
 use crate::driver::streams::unilocal::StreamUniLocalH3;
 use crate::driver::streams::uniremote::StreamUniRemoteH3;
 use crate::driver::streams::ProtoReadError;
 use crate::driver::streams::ProtoWriteError;
+use crate::driver::DriverError;
 use crate::error::StreamWriteError;
 use std::future::pending;
 use tokio::sync::watch;

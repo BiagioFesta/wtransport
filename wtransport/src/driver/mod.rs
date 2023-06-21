@@ -1,11 +1,8 @@
-use self::result::DriverError;
-use self::result::DriverHandler;
-use self::result::DriverResultSet;
-use self::worker::Worker;
 use crate::datagram::Datagram;
 use crate::driver::streams::biremote::StreamBiRemoteWT;
 use crate::driver::streams::uniremote::StreamUniRemoteWT;
 use crate::driver::streams::Stream;
+use crate::driver::utils::SharedResultSet;
 use crate::error::SendDatagramError;
 use crate::session::SessionInfo;
 use crate::stream::OpeningBiStream;
@@ -15,12 +12,19 @@ use tokio::sync::Mutex;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::ids::SessionId;
 
+#[derive(Copy, Clone)]
+pub enum DriverError {
+    Proto(ErrorCode),
+    NotConnected,
+}
+
 pub struct Driver {
     quic_connection: quinn::Connection,
     ready_sessions: Mutex<mpsc::Receiver<SessionInfo>>,
     ready_uni_wt_streams: Mutex<mpsc::Receiver<StreamUniRemoteWT>>,
     ready_bi_wt_streams: Mutex<mpsc::Receiver<StreamBiRemoteWT>>,
-    driver_handler: result::DriverHandler,
+    ready_datagrams: Mutex<mpsc::Receiver<Datagram>>,
+    driver_result: utils::SharedResultGet<DriverError>,
 }
 
 impl Driver {
@@ -28,16 +32,19 @@ impl Driver {
         let ready_sessions = mpsc::channel(1);
         let ready_uni_wt_streams = mpsc::channel(4);
         let ready_bi_wt_streams = mpsc::channel(1);
-        let driver_handler = DriverHandler::new();
+        let ready_datagrams = mpsc::channel(1);
+        let driver_result = SharedResultSet::new();
+        let driver_result_get = driver_result.subscribe();
 
         tokio::spawn(
-            Worker::new(
+            worker::Worker::new(
                 is_server,
                 quic_connection.clone(),
                 ready_sessions.0,
                 ready_uni_wt_streams.0,
                 ready_bi_wt_streams.0,
-                driver_handler.setter(),
+                ready_datagrams.0,
+                driver_result,
             )
             .run(),
         );
@@ -47,7 +54,8 @@ impl Driver {
             ready_sessions: Mutex::new(ready_sessions.1),
             ready_uni_wt_streams: Mutex::new(ready_uni_wt_streams.1),
             ready_bi_wt_streams: Mutex::new(ready_bi_wt_streams.1),
-            driver_handler,
+            ready_datagrams: Mutex::new(ready_datagrams.1),
+            driver_result: driver_result_get,
         }
     }
 
@@ -58,7 +66,7 @@ impl Driver {
             Some(session_info) => Ok(session_info),
             None => {
                 drop(lock);
-                Err(self.driver_handler.result().await)
+                Err(self.result().await)
             }
         }
     }
@@ -70,7 +78,7 @@ impl Driver {
             Some(stream) => Ok(stream),
             None => {
                 drop(lock);
-                Err(self.driver_handler.result().await)
+                Err(self.result().await)
             }
         }
     }
@@ -82,26 +90,25 @@ impl Driver {
             Some(stream) => Ok(stream),
             None => {
                 drop(lock);
-                Err(self.driver_handler.result().await)
+                Err(self.result().await)
             }
         }
     }
 
     pub async fn receive_datagram(&self, session_id: SessionId) -> Result<Datagram, DriverError> {
+        let mut lock = self.ready_datagrams.lock().await;
+
         loop {
-            let quic_dgram = match self.quic_connection.read_datagram().await {
-                Ok(quic_dgram) => quic_dgram,
-                Err(_) => return Err(self.driver_handler.result().await),
+            let datagram = match lock.recv().await {
+                Some(datagram) => datagram,
+                None => {
+                    drop(lock);
+                    return Err(self.result().await);
+                }
             };
 
-            match Datagram::read(session_id, quic_dgram) {
-                Ok(Some(datagram)) => return Ok(datagram),
-                Ok(None) => continue,
-                Err(error_code) => {
-                    self.driver_handler
-                        .set_proto_error(error_code, &self.quic_connection);
-                    return Err(self.driver_handler.result().await);
-                }
+            if datagram.session_id() == session_id {
+                return Ok(datagram);
             }
         }
     }
@@ -147,6 +154,13 @@ impl Driver {
             }
         }
     }
+
+    async fn result(&self) -> DriverError {
+        match self.driver_result.result().await {
+            Some(error) => error,
+            None => panic!("Driver worker panic!"),
+        }
+    }
 }
 
 mod worker {
@@ -163,6 +177,7 @@ mod worker {
     use crate::driver::streams::uniremote::StreamUniRemoteH3;
     use crate::driver::streams::ProtoReadError;
     use crate::driver::streams::ProtoWriteError;
+    use utils::varint_w2q;
     use wtransport_proto::bytes;
     use wtransport_proto::frame::Frame;
     use wtransport_proto::frame::FrameKind;
@@ -177,7 +192,8 @@ mod worker {
         ready_sessions: mpsc::Sender<SessionInfo>,
         ready_uni_wt_streams: mpsc::Sender<StreamUniRemoteWT>,
         ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
-        driver_result_set: DriverResultSet,
+        ready_datagrams: mpsc::Sender<Datagram>,
+        driver_result: SharedResultSet<DriverError>,
         local_settings_stream: LocalSettingsStream,
         remote_settings_stream: RemoteSettingsStream,
         remote_qpack_enc_stream: RemoteQPackEncStream,
@@ -192,7 +208,8 @@ mod worker {
             ready_sessions: mpsc::Sender<SessionInfo>,
             ready_uni_wt_streams: mpsc::Sender<StreamUniRemoteWT>,
             ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
-            driver_result_set: DriverResultSet,
+            ready_datagrams: mpsc::Sender<Datagram>,
+            driver_result: SharedResultSet<DriverError>,
         ) -> Self {
             Self {
                 is_server,
@@ -200,7 +217,8 @@ mod worker {
                 ready_sessions,
                 ready_uni_wt_streams,
                 ready_bi_wt_streams,
-                driver_result_set,
+                ready_datagrams,
+                driver_result,
                 local_settings_stream: LocalSettingsStream::empty(),
                 remote_settings_stream: RemoteSettingsStream::empty(),
                 remote_qpack_enc_stream: RemoteQPackEncStream::empty(),
@@ -215,15 +233,12 @@ mod worker {
                 .await
                 .expect_err("Worker must return an error");
 
-            match error {
-                DriverError::Proto(error_code) => {
-                    self.driver_result_set
-                        .set_proto_error(error_code, &self.quic_connection);
-                }
-                DriverError::NotConnected => {
-                    self.driver_result_set.set_not_connected();
-                }
+            if let DriverError::Proto(error_code) = &error {
+                self.quic_connection
+                    .close(varint_w2q(error_code.to_code()), b"");
             }
+
+            self.driver_result.set(error);
         }
 
         async fn run_impl(&mut self) -> Result<(), DriverError> {
@@ -245,6 +260,11 @@ mod worker {
                     result = Self::accept_bi(&self.quic_connection,
                                              &ready_bi_h3_streams.0,
                                              &self.ready_bi_wt_streams) => {
+                        result?;
+                    }
+
+                    result = Self::accept_datagram(&self.quic_connection,
+                                                   &self.ready_datagrams) => {
                         result?;
                     }
 
@@ -276,7 +296,7 @@ mod worker {
                         self.handle_incoming_session(incoming_session)?;
                     }
 
-                    () = self.driver_result_set.closed() => {
+                    () = self.driver_result.closed() => {
                         return Err(DriverError::NotConnected);
                     }
                 }
@@ -392,6 +412,30 @@ mod worker {
                     }
                 }
             });
+
+            Ok(())
+        }
+
+        async fn accept_datagram(
+            quic_connection: &quinn::Connection,
+            ready_datagrams: &mpsc::Sender<Datagram>,
+        ) -> Result<(), DriverError> {
+            let slot = match ready_datagrams.reserve().await {
+                Ok(slot) => slot,
+                Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
+            };
+
+            let quic_dgram = match quic_connection.read_datagram().await {
+                Ok(quic_dgram) => quic_dgram,
+                Err(_) => return Err(DriverError::NotConnected),
+            };
+
+            let datagram = match Datagram::read(quic_dgram) {
+                Ok(datagram) => datagram,
+                Err(error_code) => return Err(DriverError::Proto(error_code)),
+            };
+
+            slot.send(datagram);
 
             Ok(())
         }
@@ -651,70 +695,6 @@ mod worker {
                     slot.send(Err(DriverError::Proto(ErrorCode::Message)));
                 }
             }
-        }
-    }
-}
-
-pub mod result {
-    use super::*;
-    use crate::driver::utils::varint_w2q;
-    use crate::driver::utils::SharedResultGet;
-    use crate::driver::utils::SharedResultSet;
-
-    #[derive(Copy, Clone)]
-    pub enum DriverError {
-        Proto(ErrorCode),
-        NotConnected,
-    }
-
-    #[derive(Clone)]
-    pub struct DriverResultSet(SharedResultSet<DriverError>);
-
-    impl DriverResultSet {
-        pub fn set_proto_error(&self, error_code: ErrorCode, quic_connection: &quinn::Connection) {
-            if self.0.set(DriverError::Proto(error_code)) {
-                quic_connection.close(varint_w2q(error_code.to_code()), b"");
-            }
-        }
-
-        pub fn set_not_connected(&self) {
-            self.0.set(DriverError::NotConnected);
-        }
-
-        pub async fn closed(&self) {
-            self.0.closed().await
-        }
-    }
-
-    pub struct DriverHandler {
-        result_set: DriverResultSet,
-        result_get: SharedResultGet<DriverError>,
-    }
-
-    impl DriverHandler {
-        pub fn new() -> Self {
-            let result_set = DriverResultSet(SharedResultSet::new());
-            let result_get = result_set.0.subscribe();
-
-            Self {
-                result_set,
-                result_get,
-            }
-        }
-
-        pub fn setter(&self) -> DriverResultSet {
-            self.result_set.clone()
-        }
-
-        pub fn set_proto_error(&self, error_code: ErrorCode, quic_connection: &quinn::Connection) {
-            self.result_set.set_proto_error(error_code, quic_connection)
-        }
-
-        pub async fn result(&self) -> DriverError {
-            self.result_get
-                .result()
-                .await
-                .expect("Sender cannot be dropped")
         }
     }
 }

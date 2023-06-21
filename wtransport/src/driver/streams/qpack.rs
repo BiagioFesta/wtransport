@@ -1,5 +1,5 @@
-use crate::driver::result::DriverError;
 use crate::driver::streams::uniremote::StreamUniRemoteH3;
+use crate::driver::DriverError;
 use crate::error::StreamReadError;
 use crate::error::StreamReadExactError;
 use std::future::pending;
