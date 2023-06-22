@@ -1,4 +1,5 @@
 use crate::headers::Headers;
+use crate::ids::StatusCode;
 use url::Url;
 
 /// Error when parsing URL.
@@ -187,6 +188,43 @@ impl From<url::ParseError> for UrlParseError {
             url::ParseError::Overflow => UrlParseError::Overflow,
             _ => UrlParseError::Unknown,
         }
+    }
+}
+
+/// A WebTransport CONNECT response.
+pub struct SessionResponse(Headers);
+
+impl SessionResponse {
+    /// Constructs from [`StatusCode`].
+    pub fn with_status_code(status_code: StatusCode) -> Self {
+        let headers = [(":status", status_code.to_string())].into_iter().collect();
+        Self(headers)
+    }
+
+    /// Constructs with [`StatusCode::OK`].
+    pub fn ok() -> Self {
+        Self::with_status_code(StatusCode::OK)
+    }
+
+    /// Constructs with [`StatusCode::NOT_FOUND`].
+    pub fn not_found() -> Self {
+        Self::with_status_code(StatusCode::NOT_FOUND)
+    }
+
+    /// Adds a header field to the response.
+    ///
+    /// If the key is already present, the value is updated.
+    pub fn add<K, V>(&mut self, key: K, value: V)
+    where
+        K: ToString,
+        V: ToString,
+    {
+        self.0.insert(key, value)
+    }
+
+    /// Returns the whole headers associated with the request.
+    pub fn headers(&self) -> &Headers {
+        &self.0
     }
 }
 
