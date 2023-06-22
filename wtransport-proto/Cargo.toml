@@ -17,7 +17,6 @@ octets = "0.2.0"
 url = "2.4.0"
 
 [dev-dependencies]
-test-case = "3.1.0"
 tokio = { version = "1.28.1", default-features = false, features = ["macros", "rt-multi-thread"] }
 
 [features]
