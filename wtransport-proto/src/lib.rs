@@ -20,6 +20,9 @@ pub mod headers;
 /// Types for identifiers.
 pub mod ids;
 
+/// WebTransport session utilities.
+pub mod session;
+
 /// HTTP3 SETTINGS frame payload.
 pub mod settings;
 
