@@ -236,6 +236,94 @@ impl fmt::Display for QStreamId {
     }
 }
 
+/// Error for invalid HTTP status code.
+#[derive(Debug)]
+pub struct InvalidStatusCode;
+
+/// HTTP status code (rfc9110).
+pub struct StatusCode(u16);
+
+impl StatusCode {
+    /// The largest code.
+    pub const MAX: Self = Self(599);
+
+    /// The smallest code.
+    pub const MIN: Self = Self(100);
+
+    /// HTTP 200 OK status code.
+    pub const OK: Self = Self(200);
+
+    /// HTTP 404 Not Found status code.
+    pub const NOT_FOUND: Self = Self(404);
+
+    /// Tries to construct from `u32`.
+    pub fn try_from_u32(value: u32) -> Result<Self, InvalidStatusCode> {
+        value.try_into()
+    }
+}
+
+impl TryFrom<u8> for StatusCode {
+    type Error = InvalidStatusCode;
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        if value as u16 >= Self::MIN.0 && value as u16 <= Self::MAX.0 {
+            Ok(Self(value as u16))
+        } else {
+            Err(InvalidStatusCode)
+        }
+    }
+}
+
+impl TryFrom<u16> for StatusCode {
+    type Error = InvalidStatusCode;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        if value >= Self::MIN.0 && value <= Self::MAX.0 {
+            Ok(Self(value))
+        } else {
+            Err(InvalidStatusCode)
+        }
+    }
+}
+
+impl TryFrom<u32> for StatusCode {
+    type Error = InvalidStatusCode;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        if value >= Self::MIN.0 as u32 && value <= Self::MAX.0 as u32 {
+            Ok(Self(value as u16))
+        } else {
+            Err(InvalidStatusCode)
+        }
+    }
+}
+
+impl TryFrom<u64> for StatusCode {
+    type Error = InvalidStatusCode;
+
+    fn try_from(value: u64) -> Result<Self, Self::Error> {
+        if value >= Self::MIN.0 as u64 && value <= Self::MAX.0 as u64 {
+            Ok(Self(value as u16))
+        } else {
+            Err(InvalidStatusCode)
+        }
+    }
+}
+
+impl fmt::Debug for StatusCode {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl fmt::Display for StatusCode {
+    #[inline]
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use utils::stream_types;
