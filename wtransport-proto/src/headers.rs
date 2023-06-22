@@ -58,6 +58,18 @@ impl Headers {
     {
         self.0.get(key.as_ref()).map(|s| s.as_str())
     }
+
+    /// Inserts a field (key, value) in the headers.
+    ///
+    /// If the headers did have this key present, the value is updated.
+    #[inline(always)]
+    pub fn insert<K, V>(&mut self, key: K, value: V)
+    where
+        K: ToString,
+        V: ToString,
+    {
+        self.0.insert(key.to_string(), value.to_string());
+    }
 }
 
 impl<K, V> FromIterator<(K, V)> for Headers
