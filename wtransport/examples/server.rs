@@ -19,7 +19,8 @@ async fn main() {
 
     loop {
         println!("Waiting for incoming connection...");
-        let connection = server.accept().await.unwrap().await.unwrap();
+        let connection = server.accept().await.await.unwrap().accept().await.unwrap();
+
         println!("Waiting for data from client...");
 
         loop {

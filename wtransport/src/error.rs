@@ -15,6 +15,10 @@ pub enum ConnectionError {
     #[error("Connection closed by peer: {0}")]
     ApplicationClosed(ApplicationClose),
 
+    /// Error returned during connection to the server.
+    #[error("Server did not accepted session request")]
+    SessionRejected,
+
     /// The connection was locally closed.
     #[error("Connection locally closed")]
     LocallyClosed,

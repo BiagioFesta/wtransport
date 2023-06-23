@@ -12,6 +12,7 @@ use tokio::io::ReadBuf;
 use wtransport_proto::frame::Frame;
 use wtransport_proto::ids::SessionId;
 use wtransport_proto::ids::StreamId;
+use wtransport_proto::session::SessionRequest;
 use wtransport_proto::stream as stream_proto;
 use wtransport_proto::stream::Stream as StreamProto;
 use wtransport_proto::stream_header::StreamHeader;
@@ -214,12 +215,6 @@ pub mod biremote {
             self.proto.read_frame_async(&mut self.stream.1).await
         }
 
-        pub async fn write_frame<'a>(&mut self, frame: Frame<'a>) -> Result<(), ProtoWriteError> {
-            self.proto
-                .write_frame_async(frame, &mut self.stream.0)
-                .await
-        }
-
         pub fn stop(&mut self, error_code: VarInt) -> Result<(), AlreadyStop> {
             self.stream.1.stop(error_code)
         }
@@ -233,6 +228,13 @@ pub mod biremote {
 
         pub fn id(&self) -> StreamId {
             self.stream.0.id()
+        }
+
+        pub fn into_session(self, session_request: SessionRequest) -> session::StreamSession {
+            session::StreamSession {
+                stream: self.stream,
+                proto: self.proto.into_session(session_request),
+            }
         }
     }
 
@@ -279,16 +281,6 @@ pub mod bilocal {
     }
 
     impl StreamBiLocalH3 {
-        pub async fn read_frame<'a>(&mut self) -> Result<Frame<'a>, ProtoReadError> {
-            self.proto.read_frame_async(&mut self.stream.1).await
-        }
-
-        pub async fn write_frame<'a>(&mut self, frame: Frame<'a>) -> Result<(), ProtoWriteError> {
-            self.proto
-                .write_frame_async(frame, &mut self.stream.0)
-                .await
-        }
-
         pub async fn upgrade(
             mut self,
             session_id: SessionId,
@@ -304,8 +296,11 @@ pub mod bilocal {
             })
         }
 
-        pub fn id(&self) -> StreamId {
-            self.stream.0.id()
+        pub fn into_session(self, session_request: SessionRequest) -> session::StreamSession {
+            session::StreamSession {
+                stream: self.stream,
+                proto: self.proto.into_session(session_request),
+            }
         }
     }
 
@@ -441,6 +436,41 @@ pub mod unilocal {
     }
 }
 
+pub mod session {
+    use super::*;
+
+    pub type StreamSession =
+        Stream<(QuicSendStream, QuicRecvStream), stream_proto::session::StreamSession>;
+
+    impl StreamSession {
+        pub async fn read_frame<'a>(&mut self) -> Result<Frame<'a>, ProtoReadError> {
+            self.proto.read_frame_async(&mut self.stream.1).await
+        }
+
+        pub async fn write_frame<'a>(&mut self, frame: Frame<'a>) -> Result<(), ProtoWriteError> {
+            self.proto
+                .write_frame_async(frame, &mut self.stream.0)
+                .await
+        }
+
+        pub fn stop(&mut self, error_code: VarInt) -> Result<(), AlreadyStop> {
+            self.stream.1.stop(error_code)
+        }
+
+        pub fn id(&self) -> StreamId {
+            self.stream.0.id()
+        }
+
+        pub fn session_id(&self) -> SessionId {
+            SessionId::try_from_session_stream(self.id()).expect("Session stream must be valid")
+        }
+
+        pub fn request(&self) -> &SessionRequest {
+            self.proto.request()
+        }
+    }
+}
+
 impl From<quinn::WriteError> for StreamWriteError {
     fn from(error: quinn::WriteError) -> Self {
         match error {
@@ -465,5 +495,4 @@ impl From<quinn::ReadError> for StreamReadError {
 }
 
 pub mod qpack;
-pub mod session;
 pub mod settings;

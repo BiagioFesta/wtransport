@@ -1,18 +1,25 @@
 use crate::datagram::Datagram;
+use crate::driver::streams::biremote::StreamBiRemoteH3;
 use crate::driver::streams::biremote::StreamBiRemoteWT;
+use crate::driver::streams::session::StreamSession;
 use crate::driver::streams::uniremote::StreamUniRemoteWT;
 use crate::driver::streams::Stream;
+use crate::driver::utils::bichannel;
 use crate::driver::utils::shared_result;
+use crate::driver::utils::SendError;
 use crate::driver::utils::SharedResultGet;
 use crate::driver::utils::SharedResultSet;
 use crate::error::SendDatagramError;
-use crate::session::SessionInfo;
 use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
+use utils::BiChannelEndpoint;
 use wtransport_proto::error::ErrorCode;
+use wtransport_proto::frame::Frame;
 use wtransport_proto::ids::SessionId;
+use wtransport_proto::session::SessionRequest;
+use wtransport_proto::settings::Settings;
 
 #[derive(Copy, Clone, Debug)]
 pub enum DriverError {
@@ -22,7 +29,8 @@ pub enum DriverError {
 
 pub struct Driver {
     quic_connection: quinn::Connection,
-    ready_sessions: Mutex<mpsc::Receiver<SessionInfo>>,
+    ready_settings: Mutex<mpsc::Receiver<Settings>>,
+    ready_sessions: BiChannelEndpoint<StreamSession>,
     ready_uni_wt_streams: Mutex<mpsc::Receiver<StreamUniRemoteWT>>,
     ready_bi_wt_streams: Mutex<mpsc::Receiver<StreamBiRemoteWT>>,
     ready_datagrams: Mutex<mpsc::Receiver<Datagram>>,
@@ -30,8 +38,9 @@ pub struct Driver {
 }
 
 impl Driver {
-    pub fn init(is_server: bool, quic_connection: quinn::Connection) -> Self {
-        let ready_sessions = mpsc::channel(1);
+    pub fn init(quic_connection: quinn::Connection) -> Self {
+        let ready_settings = mpsc::channel(1);
+        let ready_sessions = bichannel(1);
         let ready_uni_wt_streams = mpsc::channel(4);
         let ready_bi_wt_streams = mpsc::channel(1);
         let ready_datagrams = mpsc::channel(1);
@@ -39,8 +48,8 @@ impl Driver {
 
         tokio::spawn(
             worker::Worker::new(
-                is_server,
                 quic_connection.clone(),
+                ready_settings.0,
                 ready_sessions.0,
                 ready_uni_wt_streams.0,
                 ready_bi_wt_streams.0,
@@ -52,7 +61,8 @@ impl Driver {
 
         Self {
             quic_connection,
-            ready_sessions: Mutex::new(ready_sessions.1),
+            ready_settings: Mutex::new(ready_settings.1),
+            ready_sessions: ready_sessions.1,
             ready_uni_wt_streams: Mutex::new(ready_uni_wt_streams.1),
             ready_bi_wt_streams: Mutex::new(ready_bi_wt_streams.1),
             ready_datagrams: Mutex::new(ready_datagrams.1),
@@ -60,12 +70,39 @@ impl Driver {
         }
     }
 
-    pub async fn accept_session(&self) -> Result<SessionInfo, DriverError> {
-        let mut lock = self.ready_sessions.lock().await;
+    pub async fn accept_settings(&self) -> Result<Settings, DriverError> {
+        let mut lock = self.ready_settings.lock().await;
 
         match lock.recv().await {
-            Some(session_info) => Ok(session_info),
+            Some(settings) => Ok(settings),
             None => Err(self.result().await),
+        }
+    }
+
+    pub async fn accept_session(&self) -> Result<StreamSession, DriverError> {
+        match self.ready_sessions.recv().await {
+            Some(session) => Ok(session),
+            None => Err(self.result().await),
+        }
+    }
+
+    pub async fn open_session(
+        &self,
+        session_request: SessionRequest,
+    ) -> Result<StreamSession, DriverError> {
+        let stream = Stream::open_bi(&self.quic_connection)
+            .await
+            .ok_or(DriverError::NotConnected)?
+            .upgrade()
+            .into_session(session_request);
+
+        Ok(stream)
+    }
+
+    pub async fn register_session(&self, stream_session: StreamSession) -> Result<(), DriverError> {
+        match self.ready_sessions.send(stream_session).await {
+            Ok(()) => Ok(()),
+            Err(SendError) => Err(self.result().await),
         }
     }
 
@@ -182,31 +219,25 @@ impl Driver {
 
 mod worker {
     use super::*;
-    use crate::driver::request::MalformedRequest;
-    use crate::driver::request::Request;
-    use crate::driver::response::Response;
-    use crate::driver::streams::biremote::StreamBiRemoteH3;
     use crate::driver::streams::qpack::RemoteQPackDecStream;
     use crate::driver::streams::qpack::RemoteQPackEncStream;
-    use crate::driver::streams::session::SessionStream;
     use crate::driver::streams::settings::LocalSettingsStream;
     use crate::driver::streams::settings::RemoteSettingsStream;
     use crate::driver::streams::uniremote::StreamUniRemoteH3;
     use crate::driver::streams::ProtoReadError;
     use crate::driver::streams::ProtoWriteError;
+    use crate::driver::utils::TrySendError;
     use utils::varint_w2q;
-    use wtransport_proto::bytes;
-    use wtransport_proto::frame::Frame;
     use wtransport_proto::frame::FrameKind;
     use wtransport_proto::headers::Headers;
-    use wtransport_proto::settings::Settings;
+    use wtransport_proto::session::HeadersParseError;
     use wtransport_proto::stream_header::StreamHeader;
     use wtransport_proto::stream_header::StreamKind;
 
     pub struct Worker {
-        is_server: bool,
         quic_connection: quinn::Connection,
-        ready_sessions: mpsc::Sender<SessionInfo>,
+        ready_settings: mpsc::Sender<Settings>,
+        ready_sessions: BiChannelEndpoint<StreamSession>,
         ready_uni_wt_streams: mpsc::Sender<StreamUniRemoteWT>,
         ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
         ready_datagrams: mpsc::Sender<Datagram>,
@@ -215,22 +246,22 @@ mod worker {
         remote_settings_stream: RemoteSettingsStream,
         remote_qpack_enc_stream: RemoteQPackEncStream,
         remote_qpack_dec_stream: RemoteQPackDecStream,
-        session_stream: SessionStream,
+        stream_session: Option<StreamSession>,
     }
 
     impl Worker {
         pub fn new(
-            is_server: bool,
             quic_connection: quinn::Connection,
-            ready_sessions: mpsc::Sender<SessionInfo>,
+            ready_settings: mpsc::Sender<Settings>,
+            ready_sessions: BiChannelEndpoint<StreamSession>,
             ready_uni_wt_streams: mpsc::Sender<StreamUniRemoteWT>,
             ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
             ready_datagrams: mpsc::Sender<Datagram>,
             driver_result: SharedResultSet<DriverError>,
         ) -> Self {
             Self {
-                is_server,
                 quic_connection,
+                ready_settings,
                 ready_sessions,
                 ready_uni_wt_streams,
                 ready_bi_wt_streams,
@@ -240,7 +271,7 @@ mod worker {
                 remote_settings_stream: RemoteSettingsStream::empty(),
                 remote_qpack_enc_stream: RemoteQPackEncStream::empty(),
                 remote_qpack_dec_stream: RemoteQPackDecStream::empty(),
-                session_stream: SessionStream::empty(),
+                stream_session: None,
             }
         }
 
@@ -262,7 +293,6 @@ mod worker {
             let mut remote_settings_watcher = self.remote_settings_stream.subscribe();
             let mut ready_uni_h3_streams = mpsc::channel(4);
             let mut ready_bi_h3_streams = mpsc::channel(1);
-            let mut incoming_sessions = mpsc::channel(1);
 
             self.open_and_send_settings().await?;
 
@@ -292,25 +322,32 @@ mod worker {
 
                     bi_h3_stream = ready_bi_h3_streams.1.recv() => {
                         let (bi_h3_stream, first_frame) = bi_h3_stream.expect("Sender cannot be dropped")?;
-                        self.handle_bi_h3_stream(bi_h3_stream, first_frame, &incoming_sessions.0)?;
+                        self.handle_bi_h3_stream(bi_h3_stream, first_frame)?;
+                    }
+
+
+                    settings = remote_settings_watcher.accept_settings() => {
+                        let settings = settings.expect("Channel cannot be dropped");
+                        self.handle_remote_settings(settings)?;
+                    }
+
+                    stream_session = self.ready_sessions.recv() => {
+                        match stream_session {
+                            Some(stream_session) => {
+                                if self.stream_session.is_none() {
+                                    self.stream_session = Some(stream_session);
+                                }
+                            }
+                            None => return Err(DriverError::NotConnected),
+                        };
                     }
 
                     error = Self::run_control_streams(&mut self.local_settings_stream,
                                                       &mut self.remote_settings_stream,
                                                       &mut self.remote_qpack_enc_stream,
                                                       &mut self.remote_qpack_dec_stream,
-                                                      &mut self.session_stream) => {
+                                                      &mut self.stream_session) => {
                         return Err(error);
-                    }
-
-                    settings = remote_settings_watcher.accept_settings() => {
-                        let settings = settings.expect("Channel cannot be dropped");
-                        self.handle_remote_settings(settings, &incoming_sessions.0)?;
-                    }
-
-                    incoming_session = incoming_sessions.1.recv() => {
-                        let incoming_session = incoming_session.expect("Sender cannot be dropped")?;
-                        self.handle_incoming_session(incoming_session)?;
                     }
 
                     () = self.driver_result.closed() => {
@@ -489,20 +526,45 @@ mod worker {
 
         fn handle_bi_h3_stream(
             &mut self,
-            stream: StreamBiRemoteH3,
+            mut stream: StreamBiRemoteH3,
             first_frame: Frame<'static>,
-            incoming_sessions: &mpsc::Sender<Result<SessionStream, DriverError>>,
         ) -> Result<(), DriverError> {
             match first_frame.kind() {
                 FrameKind::Data => {
                     return Err(DriverError::Proto(ErrorCode::FrameUnexpected));
                 }
                 FrameKind::Headers => {
-                    tokio::spawn(Self::handle_h3_request(
-                        stream,
-                        first_frame,
-                        incoming_sessions.clone(),
-                    ));
+                    let headers = match Headers::with_frame(&first_frame, stream.id()) {
+                        Ok(headers) => headers,
+                        Err(error_code) => return Err(DriverError::Proto(error_code)),
+                    };
+
+                    let stream_session = match SessionRequest::try_from(headers) {
+                        Ok(session_request) => stream.into_session(session_request),
+                        Err(HeadersParseError::MethodNotConnect) => {
+                            stream
+                                .stop(ErrorCode::RequestRejected.to_code())
+                                .expect("Stream not already stopped");
+                            return Ok(());
+                        }
+                        // TODO(biagio): we might have more granularity with errors
+                        Err(_) => {
+                            stream
+                                .stop(ErrorCode::Message.to_code())
+                                .expect("Stream not already stopped");
+                            return Ok(());
+                        }
+                    };
+
+                    match self.ready_sessions.try_send(stream_session) {
+                        Ok(()) => {}
+                        Err(TrySendError::Full(mut stream)) => {
+                            stream
+                                .stop(ErrorCode::RequestRejected.to_code())
+                                .expect("Stream not already stopped");
+                        }
+                        Err(TrySendError::Closed(_)) => return Err(DriverError::NotConnected),
+                    }
                 }
                 FrameKind::Settings => {
                     return Err(DriverError::Proto(ErrorCode::FrameUnexpected));
@@ -514,209 +576,33 @@ mod worker {
             Ok(())
         }
 
-        fn handle_incoming_session(
-            &mut self,
-            session_stream: SessionStream,
-        ) -> Result<(), DriverError> {
-            debug_assert!(!session_stream.is_empty());
-
-            let slot = match self.ready_sessions.try_reserve() {
-                Ok(slot) => slot,
-                Err(mpsc::error::TrySendError::Closed(_)) => return Err(DriverError::NotConnected),
-                Err(mpsc::error::TrySendError::Full(_)) => return Ok(()),
-            };
-
-            if self.session_stream.is_empty() {
-                self.session_stream = session_stream;
-                slot.send(
-                    self.session_stream
-                        .session_info()
-                        .expect("Session is not empty")
-                        .clone(),
-                );
-            }
-
-            Ok(())
-        }
-
         async fn run_control_streams(
             local_settings: &mut LocalSettingsStream,
             remote_settings: &mut RemoteSettingsStream,
             remote_qpack_enc: &mut RemoteQPackEncStream,
             remote_qpack_dec: &mut RemoteQPackDecStream,
-            session: &mut SessionStream,
+            _stream_session: &mut Option<StreamSession>,
         ) -> DriverError {
+            // TODO(biagio): run stream_session
             tokio::select! {
                 error = local_settings.run() => error,
                 error = remote_settings.run() => error,
                 error = remote_qpack_enc.run() => error,
                 error = remote_qpack_dec.run() => error,
-                error = session.run() => error,
             }
         }
 
-        async fn handle_h3_request(
-            mut stream: StreamBiRemoteH3,
-            first_frame: Frame<'static>,
-            incoming_sessions: mpsc::Sender<Result<SessionStream, DriverError>>,
-        ) {
-            let slot = match incoming_sessions.try_reserve() {
-                Ok(slot) => slot,
-                Err(_) => {
-                    stream
-                        .stop(ErrorCode::RequestRejected.to_code())
-                        .expect("Stream not already stopped");
-                    return;
-                }
-            };
-
-            let headers = match Headers::with_frame(&first_frame, stream.id()) {
-                Ok(headers) => headers,
-                Err(error_code) => {
-                    slot.send(Err(DriverError::Proto(error_code)));
-                    return;
-                }
-            };
-
-            let request = match Request::with_headers(headers) {
-                Ok(request) => request,
-                Err(MalformedRequest) => {
-                    stream
-                        .stop(ErrorCode::Message.to_code())
-                        .expect("Stream not already stopped");
-                    return;
-                }
-            };
-
-            if !request.is_webtransport_connect() {
-                stream
-                    .stop(ErrorCode::RequestRejected.to_code())
-                    .expect("Stream not already stopped");
-                return;
-            }
-
-            let response = Response::new_webtransport(200);
-
-            match stream
-                .write_frame(response.headers().generate_frame(stream.id()))
-                .await
-            {
-                Ok(()) => {
-                    slot.send(Ok(SessionStream::server(stream)));
-                }
-                Err(ProtoWriteError::Stopped) => {
-                    slot.send(Err(DriverError::Proto(ErrorCode::ClosedCriticalStream)));
-                }
-                Err(ProtoWriteError::NotConnected) => {
-                    slot.send(Err(DriverError::NotConnected));
-                }
-            }
-        }
-
-        fn handle_remote_settings(
-            &mut self,
-            _settings: Settings,
-            incoming_sessions: &mpsc::Sender<Result<SessionStream, DriverError>>,
-        ) -> Result<(), DriverError> {
-            // TODO(bfesta): validate settings
-
-            if !self.is_server {
-                tokio::spawn(Self::send_session_request(
-                    self.quic_connection.clone(),
-                    incoming_sessions.clone(),
-                ));
-            }
-
-            Ok(())
-        }
-
-        async fn send_session_request(
-            quic_connection: quinn::Connection,
-            incoming_sessions: mpsc::Sender<Result<SessionStream, DriverError>>,
-        ) {
-            let slot = match incoming_sessions.try_reserve() {
-                Ok(slot) => slot,
-                Err(_) => {
-                    return;
-                }
-            };
-
-            let mut stream = match Stream::open_bi(&quic_connection).await {
-                Some(quic_stream) => quic_stream.upgrade(),
-                None => {
-                    slot.send(Err(DriverError::NotConnected));
-                    return;
-                }
-            };
-
-            let request = Request::new_webtransport();
-
-            match stream
-                .write_frame(request.headers().generate_frame(stream.id()))
-                .await
-            {
-                Ok(()) => {}
-                Err(ProtoWriteError::Stopped) => {
-                    slot.send(Err(DriverError::Proto(ErrorCode::ClosedCriticalStream)));
-                    return;
-                }
-                Err(ProtoWriteError::NotConnected) => {
-                    slot.send(Err(DriverError::NotConnected));
-                    return;
-                }
-            }
-
-            let frame = match stream.read_frame().await {
-                Ok(frame) => frame,
-                Err(ProtoReadError::H3(error_code)) => {
-                    slot.send(Err(DriverError::Proto(error_code)));
-                    return;
-                }
-                Err(ProtoReadError::IO(io_error)) => match io_error {
-                    bytes::IoReadError::ImmediateFin
-                    | bytes::IoReadError::UnexpectedFin
-                    | bytes::IoReadError::Reset => {
-                        slot.send(Err(DriverError::Proto(ErrorCode::ClosedCriticalStream)));
-                        return;
-                    }
-                    bytes::IoReadError::NotConnected => {
-                        slot.send(Err(DriverError::NotConnected));
-                        return;
-                    }
-                },
-            };
-
-            if !matches!(frame.kind(), FrameKind::Headers) {
-                slot.send(Err(DriverError::Proto(ErrorCode::FrameUnexpected)));
-                return;
-            }
-
-            let headers = match Headers::with_frame(&frame, stream.id()) {
-                Ok(headers) => headers,
-                Err(error_code) => {
-                    slot.send(Err(DriverError::Proto(error_code)));
-                    return;
-                }
-            };
-
-            let response = Response::with_headers(headers);
-
-            match response.status() {
-                Some(status) if (200..300).contains(&status) => {
-                    slot.send(Ok(SessionStream::client(stream)));
-                }
-                Some(_) => {
-                    slot.send(Err(DriverError::Proto(ErrorCode::RequestRejected)));
-                }
-                None => {
-                    slot.send(Err(DriverError::Proto(ErrorCode::Message)));
+        fn handle_remote_settings(&mut self, settings: Settings) -> Result<(), DriverError> {
+            match self.ready_settings.try_send(settings) {
+                Ok(()) => Ok(()),
+                Err(mpsc::error::TrySendError::Closed(_)) => Err(DriverError::NotConnected),
+                Err(mpsc::error::TrySendError::Full(_)) => {
+                    unreachable!("No more than 1 setting frame can be processed")
                 }
             }
         }
     }
 }
 
-pub(crate) mod request;
-pub(crate) mod response;
 pub(crate) mod streams;
 pub(crate) mod utils;
