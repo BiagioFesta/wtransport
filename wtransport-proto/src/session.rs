@@ -218,6 +218,15 @@ impl SessionResponse {
         Self::with_status_code(StatusCode::NOT_FOUND)
     }
 
+    /// Returns the status code.
+    pub fn code(&self) -> StatusCode {
+        self.0
+            .get(":status")
+            .expect("Status code is always present")
+            .parse()
+            .expect("Status code value must be valid")
+    }
+
     /// Adds a header field to the response.
     ///
     /// If the key is already present, the value is updated.
