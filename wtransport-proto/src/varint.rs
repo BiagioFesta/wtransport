@@ -47,7 +47,7 @@ impl VarInt {
         Self(value)
     }
 
-    /// Extract the integer value as `u64`.
+    /// Extracts the integer value as `u64`.
     #[inline(always)]
     pub const fn into_inner(self) -> u64 {
         self.0
