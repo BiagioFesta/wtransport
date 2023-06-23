@@ -468,6 +468,10 @@ pub mod session {
         pub fn request(&self) -> &SessionRequest {
             self.proto.request()
         }
+
+        pub async fn finish(mut self) {
+            let _ = self.stream.0.finish().await;
+        }
     }
 }
 

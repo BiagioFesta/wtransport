@@ -24,6 +24,7 @@ rustls-native-certs = "0.6.2"
 rustls-pemfile = "1.0.2"
 thiserror = "1.0.40"
 tokio = { version = "1.28.1", default-features = false, features = ["macros"] }
+url = "2.4.0"
 wtransport-proto = { version = "0.1.0", path = "../wtransport-proto", features = ["async"] }
 
 [dev-dependencies]

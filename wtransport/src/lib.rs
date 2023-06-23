@@ -17,7 +17,8 @@
 //!     .build();
 //!
 //! let server = Endpoint::server(config).unwrap();
-//! let connection = server.accept().await.unwrap().await.unwrap();
+//! let incoming_request = server.accept().await.await.unwrap();
+//! let connection = incoming_request.accept().await.unwrap();
 //! # }
 //! ```
 #![cfg_attr(docsrs, feature(doc_cfg))]

@@ -19,7 +19,17 @@ async fn main() {
 
     loop {
         println!("Waiting for incoming connection...");
-        let connection = server.accept().await.await.unwrap().accept().await.unwrap();
+        let incoming_request = server.accept().await.await.unwrap();
+
+        println!(
+            "Incoming request\n \
+               Authority: {}\n \
+               Path: {}",
+            incoming_request.authority(),
+            incoming_request.path()
+        );
+
+        let connection = incoming_request.accept().await.unwrap();
 
         println!("Waiting for data from client...");
 

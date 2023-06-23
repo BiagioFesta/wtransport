@@ -12,11 +12,7 @@ async fn main() {
 
     let connection = Endpoint::client(config)
         .unwrap()
-        .connect(
-            SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433),
-            "localhost",
-        )
-        .unwrap()
+        .connect("https://[::1]:4433")
         .await
         .unwrap();
 

@@ -15,10 +15,6 @@ pub enum ConnectionError {
     #[error("Connection closed by peer: {0}")]
     ApplicationClosed(ApplicationClose),
 
-    /// Error returned during connection to the server.
-    #[error("Server did not accepted session request")]
-    SessionRejected,
-
     /// The connection was locally closed.
     #[error("Connection locally closed")]
     LocallyClosed,
@@ -42,14 +38,55 @@ impl ConnectionError {
         quic_connection: &quinn::Connection,
     ) -> Self {
         match driver_error {
-            DriverError::Proto(error_code) => {
-                ConnectionError::LocalH3Error(H3Error { code: error_code })
-            }
-            DriverError::NotConnected => quic_connection
+            DriverError::Proto(error_code) => Self::local_h3_error(error_code),
+            DriverError::NotConnected => Self::no_connect(quic_connection),
+        }
+    }
+
+    pub(crate) fn no_connect(quic_connection: &quinn::Connection) -> Self {
+        quic_connection
+            .close_reason()
+            .expect("QUIC connection is still alive on close-cast")
+            .into()
+    }
+
+    pub(crate) fn local_h3_error(error_code: ErrorCode) -> Self {
+        ConnectionError::LocalH3Error(H3Error { code: error_code })
+    }
+}
+
+/// An enumeration representing various errors that can occur during a WebTransport client connecting.
+#[derive(thiserror::Error, Debug)]
+pub enum ConnectingError {
+    /// URL provided for connection is not valid.
+    #[error("Invalid URL: {0}")]
+    InvalidUrl(String),
+
+    /// Failure during DNS resolution.
+    #[error("Cannot resolve domain: {0}")]
+    DnsLookup(std::io::Error),
+
+    /// Cannot find any DNS.
+    #[error("No domain found for dns resolution")]
+    DnsNotFound,
+
+    /// Connection error during handshaking.
+    #[error(transparent)]
+    ConnectionError(ConnectionError),
+
+    /// Request rejected.
+    #[error("Server rejected WebTransport session request")]
+    SessionRejected,
+}
+
+impl ConnectingError {
+    pub(crate) fn with_no_connection(quic_connection: &quinn::Connection) -> Self {
+        ConnectingError::ConnectionError(
+            quic_connection
                 .close_reason()
                 .expect("QUIC connection is still alive on close-cast")
                 .into(),
-        }
+        )
     }
 }
 
