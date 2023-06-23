@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::ids::SessionId;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug)]
 pub enum DriverError {
     Proto(ErrorCode),
     NotConnected,
