@@ -37,7 +37,7 @@ impl Headers {
     }
 
     /// Generates a [`Frame`] with these headers.
-    pub fn generate_frame(&self, stream_id: StreamId) -> Frame {
+    pub fn generate_frame(&self, stream_id: StreamId) -> Frame<'static> {
         let mut encoder = Encoder::new();
 
         let (enc_headers, enc_stream) = encoder
