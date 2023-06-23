@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
 use wtransport_proto::ids::StreamId;
@@ -112,6 +113,53 @@ where
             }
         }
     }
+}
+
+pub struct SendError;
+
+pub enum TrySendError<T> {
+    Full(T),
+    Closed(T),
+}
+
+pub struct BiChannelEndpoint<T> {
+    sender: mpsc::Sender<T>,
+    receiver: Mutex<mpsc::Receiver<T>>,
+}
+
+impl<T> BiChannelEndpoint<T> {
+    #[inline(always)]
+    pub async fn send(&self, value: T) -> Result<(), SendError> {
+        self.sender.send(value).await.map_err(|_| SendError)
+    }
+
+    pub fn try_send(&self, value: T) -> Result<(), TrySendError<T>> {
+        self.sender.try_send(value).map_err(|error| match error {
+            mpsc::error::TrySendError::Full(value) => TrySendError::Full(value),
+            mpsc::error::TrySendError::Closed(value) => TrySendError::Closed(value),
+        })
+    }
+
+    #[inline(always)]
+    pub async fn recv(&self) -> Option<T> {
+        self.receiver.lock().await.recv().await
+    }
+}
+
+pub fn bichannel<T>(capacity: usize) -> (BiChannelEndpoint<T>, BiChannelEndpoint<T>) {
+    let c1 = mpsc::channel(capacity);
+    let c2 = mpsc::channel(capacity);
+
+    (
+        BiChannelEndpoint {
+            sender: c1.0,
+            receiver: Mutex::new(c2.1),
+        },
+        BiChannelEndpoint {
+            sender: c2.0,
+            receiver: Mutex::new(c1.1),
+        },
+    )
 }
 
 #[cfg(test)]
