@@ -901,7 +901,7 @@ pub mod types {
         }
     }
 
-    /// webtransport stream type.
+    /// WebTransport stream type.
     pub struct WT {
         session_id: SessionId,
     }
