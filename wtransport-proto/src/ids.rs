@@ -1,5 +1,6 @@
 use crate::varint::VarInt;
 use std::fmt;
+use std::str::FromStr;
 
 /// QUIC stream id.
 #[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -241,6 +242,7 @@ impl fmt::Display for QStreamId {
 pub struct InvalidStatusCode;
 
 /// HTTP status code (rfc9110).
+#[derive(Default, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StatusCode(u16);
 
 impl StatusCode {
@@ -257,8 +259,21 @@ impl StatusCode {
     pub const NOT_FOUND: Self = Self(404);
 
     /// Tries to construct from `u32`.
+    #[inline(always)]
     pub fn try_from_u32(value: u32) -> Result<Self, InvalidStatusCode> {
         value.try_into()
+    }
+
+    /// Extracts the integer value as `u16`.
+    #[inline(always)]
+    pub fn into_inner(self) -> u16 {
+        self.0
+    }
+
+    /// Returns true if the status code is 2xx.
+    #[inline(always)]
+    pub fn is_successful(self) -> bool {
+        (200..300).contains(&self.0)
     }
 }
 
@@ -307,6 +322,14 @@ impl TryFrom<u64> for StatusCode {
         } else {
             Err(InvalidStatusCode)
         }
+    }
+}
+
+impl FromStr for StatusCode {
+    type Err = InvalidStatusCode;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(s.parse().map_err(|_| InvalidStatusCode)?))
     }
 }
 
