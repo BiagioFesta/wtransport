@@ -8,6 +8,7 @@ use crate::frame;
 use crate::frame::Frame;
 use crate::frame::FrameKind;
 use crate::ids::SessionId;
+use crate::session::SessionRequest;
 use crate::stream_header;
 use crate::stream_header::StreamHeader;
 use crate::stream_header::StreamKind;
@@ -186,6 +187,14 @@ pub mod biremote {
             StreamBiRemoteWT {
                 kind: self.kind,
                 stage: WT::new(session_id),
+            }
+        }
+
+        /// Converts the stream into a `StreamSession`.
+        pub fn into_session(self, session_request: SessionRequest) -> session::StreamSession {
+            session::StreamSession {
+                kind: Bi,
+                stage: Session::new(session_request),
             }
         }
 
@@ -429,6 +438,14 @@ pub mod bilocal {
         /// Returns the needed capacity for upgrade via [`Self::upgrade`].
         pub fn upgrade_size(&self, session_id: SessionId) -> usize {
             Frame::new_webtransport(session_id).write_size()
+        }
+
+        /// Converts the stream into a `StreamSession`.
+        pub fn into_session(self, session_request: SessionRequest) -> session::StreamSession {
+            session::StreamSession {
+                kind: Bi,
+                stage: Session::new(session_request),
+            }
         }
 
         fn validate_frame<'a>(&self, frame: Frame<'a>) -> Result<Frame<'a>, ErrorCode> {
@@ -865,6 +882,137 @@ pub mod unilocal {
     }
 }
 
+/// Bidirectional local/remote stream implementations.
+///
+/// For WebTransport session request/response.
+pub mod session {
+    use super::*;
+    use types::*;
+
+    /// HTTP3 bidirectional stream carrying CONNECT request and response.
+    pub type StreamSession = Stream<Bi, Session>;
+
+    impl StreamSession {
+        /// See [`Frame::read`].
+        pub fn read_frame<'a, R>(
+            &self,
+            bytes_reader: &mut R,
+        ) -> Option<Result<Frame<'a>, ErrorCode>>
+        where
+            R: BytesReader<'a>,
+        {
+            loop {
+                match Frame::read(bytes_reader)? {
+                    Ok(frame) => {
+                        return Some(self.validate_frame(frame));
+                    }
+                    Err(frame::ParseError::UnknownFrame) => {
+                        continue;
+                    }
+                    Err(frame::ParseError::InvalidSessionId) => {
+                        return Some(Err(ErrorCode::Id));
+                    }
+                }
+            }
+        }
+
+        /// See [`Frame::read_async`].
+        #[cfg(feature = "async")]
+        #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+        pub async fn read_frame_async<'a, R>(
+            &self,
+            reader: &mut R,
+        ) -> Result<Frame<'a>, IoReadError>
+        where
+            R: AsyncRead + Unpin + ?Sized,
+        {
+            loop {
+                match Frame::read_async(reader).await {
+                    Ok(frame) => {
+                        return self.validate_frame(frame).map_err(IoReadError::H3);
+                    }
+                    Err(frame::IoReadError::Parse(frame::ParseError::UnknownFrame)) => {
+                        continue;
+                    }
+                    Err(frame::IoReadError::Parse(frame::ParseError::InvalidSessionId)) => {
+                        return Err(IoReadError::H3(ErrorCode::Id));
+                    }
+                    Err(frame::IoReadError::IO(io_error)) => {
+                        if matches!(io_error, bytes::IoReadError::UnexpectedFin) {
+                            return Err(IoReadError::H3(ErrorCode::Frame));
+                        } else {
+                            return Err(IoReadError::IO(io_error));
+                        }
+                    }
+                }
+            }
+        }
+
+        /// See [`Frame::read_from_buffer`].
+        pub fn read_frame_from_buffer<'a>(
+            &self,
+            buffer_reader: &mut BufferReader<'a>,
+        ) -> Option<Result<Frame<'a>, ErrorCode>> {
+            let mut buffer_reader_child = buffer_reader.child();
+
+            match self.read_frame(&mut *buffer_reader_child)? {
+                Ok(frame) => {
+                    buffer_reader_child.commit();
+                    Some(Ok(frame))
+                }
+                Err(error) => Some(Err(error)),
+            }
+        }
+
+        /// See [`Frame::write`].
+        pub fn write_frame<W>(&self, frame: Frame, bytes_writer: &mut W) -> Result<(), EndOfBuffer>
+        where
+            W: BytesWriter,
+        {
+            frame.write(bytes_writer)
+        }
+
+        /// See [`Frame::write_async`].
+        #[cfg(feature = "async")]
+        #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+        pub async fn write_frame_async<'a, W>(
+            &self,
+            frame: Frame<'a>,
+            writer: &mut W,
+        ) -> Result<(), IoWriteError>
+        where
+            W: AsyncWrite + Unpin + ?Sized,
+        {
+            frame.write_async(writer).await
+        }
+
+        /// See [`Frame::write_to_buffer`].
+        pub fn write_frame_to_buffer(
+            &self,
+            frame: Frame,
+            buffer_writer: &mut BufferWriter,
+        ) -> Result<(), EndOfBuffer> {
+            frame.write_to_buffer(buffer_writer)
+        }
+
+        /// Returns the [`SessionRequest`] associated.
+        #[inline(always)]
+        pub fn request(&self) -> &SessionRequest {
+            self.stage.request()
+        }
+
+        fn validate_frame<'a>(&self, frame: Frame<'a>) -> Result<Frame<'a>, ErrorCode> {
+            match frame.kind() {
+                FrameKind::Data => Ok(frame),
+                FrameKind::Headers => Ok(frame),
+                FrameKind::Settings => Err(ErrorCode::FrameUnexpected),
+                FrameKind::WebTransport => Err(ErrorCode::FrameUnexpected),
+                FrameKind::Exercise(_) => Ok(frame),
+            }
+        }
+    }
+}
+
 /// Types and states of a stream.
 pub mod types {
     use super::*;
@@ -915,6 +1063,23 @@ pub mod types {
         #[inline(always)]
         pub(super) fn session_id(&self) -> SessionId {
             self.session_id
+        }
+    }
+
+    /// Session (HTTP3-CONNECT) stream type.
+    pub struct Session {
+        session_request: SessionRequest,
+    }
+
+    impl Session {
+        #[inline(always)]
+        pub(super) fn new(session_request: SessionRequest) -> Self {
+            Self { session_request }
+        }
+
+        #[inline(always)]
+        pub(super) fn request(&self) -> &SessionRequest {
+            &self.session_request
         }
     }
 
