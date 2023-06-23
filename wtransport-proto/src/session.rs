@@ -1,4 +1,5 @@
 use crate::headers::Headers;
+use crate::ids::InvalidStatusCode;
 use crate::ids::StatusCode;
 use url::Url;
 
@@ -68,6 +69,12 @@ pub enum HeadersParseError {
 
     /// Path field is missing.
     MissingPath,
+
+    /// Status field is missing.
+    MissingStatusCode,
+
+    /// The status code value is not valid.
+    InvalidStatusCode,
 }
 
 /// A CONNECT WebTransport request.
@@ -225,6 +232,20 @@ impl SessionResponse {
     /// Returns the whole headers associated with the request.
     pub fn headers(&self) -> &Headers {
         &self.0
+    }
+}
+
+impl TryFrom<Headers> for SessionResponse {
+    type Error = HeadersParseError;
+
+    fn try_from(headers: Headers) -> Result<Self, Self::Error> {
+        let status_code = headers
+            .get(":status")
+            .ok_or(HeadersParseError::MissingStatusCode)?
+            .parse()
+            .map_err(|InvalidStatusCode| HeadersParseError::InvalidStatusCode)?;
+
+        Ok(Self::with_status_code(status_code))
     }
 }
 
