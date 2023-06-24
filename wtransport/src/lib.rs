@@ -30,6 +30,9 @@ pub mod config;
 /// WebTransport connection.
 pub mod connection;
 
+/// Endpoint module.
+pub mod endpoint;
+
 /// Errors definitions module.
 pub mod error;
 
@@ -61,4 +64,3 @@ pub use stream::RecvStream;
 pub use stream::SendStream;
 
 mod driver;
-mod endpoint;

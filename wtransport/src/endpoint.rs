@@ -227,6 +227,9 @@ impl Endpoint<Client> {
 
 type DynFutureIncomingSession = dyn Future<Output = Result<SessionRequest, ConnectionError>>;
 
+/// [`Future`] for an in-progress incoming connection attempt.
+///
+/// Created by [`Endpoint::accept`].
 pub struct IncomingSession(Pin<Box<DynFutureIncomingSession>>);
 
 impl IncomingSession {
@@ -261,6 +264,10 @@ impl Future for IncomingSession {
     }
 }
 
+/// A incoming client session request.
+///
+/// Server should use methods [`accept`](Self::accept) or [`not_found`](Self::not_found)
+/// in order to validate or reject the client request.
 pub struct SessionRequest {
     quic_connection: quinn::Connection,
     driver: Driver,
@@ -295,6 +302,7 @@ impl SessionRequest {
         self.stream_session.request().headers()
     }
 
+    /// Accepts the client request and it establishes the WebTransport session.
     pub async fn accept(mut self) -> Result<Connection, ConnectionError> {
         let mut response = SessionResponseProto::ok();
 
@@ -325,6 +333,7 @@ impl SessionRequest {
         ))
     }
 
+    /// Rejects the client request by replying with `404` status code.
     pub async fn not_found(mut self) {
         let mut response = SessionResponseProto::not_found();
 
