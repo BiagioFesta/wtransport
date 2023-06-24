@@ -27,7 +27,8 @@ It should be used with caution and may undergo changes as the WebTransport speci
 
 ## Simple API
 ```rust
-async fn server() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let config = ServerConfig::builder()
         .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
         .with_certificate(Certificate::load("cert.pem", "key.pem")?)
@@ -37,13 +38,16 @@ async fn server() -> Result<(), Error> {
 
     println!("Waiting for incoming connections...");
     loop {
-        let connecting = server.accept().await?;
+        let incoming_request = server.accept().await?;
 
         tokio::spawn(async move {
-           println!("New connection");
-           let connection = connecting.await?;
-           let stream = connection.accept_bi().await?
-           // ...
+          println!("Incoming request...");
+          let session_request = incoming_request.await?;
+          println!("Path requested: {}", session_request.path());
+          let connection = session_request.accept().await?;
+          
+          let stream = connection.accept_bi().await?
+          // ...
         });
     }
 }
