@@ -225,7 +225,8 @@ impl Endpoint<Client> {
     }
 }
 
-type DynFutureIncomingSession = dyn Future<Output = Result<SessionRequest, ConnectionError>>;
+type DynFutureIncomingSession =
+    dyn Future<Output = Result<SessionRequest, ConnectionError>> + Send + Sync;
 
 /// [`Future`] for an in-progress incoming connection attempt.
 ///
