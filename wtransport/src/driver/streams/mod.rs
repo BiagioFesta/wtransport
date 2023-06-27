@@ -46,6 +46,16 @@ impl QuicSendStream {
         Ok(())
     }
 
+    #[inline(always)]
+    pub fn set_priority(&self, priority: i32) {
+        let _ = self.0.set_priority(priority);
+    }
+
+    #[inline(always)]
+    pub fn priority(&self) -> i32 {
+        self.0.priority().expect("Stream has been reset")
+    }
+
     pub async fn stopped(&mut self) -> StreamWriteError {
         match self.0.stopped().await {
             Ok(code) => StreamWriteError::Stopped(varint_q2w(code)),

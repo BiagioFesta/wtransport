@@ -54,6 +54,24 @@ impl SendStream {
     pub fn id(&self) -> StreamId {
         self.0.id()
     }
+
+    /// Sets the priority of the send stream.
+    ///
+    /// Every send stream has an initial priority of 0. Locally buffered data from streams with
+    /// higher priority will be transmitted before data from streams with lower priority. Changing
+    /// the priority of a stream with pending data may only take effect after that data has been
+    /// transmitted. Using many different priority levels per connection may have a negative
+    /// impact on performance.
+    #[inline(always)]
+    pub fn set_priority(&self, priority: i32) {
+        self.0.set_priority(priority)
+    }
+
+    /// Gets the priority of the send stream.
+    #[inline(always)]
+    pub fn priority(&self) -> i32 {
+        self.0.priority()
+    }
 }
 
 /// A stream that can only be used to receive data.
