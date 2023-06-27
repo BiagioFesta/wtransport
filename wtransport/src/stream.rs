@@ -14,6 +14,7 @@ use tokio::io::ReadBuf;
 use wtransport_proto::ids::SessionId;
 use wtransport_proto::ids::StreamId;
 use wtransport_proto::stream_header::StreamHeader;
+use wtransport_proto::varint::VarInt;
 
 /// A stream that can only be used to send data.
 pub struct SendStream(QuicSendStream);
@@ -71,6 +72,16 @@ impl SendStream {
     #[inline(always)]
     pub fn priority(&self) -> i32 {
         self.0.priority()
+    }
+
+    /// Closes the send stream immediately.
+    ///
+    /// No new data can be written after calling this method. Locally buffered data is dropped, and
+    /// previously transmitted data will no longer be retransmitted if lost. If an attempt has
+    /// already been made to finish the stream, the peer may still receive all written data.
+    #[inline(always)]
+    pub fn reset(self, error_code: VarInt) {
+        self.0.reset(error_code)
     }
 }
 

@@ -66,6 +66,13 @@ impl QuicSendStream {
     }
 
     #[inline(always)]
+    pub fn reset(mut self, error_code: VarInt) {
+        self.0
+            .reset(varint_w2q(error_code))
+            .expect("Stream has been already reset")
+    }
+
+    #[inline(always)]
     pub fn id(&self) -> StreamId {
         streamid_q2w(self.0.id())
     }
