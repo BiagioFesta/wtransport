@@ -19,6 +19,7 @@ use wtransport_proto::stream_header::StreamHeader;
 pub struct SendStream(QuicSendStream);
 
 impl SendStream {
+    #[inline(always)]
     pub(crate) fn new(stream: QuicSendStream) -> Self {
         Self(stream)
     }
@@ -28,11 +29,13 @@ impl SendStream {
     /// On success, returns the number of bytes written.
     /// Congestion and flow control may cause this to be shorter than `buf.len()`,
     /// indicating that only a prefix of `buf` was written.
+    #[inline(always)]
     pub async fn write(&mut self, buf: &[u8]) -> Result<usize, StreamWriteError> {
         self.0.write(buf).await
     }
 
     /// Convenience method to write an entire buffer to the stream.
+    #[inline(always)]
     pub async fn write_all(&mut self, buf: &[u8]) -> Result<(), StreamWriteError> {
         self.0.write_all(buf).await
     }
@@ -41,6 +44,7 @@ impl SendStream {
     ///
     /// No new data may be written after calling this method. Completes when the peer has
     /// acknowledged all sent data, retransmitting data as needed.
+    #[inline(always)]
     pub async fn finish(&mut self) -> Result<(), StreamWriteError> {
         self.0.finish().await
     }
@@ -56,6 +60,7 @@ impl SendStream {
 pub struct RecvStream(QuicRecvStream);
 
 impl RecvStream {
+    #[inline(always)]
     pub(crate) fn new(stream: QuicRecvStream) -> Self {
         Self(stream)
     }
@@ -63,6 +68,7 @@ impl RecvStream {
     /// Read data contiguously from the stream.
     ///
     /// On success, returns the number of bytes read into `buf`.
+    #[inline(always)]
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>, StreamReadError> {
         self.0.read(buf).await
     }
@@ -75,6 +81,7 @@ impl RecvStream {
 }
 
 impl tokio::io::AsyncWrite for SendStream {
+    #[inline(always)]
     fn poll_write(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -83,14 +90,17 @@ impl tokio::io::AsyncWrite for SendStream {
         tokio::io::AsyncWrite::poll_write(Pin::new(&mut self.0), cx, buf)
     }
 
+    #[inline(always)]
     fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         tokio::io::AsyncWrite::poll_flush(Pin::new(&mut self.0), cx)
     }
 
+    #[inline(always)]
     fn poll_shutdown(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
         tokio::io::AsyncWrite::poll_shutdown(Pin::new(&mut self.0), cx)
     }
 
+    #[inline(always)]
     fn poll_write_vectored(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -99,12 +109,14 @@ impl tokio::io::AsyncWrite for SendStream {
         tokio::io::AsyncWrite::poll_write_vectored(Pin::new(&mut self.0), cx, bufs)
     }
 
+    #[inline(always)]
     fn is_write_vectored(&self) -> bool {
         tokio::io::AsyncWrite::is_write_vectored(&self.0)
     }
 }
 
 impl tokio::io::AsyncRead for RecvStream {
+    #[inline(always)]
     fn poll_read(
         mut self: Pin<&mut Self>,
         cx: &mut Context<'_>,
@@ -169,6 +181,7 @@ impl OpeningBiStream {
 impl Future for OpeningBiStream {
     type Output = Result<(SendStream, RecvStream), StreamOpeningError>;
 
+    #[inline(always)]
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         Future::poll(self.0.as_mut(), cx)
     }
