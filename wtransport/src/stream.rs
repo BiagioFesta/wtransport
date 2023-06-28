@@ -83,6 +83,14 @@ impl SendStream {
     pub fn reset(self, error_code: VarInt) {
         self.0.reset(error_code)
     }
+
+    /// Awaits for the stream to be stopped by the peer.
+    ///
+    /// If the stream is stopped the error code will be stored in [`StreamWriteError::Stopped`].
+    #[inline(always)]
+    pub async fn stopped(mut self) -> StreamWriteError {
+        self.0.stopped().await
+    }
 }
 
 /// A stream that can only be used to receive data.
