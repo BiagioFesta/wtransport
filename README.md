@@ -26,32 +26,57 @@ The *WTransport* library, while functional, is not considered completely product
 It should be used with caution and may undergo changes as the WebTransport specification evolves.
 
 ## Simple API
+<table>
+<tr>
+<th> Server </th>
+<th> Client </th>
+</tr>
+<tr>
+<td>
+
 ```rust
 #[tokio::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<()> {
     let config = ServerConfig::builder()
-        .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
-        .with_certificate(Certificate::load("cert.pem", "key.pem")?)
+        .with_bind_address("[::1]:4433".parse()?)
+        .with_certificate(certificate)
         .build();
 
-    let server = Endpoint::server(config)?;
+    let connection = Endpoint::server(config)?
+        .accept()
+        .await     // Awaits connection
+        .await?    // Awaits session request
+        .accept()  // Accepts request
+        .await?;   // Awaits ready session
 
-    println!("Waiting for incoming connections...");
-    loop {
-        let incoming_request = server.accept().await?;
-
-        tokio::spawn(async move {
-          println!("Incoming request...");
-          let session_request = incoming_request.await?;
-          println!("Path requested: {}", session_request.path());
-          let connection = session_request.accept().await?;
-          
-          let stream = connection.accept_bi().await?
-          // ...
-        });
-    }
+    let stream = connection.accept_bi().await?;
+    // ...
 }
 ```
+
+</td>
+<td>
+
+```rust
+#[tokio::main]
+async fn main() -> Result<()> {
+    let config = ClientConfig::builder()
+        .with_bind_address("[::]:0".parse()?)
+        .with_native_certs()
+        .build();
+
+    let connection = Endpoint::client(config)?
+        .connect("https://[::1]:4433")
+        .await?;
+
+    let mut stream = connection.open_bi().await?.await?;
+    // ...
+}
+```
+
+</td>
+</tr>
+</table>
 
 ## Getting Started
 ### 0. Clone the Repository
