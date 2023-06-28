@@ -10,6 +10,7 @@ categories = [ "network-programming", "asynchronous" ]
 edition = "2021"
 readme = "../README.md"
 workspace = ".."
+rust-version = "1.63.0"
 
 [dependencies]
 ls-qpack = "0.1.2"
