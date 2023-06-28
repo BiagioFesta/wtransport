@@ -126,6 +126,16 @@ impl SessionRequest {
             .expect("Session request must contain ':path' field")
     }
 
+    /// Returns the `origin` field of the request if present.
+    pub fn origin(&self) -> Option<&str> {
+        self.0.get("origin")
+    }
+
+    /// Returns the `user-agent` field of the request if present.
+    pub fn user_agent(&self) -> Option<&str> {
+        self.0.get("user-agent")
+    }
+
     /// Gets a field from the request (if present).
     pub fn get<K>(&self, key: K) -> Option<&str>
     where

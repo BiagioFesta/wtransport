@@ -298,6 +298,16 @@ impl SessionRequest {
         self.stream_session.request().path()
     }
 
+    /// Returns the `origin` field of the request if present.
+    pub fn origin(&self) -> Option<&str> {
+        self.stream_session.request().origin()
+    }
+
+    /// Returns the `user-agent` field of the request if present.
+    pub fn user_agent(&self) -> Option<&str> {
+        self.stream_session.request().user_agent()
+    }
+
     /// Returns the whole headers associated with the request.
     pub fn headers(&self) -> &Headers {
         self.stream_session.request().headers()
