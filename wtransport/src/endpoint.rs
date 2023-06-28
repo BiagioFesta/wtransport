@@ -315,14 +315,12 @@ impl SessionRequest {
 
     /// Accepts the client request and it establishes the WebTransport session.
     pub async fn accept(mut self) -> Result<Connection, ConnectionError> {
+        let user_agent = self.user_agent().unwrap_or_default();
+
         let mut response = SessionResponseProto::ok();
 
         // Chrome support
-        if self
-            .headers()
-            .get("sec-webtransport-http3-draft02")
-            .is_some()
-        {
+        if !user_agent.contains("firefox") {
             response.add("sec-webtransport-http3-draft", "draft02");
         }
 
@@ -346,14 +344,12 @@ impl SessionRequest {
 
     /// Rejects the client request by replying with `404` status code.
     pub async fn not_found(mut self) {
+        let user_agent = self.user_agent().unwrap_or_default();
+
         let mut response = SessionResponseProto::not_found();
 
         // Chrome support
-        if self
-            .headers()
-            .get("sec-webtransport-http3-draft02")
-            .is_some()
-        {
+        if !user_agent.contains("firefox") {
             response.add("sec-webtransport-http3-draft", "draft02");
         }
 
