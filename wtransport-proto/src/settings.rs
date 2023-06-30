@@ -34,6 +34,9 @@ pub enum SettingId {
     /// SETTINGS_ENABLE_WEBTRANSPORT.
     EnableWebTransport,
 
+    /// WEBTRANSPORT_MAX_SESSIONS.
+    WebTransportMaxSessions,
+
     /// Exercise setting.
     Exercise(VarInt),
 }
@@ -53,6 +56,9 @@ impl SettingId {
                 setting_ids::SETTINGS_QPACK_BLOCKED_STREAMS => Ok(Self::QPackBlockedStreams),
                 setting_ids::SETTINGS_H3_DATAGRAM => Ok(Self::H3Datagram),
                 setting_ids::SETTINGS_ENABLE_WEBTRANSPORT => Ok(Self::EnableWebTransport),
+                setting_ids::SETTINGS_WEBTRANSPORT_MAX_SESSIONS => {
+                    Ok(Self::WebTransportMaxSessions)
+                }
                 _ => Err(ParseError::UnknownSetting),
             }
         }
@@ -65,6 +71,7 @@ impl SettingId {
             Self::QPackBlockedStreams => setting_ids::SETTINGS_QPACK_BLOCKED_STREAMS,
             Self::H3Datagram => setting_ids::SETTINGS_H3_DATAGRAM,
             Self::EnableWebTransport => setting_ids::SETTINGS_ENABLE_WEBTRANSPORT,
+            Self::WebTransportMaxSessions => setting_ids::SETTINGS_WEBTRANSPORT_MAX_SESSIONS,
             Self::Exercise(id) => id,
         }
     }
@@ -218,4 +225,5 @@ mod setting_ids {
     pub const SETTINGS_QPACK_BLOCKED_STREAMS: VarInt = VarInt::from_u32(0x07);
     pub const SETTINGS_H3_DATAGRAM: VarInt = VarInt::from_u32(0xffd277);
     pub const SETTINGS_ENABLE_WEBTRANSPORT: VarInt = VarInt::from_u32(0x2b603742);
+    pub const SETTINGS_WEBTRANSPORT_MAX_SESSIONS: VarInt = VarInt::from_u32(0xc671706a);
 }
