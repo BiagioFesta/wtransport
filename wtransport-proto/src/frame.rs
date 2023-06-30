@@ -425,6 +425,7 @@ mod tests {
             .qpack_max_table_capacity(VarInt::from_u32(2))
             .enable_h3_datagrams()
             .enable_webtransport()
+            .webtransport_max_sessions(VarInt::from_u32(3))
             .build();
 
         let frame = settings.generate_frame();
@@ -443,6 +444,7 @@ mod tests {
             .qpack_max_table_capacity(VarInt::from_u32(2))
             .enable_h3_datagrams()
             .enable_webtransport()
+            .webtransport_max_sessions(VarInt::from_u32(3))
             .build();
 
         let frame = settings.generate_frame();

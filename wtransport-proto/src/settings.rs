@@ -211,6 +211,12 @@ impl SettingsBuilder {
         self
     }
 
+    /// Sets the max number of webtransport sessions server accepts over single HTTP/3 connection.
+    pub fn webtransport_max_sessions(mut self, value: VarInt) -> Self {
+        self.0 .0.insert(SettingId::WebTransportMaxSessions, value);
+        self
+    }
+
     /// Builds [`Settings`].
     pub fn build(self) -> Settings {
         self.0
