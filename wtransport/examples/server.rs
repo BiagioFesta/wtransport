@@ -1,71 +1,100 @@
+use anyhow::Result;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::time::Duration;
+use tracing::error;
+use tracing::info;
+use tracing::info_span;
+use tracing::Instrument;
+use wtransport::endpoint::IncomingSession;
 use wtransport::tls::Certificate;
 use wtransport::Endpoint;
 use wtransport::ServerConfig;
 
 #[tokio::main]
-async fn main() {
-    let mut buffer = [0; 65536];
+async fn main() -> Result<()> {
+    tracing_subscriber::fmt::init();
 
     let config = ServerConfig::builder()
         .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
-        .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap())
+        .with_certificate(Certificate::load("cert.pem", "key.pem")?)
         .keep_alive_interval(Some(Duration::from_secs(3)))
         .build();
 
-    let server = Endpoint::server(config).unwrap();
+    let server = Endpoint::server(config)?;
+
+    info!("Server ready!");
+
+    for id in 0.. {
+        let incoming_session = server.accept().await;
+        tokio::spawn(handle_connection(incoming_session).instrument(info_span!("Connection", id)));
+    }
+
+    Ok(())
+}
+
+async fn handle_connection(incoming_session: IncomingSession) {
+    let result = handle_connection_impl(incoming_session).await;
+    error!("{:?}", result);
+}
+
+async fn handle_connection_impl(incoming_session: IncomingSession) -> Result<()> {
+    let mut buffer = vec![0; 65536].into_boxed_slice();
+
+    info!("Waiting for session request...");
+
+    let session_request = incoming_session.await?;
+
+    info!(
+        "New session: Authority: '{}', Path: '{}'",
+        session_request.authority(),
+        session_request.path()
+    );
+
+    let connection = session_request.accept().await?;
+
+    info!("Waiting for data from client...");
 
     loop {
-        println!("Waiting for incoming connection...");
-        let incoming_request = server.accept().await.await.unwrap();
+        tokio::select! {
+            stream = connection.accept_bi() => {
+                let mut stream = stream?;
+                info!("Accepted BI stream");
 
-        println!(
-            "Incoming request\n \
-               Authority: {}\n \
-               Path: {}",
-            incoming_request.authority(),
-            incoming_request.path()
-        );
+                let bytes_read = match stream.1.read(&mut buffer).await? {
+                    Some(bytes_read) => bytes_read,
+                    None => continue,
+                };
 
-        let connection = incoming_request.accept().await.unwrap();
+                let str_data = std::str::from_utf8(&buffer[..bytes_read])?;
 
-        println!("Waiting for data from client...");
+                info!("Received (bi) '{str_data}' from client");
 
-        loop {
-            tokio::select! {
-                stream = connection.accept_bi() => {
-                    let mut stream = stream.unwrap();
-                    println!("Accepted BI stream");
+                stream.0.write_all(b"ACK").await?;
+            }
+            stream = connection.accept_uni() => {
+                let mut stream = stream?;
+                info!("Accepted UNI stream");
 
-                    let bytes_read = stream.1.read(&mut buffer).await.unwrap().unwrap();
-                    let str_data = std::str::from_utf8(&buffer[..bytes_read]).unwrap();
+                let bytes_read = match stream.read(&mut buffer).await? {
+                    Some(bytes_read) => bytes_read,
+                    None => continue,
+                };
 
-                    println!("Received (bi) '{str_data}' from client");
+                let str_data = std::str::from_utf8(&buffer[..bytes_read])?;
 
-                    stream.0.write_all(b"ACK").await.unwrap();
-                }
-                stream = connection.accept_uni() => {
-                    let mut stream = stream.unwrap();
-                    println!("Accepted UNI stream");
+                info!("Received (uni) '{str_data}' from client");
 
-                    let bytes_read = stream.read(&mut buffer).await.unwrap().unwrap();
-                    let str_data = std::str::from_utf8(&buffer[..bytes_read]).unwrap();
+                let mut stream = connection.open_uni().await?.await?;
+                stream.write_all(b"ACK").await?;
+            }
+            dgram = connection.receive_datagram() => {
+                let dgram = dgram?;
+                let str_data = std::str::from_utf8(&dgram)?;
 
-                    println!("Received (uni) '{str_data}' from client");
+                info!("Received (dgram) '{str_data}' from client");
 
-                    let mut stream = connection.open_uni().await.unwrap().await.unwrap();
-                    stream.write_all(b"ACK").await.unwrap();
-                }
-                dgram = connection.receive_datagram() => {
-                    let dgram = dgram.unwrap();
-                    let str_data = std::str::from_utf8(&dgram).unwrap();
-
-                    println!("Received (dgram) '{str_data}' from client");
-
-                    connection.send_datagram(b"ACK").unwrap();
-                }
+                connection.send_datagram(b"ACK")?;
             }
         }
     }
