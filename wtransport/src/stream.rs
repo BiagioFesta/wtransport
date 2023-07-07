@@ -163,7 +163,7 @@ impl tokio::io::AsyncRead for RecvStream {
     }
 }
 
-type DynFutureUniStream = dyn Future<Output = Result<SendStream, StreamOpeningError>>;
+type DynFutureUniStream = dyn Future<Output = Result<SendStream, StreamOpeningError>> + Send + Sync;
 
 /// [`Future`] for an in-progress opening unidirectional stream.
 ///
@@ -193,7 +193,8 @@ impl Future for OpeningUniStream {
     }
 }
 
-type DynFutureBiStream = dyn Future<Output = Result<(SendStream, RecvStream), StreamOpeningError>>;
+type DynFutureBiStream =
+    dyn Future<Output = Result<(SendStream, RecvStream), StreamOpeningError>> + Send + Sync;
 
 /// [`Future`] for an in-progress opening bidirectional stream.
 ///
