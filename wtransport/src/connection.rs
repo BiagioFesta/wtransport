@@ -116,7 +116,7 @@ impl Connection {
         self.quic_connection.remote_address()
     }
 
-    /// A stable identifier for this connection
+    /// A stable identifier for this connection.
     ///
     /// Peer addresses and connection IDs can change, but this value will remain
     /// fixed for the lifetime of the connection.
@@ -125,7 +125,7 @@ impl Connection {
         self.quic_connection.stable_id()
     }
 
-    /// Compute the maximum size of datagrams that may be passed to [`send_datagram()`].
+    /// Compute(s) the maximum size of datagrams that may be passed to [`send_datagram()`].
     ///
     /// Returns `None` if datagrams are unsupported by the peer or disabled locally.
     ///
@@ -139,7 +139,7 @@ impl Connection {
         self.quic_connection.max_datagram_size()
     }
 
-    /// Current best estimate of this connection's latency (round-trip-time)
+    /// Current best estimate of this connection's latency (round-trip-time).
     #[inline(always)]
     pub fn rtt(&self) -> Duration {
         self.quic_connection.rtt()
