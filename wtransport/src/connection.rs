@@ -7,6 +7,7 @@ use crate::stream::OpeningUniStream;
 use crate::stream::RecvStream;
 use crate::stream::SendStream;
 use std::net::SocketAddr;
+use std::time::Duration;
 use wtransport_proto::ids::SessionId;
 
 /// A WebTransport session connection.
@@ -113,5 +114,34 @@ impl Connection {
     #[inline(always)]
     pub fn remote_address(&self) -> SocketAddr {
         self.quic_connection.remote_address()
+    }
+
+    /// A stable identifier for this connection
+    ///
+    /// Peer addresses and connection IDs can change, but this value will remain
+    /// fixed for the lifetime of the connection.
+    #[inline(always)]
+    pub fn stable_id(&self) -> usize {
+        self.quic_connection.stable_id()
+    }
+
+    /// Compute the maximum size of datagrams that may be passed to [`send_datagram()`].
+    ///
+    /// Returns `None` if datagrams are unsupported by the peer or disabled locally.
+    ///
+    /// This may change over the lifetime of a connection according to variation in the path MTU
+    /// estimate. The peer can also enforce an arbitrarily small fixed limit, but if the peer's
+    /// limit is large this is guaranteed to be a little over a kilobyte at minimum.
+    ///
+    /// Not necessarily the maximum size of received datagrams.
+    #[inline(always)]
+    pub fn max_datagram_size(&self) -> Option<usize> {
+        self.quic_connection.max_datagram_size()
+    }
+
+    /// Current best estimate of this connection's latency (round-trip-time)
+    #[inline(always)]
+    pub fn rtt(&self) -> Duration {
+        self.quic_connection.rtt()
     }
 }
