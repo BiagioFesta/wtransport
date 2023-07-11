@@ -70,6 +70,7 @@ impl ServerConfigBuilder<WantsCertificate> {
             bind_address: self.0.bind_address,
             tls_config,
             transport_config,
+            migration: true,
         })
     }
 
@@ -91,6 +92,7 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
     pub fn build(self) -> ServerConfig {
         let mut quic_config = QuicServerConfig::with_crypto(Arc::new(self.0.tls_config));
         quic_config.transport_config(Arc::new(self.0.transport_config));
+        quic_config.migration(self.0.migration);
 
         ServerConfig {
             bind_address: self.0.bind_address,
@@ -128,6 +130,15 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
     /// peers to be effective.
     pub fn keep_alive_interval(mut self, interval: Option<Duration>) -> Self {
         self.0.transport_config.keep_alive_interval(interval);
+        self
+    }
+
+    /// Whether to allow clients to migrate to new addresses.
+    ///
+    /// Improves behavior for clients that move between different internet connections or suffer NAT
+    /// rebinding. Enabled by default.
+    pub fn allow_migration(mut self, value: bool) -> Self {
+        self.0.migration = value;
         self
     }
 }
@@ -177,9 +188,6 @@ impl ClientConfigBuilder<WantsRootStore> {
     pub fn with_native_certs(self) -> ClientConfigBuilder<WantsTransportConfigClient> {
         let tls_config = Self::build_tls_config(Self::native_cert_store());
         let transport_config = TransportConfig::default();
-
-        //let mut quic_config = QuicClientConfig::new(Arc::new(tls_config));
-        //quic_config.transport_config(transport_config.clone());
 
         ClientConfigBuilder(WantsTransportConfigClient {
             bind_address: self.0.bind_address,
@@ -311,6 +319,7 @@ pub struct WantsTransportConfigServer {
     bind_address: SocketAddr,
     tls_config: TlsServerConfig,
     transport_config: quinn::TransportConfig,
+    migration: bool,
 }
 
 /// Config builder state where transport properties can be set.
