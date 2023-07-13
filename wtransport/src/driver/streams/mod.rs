@@ -225,6 +225,11 @@ pub mod biremote {
                 proto: self.proto.upgrade(),
             }
         }
+
+        #[inline(always)]
+        pub fn id(&self) -> StreamId {
+            self.stream.0.id()
+        }
     }
 
     impl StreamBiRemoteH3 {
@@ -353,6 +358,11 @@ pub mod uniremote {
                 stream: self.stream,
                 proto,
             })
+        }
+
+        #[inline(always)]
+        pub fn id(&self) -> StreamId {
+            self.stream.id()
         }
     }
 
