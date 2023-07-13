@@ -14,6 +14,10 @@ use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
+use tracing::debug;
+use tracing::debug_span;
+use tracing::trace;
+use tracing::Instrument;
 use utils::BiChannelEndpoint;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::Frame;
@@ -56,7 +60,8 @@ impl Driver {
                 ready_datagrams.0,
                 driver_result.0,
             )
-            .run(),
+            .run()
+            .instrument(debug_span!("Driver")),
         );
 
         Self {
@@ -276,10 +281,14 @@ mod worker {
         }
 
         pub async fn run(mut self) {
+            debug!("Started");
+
             let error = self
                 .run_impl()
                 .await
                 .expect_err("Worker must return an error");
+
+            debug!("Ended with error: {:?}", error);
 
             if let DriverError::Proto(error_code) = &error {
                 self.quic_connection
@@ -382,12 +391,15 @@ mod worker {
             ready_uni_h3_streams: &mpsc::Sender<Result<StreamUniRemoteH3, DriverError>>,
             ready_uni_wt_streams: &mpsc::Sender<StreamUniRemoteWT>,
         ) -> Result<(), DriverError> {
+            trace!("H3 uni queue capacity: {}", ready_uni_h3_streams.capacity());
+
             let h3_slot = ready_uni_h3_streams
                 .clone()
                 .reserve_owned()
                 .await
                 .expect("Receiver cannot be dropped");
 
+            trace!("WT uni queue capacity: {}", ready_uni_wt_streams.capacity());
             let wt_slot = match ready_uni_wt_streams.clone().reserve_owned().await {
                 Ok(wt_slot) => wt_slot,
                 Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
@@ -397,25 +409,34 @@ mod worker {
                 .await
                 .ok_or(DriverError::NotConnected)?;
 
-            tokio::spawn(async move {
-                let stream_h3 = match stream_quic.upgrade().await {
-                    Ok(stream_h3) => stream_h3,
-                    Err(ProtoReadError::H3(error_code)) => {
-                        h3_slot.send(Err(DriverError::Proto(error_code)));
-                        return;
-                    }
-                    Err(ProtoReadError::IO(_)) => {
-                        return;
-                    }
-                };
+            let stream_id = stream_quic.id();
+            debug!("New incoming uni stream ({})", stream_id);
 
-                if matches!(stream_h3.kind(), StreamKind::WebTransport) {
-                    let stream_wt = stream_h3.upgrade();
-                    wt_slot.send(stream_wt);
-                } else {
-                    h3_slot.send(Ok(stream_h3));
+            tokio::spawn(
+                async move {
+                    let stream_h3 = match stream_quic.upgrade().await {
+                        Ok(stream_h3) => stream_h3,
+                        Err(ProtoReadError::H3(error_code)) => {
+                            h3_slot.send(Err(DriverError::Proto(error_code)));
+                            return;
+                        }
+                        Err(ProtoReadError::IO(_)) => {
+                            return;
+                        }
+                    };
+
+                    let stream_kind = stream_h3.kind();
+                    debug!("Type: {:?}", stream_kind);
+
+                    if matches!(stream_kind, StreamKind::WebTransport) {
+                        let stream_wt = stream_h3.upgrade();
+                        wt_slot.send(stream_wt);
+                    } else {
+                        h3_slot.send(Ok(stream_h3));
+                    }
                 }
-            });
+                .instrument(debug_span!("Stream", "id={}", stream_id)),
+            );
 
             Ok(())
         }
@@ -427,12 +448,14 @@ mod worker {
             >,
             ready_bi_wt_streams: &mpsc::Sender<StreamBiRemoteWT>,
         ) -> Result<(), DriverError> {
+            trace!("H3 bi queue capacity: {}", ready_bi_h3_streams.capacity());
             let h3_slot = ready_bi_h3_streams
                 .clone()
                 .reserve_owned()
                 .await
                 .expect("Receiver cannot be dropped");
 
+            trace!("WT bi queue capacity: {}", ready_bi_wt_streams.capacity());
             let wt_slot = match ready_bi_wt_streams.clone().reserve_owned().await {
                 Ok(wt_slot) => wt_slot,
                 Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
@@ -442,30 +465,38 @@ mod worker {
                 .await
                 .ok_or(DriverError::NotConnected)?;
 
-            tokio::spawn(async move {
-                let mut stream_h3 = stream_quic.upgrade();
+            let stream_id = stream_quic.id();
+            debug!("New incoming bi stream ({})", stream_id);
 
-                let frame = match stream_h3.read_frame().await {
-                    Ok(frame) => frame,
-                    Err(ProtoReadError::H3(error_code)) => {
-                        h3_slot.send(Err(DriverError::Proto(error_code)));
-                        return;
-                    }
-                    Err(ProtoReadError::IO(_)) => {
-                        return;
-                    }
-                };
+            tokio::spawn(
+                async move {
+                    let mut stream_h3 = stream_quic.upgrade();
 
-                match frame.session_id() {
-                    Some(session_id) => {
-                        let stream_wt = stream_h3.upgrade(session_id);
-                        wt_slot.send(stream_wt);
-                    }
-                    None => {
-                        h3_slot.send(Ok((stream_h3, frame)));
+                    let frame = match stream_h3.read_frame().await {
+                        Ok(frame) => frame,
+                        Err(ProtoReadError::H3(error_code)) => {
+                            h3_slot.send(Err(DriverError::Proto(error_code)));
+                            return;
+                        }
+                        Err(ProtoReadError::IO(_)) => {
+                            return;
+                        }
+                    };
+
+                    debug!("First frame kind: {:?}", frame.kind());
+
+                    match frame.session_id() {
+                        Some(session_id) => {
+                            let stream_wt = stream_h3.upgrade(session_id);
+                            wt_slot.send(stream_wt);
+                        }
+                        None => {
+                            h3_slot.send(Ok((stream_h3, frame)));
+                        }
                     }
                 }
-            });
+                .instrument(debug_span!("Stream", "id={}", stream_id)),
+            );
 
             Ok(())
         }
