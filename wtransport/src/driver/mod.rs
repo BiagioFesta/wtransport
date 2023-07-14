@@ -16,6 +16,7 @@ use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tracing::debug;
 use tracing::debug_span;
+use tracing::instrument;
 use tracing::trace;
 use tracing::Instrument;
 use utils::BiChannelEndpoint;
@@ -61,7 +62,7 @@ impl Driver {
                 driver_result.0,
             )
             .run()
-            .instrument(debug_span!("Driver")),
+            .instrument(debug_span!("Driver", quic_id = quic_connection.stable_id())),
         );
 
         Self {
@@ -574,6 +575,7 @@ mod worker {
             Ok(())
         }
 
+        #[instrument(skip_all, name = "Stream", fields(id = %stream.id()))]
         fn handle_bi_h3_stream(
             &mut self,
             mut stream: StreamBiRemoteH3,
