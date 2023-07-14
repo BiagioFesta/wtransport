@@ -17,8 +17,6 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
     - uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
     - name: Build
       run: cargo build --all-targets --all-features --verbose
     - name: Run tests
@@ -28,8 +26,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
       - name: Clippy
         run: cargo clippy --all-targets -- -D warnings
       - name: Fmt
@@ -39,7 +35,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
       - uses: actions/setup-python@v3
       - uses: pre-commit/action@v3.0.0
