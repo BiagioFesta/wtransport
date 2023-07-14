@@ -267,6 +267,11 @@ pub mod biremote {
         }
 
         #[inline(always)]
+        pub fn id(&self) -> StreamId {
+            self.stream.0.id()
+        }
+
+        #[inline(always)]
         pub fn into_stream(self) -> (QuicSendStream, QuicRecvStream) {
             self.stream
         }
@@ -391,6 +396,11 @@ pub mod uniremote {
         #[inline(always)]
         pub fn session_id(&self) -> SessionId {
             self.proto.session_id()
+        }
+
+        #[inline(always)]
+        pub fn id(&self) -> StreamId {
+            self.stream.id()
         }
 
         #[inline(always)]

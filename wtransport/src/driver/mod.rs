@@ -126,6 +126,12 @@ impl Driver {
             if stream.session_id() == session_id {
                 return Ok(stream);
             } else {
+                debug!(
+                    "Discarding WT stream (stream_id: {}, session_id: {})",
+                    stream.id(),
+                    stream.session_id()
+                );
+
                 stream
                     .into_stream()
                     .stop(ErrorCode::BufferedStreamRejected.to_code())
@@ -146,6 +152,12 @@ impl Driver {
             if stream.session_id() == session_id {
                 return Ok(stream);
             } else {
+                debug!(
+                    "Discarding WT stream (stream_id: {}, session_id: {})",
+                    stream.id(),
+                    stream.session_id()
+                );
+
                 stream
                     .into_stream()
                     .1
@@ -169,6 +181,11 @@ impl Driver {
             if datagram.session_id() == session_id {
                 return Ok(datagram);
             }
+
+            debug!(
+                "Incoming datagram discarded (session_id: {})",
+                datagram.session_id()
+            );
         }
     }
 
