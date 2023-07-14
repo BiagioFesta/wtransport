@@ -125,7 +125,7 @@ impl Connection {
         self.quic_connection.stable_id()
     }
 
-    /// Compute(s) the maximum size of datagrams that may be passed to [`send_datagram()`].
+    /// Computes the maximum size of datagrams that may be passed to [`send_datagram()`].
     ///
     /// Returns `None` if datagrams are unsupported by the peer or disabled locally.
     ///
