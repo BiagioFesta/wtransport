@@ -4,7 +4,7 @@
 
 [![Documentation](https://docs.rs/wtransport/badge.svg)](https://docs.rs/wtransport/)
 [![Crates.io](https://img.shields.io/crates/v/wtransport.svg)](https://crates.io/crates/wtransport)
-[![RustCI](https://github.com/BiagioFesta/wtransport/actions/workflows/rust.yml/badge.svg?branch=master)](https://github.com/BiagioFesta/wtransport/actions/workflows/rust.yml)
+[![CI](https://github.com/BiagioFesta/wtransport/actions/workflows/ci.yml/badge.svg)](https://github.com/BiagioFesta/wtransport/actions/workflows/ci.yml)
 [![Zulip chat](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://wtransport.zulipchat.com/)
 
 # WTransport
