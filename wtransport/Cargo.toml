@@ -36,7 +36,7 @@ rcgen = "0.10.0"
 ring = "0.16.20"
 time = "0.3.21"
 tokio = { version = "1.28.1", features = ["rt", "rt-multi-thread", "macros"] }
-tracing-subscriber = "0.3.17"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 [features]
 default = []

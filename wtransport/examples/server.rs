@@ -6,6 +6,8 @@ use tracing::error;
 use tracing::info;
 use tracing::info_span;
 use tracing::Instrument;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::EnvFilter;
 use wtransport::endpoint::IncomingSession;
 use wtransport::tls::Certificate;
 use wtransport::Endpoint;
@@ -13,7 +15,7 @@ use wtransport::ServerConfig;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    tracing_subscriber::fmt::init();
+    init_logging();
 
     let config = ServerConfig::builder()
         .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
@@ -98,4 +100,16 @@ async fn handle_connection_impl(incoming_session: IncomingSession) -> Result<()>
             }
         }
     }
+}
+
+fn init_logging() {
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
+
+    tracing_subscriber::fmt()
+        .with_target(true)
+        .with_level(true)
+        .with_env_filter(env_filter)
+        .init();
 }
