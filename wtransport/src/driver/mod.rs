@@ -392,14 +392,12 @@ mod worker {
             ready_uni_wt_streams: &mpsc::Sender<StreamUniRemoteWT>,
         ) -> Result<(), DriverError> {
             trace!("H3 uni queue capacity: {}", ready_uni_h3_streams.capacity());
-
             let h3_slot = ready_uni_h3_streams
                 .clone()
                 .reserve_owned()
                 .await
                 .expect("Receiver cannot be dropped");
 
-            trace!("WT uni queue capacity: {}", ready_uni_wt_streams.capacity());
             let wt_slot = match ready_uni_wt_streams.clone().reserve_owned().await {
                 Ok(wt_slot) => wt_slot,
                 Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
@@ -455,7 +453,6 @@ mod worker {
                 .await
                 .expect("Receiver cannot be dropped");
 
-            trace!("WT bi queue capacity: {}", ready_bi_wt_streams.capacity());
             let wt_slot = match ready_bi_wt_streams.clone().reserve_owned().await {
                 Ok(wt_slot) => wt_slot,
                 Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
