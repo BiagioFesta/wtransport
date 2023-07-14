@@ -591,6 +591,8 @@ mod worker {
                         Err(error_code) => return Err(DriverError::Proto(error_code)),
                     };
 
+                    debug!("Headers: {:?}", headers);
+
                     let stream_session = match SessionRequest::try_from(headers) {
                         Ok(session_request) => stream.into_session(session_request),
                         Err(HeadersParseError::MethodNotConnect) => {
@@ -611,6 +613,7 @@ mod worker {
                     match self.ready_sessions.try_send(stream_session) {
                         Ok(()) => {}
                         Err(TrySendError::Full(mut stream)) => {
+                            debug!("Discarding session request: sessions queue is full");
                             stream
                                 .stop(ErrorCode::RequestRejected.to_code())
                                 .expect("Stream not already stopped");
@@ -645,6 +648,8 @@ mod worker {
         }
 
         fn handle_remote_settings(&mut self, settings: Settings) -> Result<(), DriverError> {
+            debug!("Received: {:?}", settings);
+
             match self.ready_settings.try_send(settings) {
                 Ok(()) => Ok(()),
                 Err(mpsc::error::TrySendError::Closed(_)) => Err(DriverError::NotConnected),
