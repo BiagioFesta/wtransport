@@ -18,6 +18,7 @@ use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio::net::lookup_host;
+use tracing::debug;
 use url::Host;
 use url::Url;
 use wtransport_proto::error::ErrorCode;
@@ -62,6 +63,8 @@ impl Endpoint<Server> {
             .accept()
             .await
             .expect("Endpoint cannot be closed");
+
+        debug!("New incoming QUIC connection");
 
         IncomingSession::new(quic_connecting)
     }
