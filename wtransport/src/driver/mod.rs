@@ -211,12 +211,9 @@ impl Driver {
         session_id: SessionId,
         payload: &[u8],
     ) -> Result<(), SendDatagramError> {
-        let datagram = Datagram::write(session_id, payload);
+        let quic_datagram = Datagram::write(session_id, payload).into_quic_bytes();
 
-        match self
-            .quic_connection
-            .send_datagram(datagram.into_quic_bytes())
-        {
+        match self.quic_connection.send_datagram(quic_datagram) {
             Ok(()) => Ok(()),
             Err(quinn::SendDatagramError::UnsupportedByPeer) => {
                 Err(SendDatagramError::UnsupportedByPeer)

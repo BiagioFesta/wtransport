@@ -137,7 +137,9 @@ impl Connection {
     /// Not necessarily the maximum size of received datagrams.
     #[inline(always)]
     pub fn max_datagram_size(&self) -> Option<usize> {
-        self.quic_connection.max_datagram_size()
+        self.quic_connection
+            .max_datagram_size()
+            .map(|quic_max_size| quic_max_size - self.session_id.into_varint().size())
     }
 
     /// Current best estimate of this connection's latency (round-trip-time).
