@@ -1,0 +1,20 @@
+name: MSRV
+
+on:
+  schedule:
+    - cron: "0 9,18 * * *"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  msrv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup
+        run: cargo install cargo-msrv
+      - name: Msrv Check WTransport
+        run: cargo msrv --path wtransport verify
+      - name: Msrv Check WTransport-Proto
+        run: cargo msrv --path wtransport-proto verify
