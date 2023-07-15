@@ -68,7 +68,16 @@ impl<'a> Datagram<'a> {
     /// Returns the needed capacity to write this datagram into a buffer.
     #[inline(always)]
     pub fn write_size(&self) -> usize {
-        self.qstream_id.into_varint().size() + self.payload.len()
+        Self::header_size(self.qstream_id) + self.payload.len()
+    }
+
+    /// Returns the HTTP3 header.
+    ///
+    /// Computes the space overhead (HTTP3 header) due to the `qstream_id`
+    /// encoding into an HTTP3 datagram.
+    #[inline(always)]
+    pub fn header_size(qstream_id: QStreamId) -> usize {
+        qstream_id.into_varint().size()
     }
 
     /// Returns the associated [`QStreamId`].

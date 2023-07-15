@@ -42,6 +42,11 @@ impl Datagram {
         }
     }
 
+    #[inline(always)]
+    pub(crate) fn header_size(session_id: SessionId) -> usize {
+        H3Datagram::header_size(QStreamId::from_session_id(session_id))
+    }
+
     /// Returns the associated [`SessionId`].
     #[inline(always)]
     pub fn session_id(&self) -> SessionId {
