@@ -16,11 +16,11 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-    - uses: actions/checkout@v3
-    - name: Build
-      run: cargo build --all-targets --all-features --verbose
-    - name: Run tests
-      run: cargo test --verbose
+      - uses: actions/checkout@v3
+      - name: Build
+        run: cargo build --all-targets --all-features --verbose
+      - name: Run tests
+        run: cargo test --verbose
 
   lint:
     runs-on: ubuntu-latest
