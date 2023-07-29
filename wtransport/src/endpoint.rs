@@ -9,6 +9,7 @@ use crate::driver::Driver;
 use crate::error::ConnectingError;
 use crate::error::ConnectionError;
 use quinn::Endpoint as QuicEndpoint;
+use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
@@ -311,9 +312,9 @@ impl SessionRequest {
         self.stream_session.request().user_agent()
     }
 
-    /// Returns the whole headers associated with the request.
-    pub fn headers(&self) -> &Headers {
-        self.stream_session.request().headers()
+    /// Returns all header fields associated with the request.
+    pub fn headers(&self) -> &HashMap<String, String> {
+        self.stream_session.request().headers().as_ref()
     }
 
     /// Accepts the client request and it establishes the WebTransport session.

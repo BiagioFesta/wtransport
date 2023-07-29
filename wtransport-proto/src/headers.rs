@@ -86,6 +86,12 @@ where
     }
 }
 
+impl AsRef<HashMap<String, String>> for Headers {
+    fn as_ref(&self) -> &HashMap<String, String> {
+        &self.0
+    }
+}
+
 impl From<StreamId> for ls_qpack::StreamId {
     #[inline(always)]
     fn from(value: StreamId) -> Self {
