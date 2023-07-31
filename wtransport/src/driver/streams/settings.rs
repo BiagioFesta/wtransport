@@ -26,7 +26,7 @@ impl LocalSettingsStream {
             .qpack_blocked_streams(VarInt::from_u32(0))
             .enable_webtransport()
             .enable_h3_datagrams()
-            .webtransport_max_sessions(VarInt::from_u32(1))
+            // .webtransport_max_sessions(VarInt::from_u32(1))
             .build();
 
         Self {
