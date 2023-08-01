@@ -28,6 +28,9 @@ pub enum SettingId {
     /// SETTINGS_QPACK_BLOCKED_STREAMS.
     QPackBlockedStreams,
 
+    /// SETTINGS_ENABLE_CONNECT_PROTOCOL.
+    EnableConnectProtocol,
+
     /// SETTINGS_H3_DATAGRAM.
     H3Datagram,
 
@@ -54,6 +57,7 @@ impl SettingId {
                 setting_ids::SETTINGS_QPACK_MAX_TABLE_CAPACITY => Ok(Self::QPackMaxTableCapacity),
                 setting_ids::SETTINGS_MAX_FIELD_SECTION_SIZE => Ok(Self::MaxFieldSectionSize),
                 setting_ids::SETTINGS_QPACK_BLOCKED_STREAMS => Ok(Self::QPackBlockedStreams),
+                setting_ids::SETTINGS_ENABLE_CONNECT_PROTOCOL => Ok(Self::EnableConnectProtocol),
                 setting_ids::SETTINGS_H3_DATAGRAM => Ok(Self::H3Datagram),
                 setting_ids::SETTINGS_ENABLE_WEBTRANSPORT => Ok(Self::EnableWebTransport),
                 setting_ids::SETTINGS_WEBTRANSPORT_MAX_SESSIONS => {
@@ -69,6 +73,7 @@ impl SettingId {
             Self::QPackMaxTableCapacity => setting_ids::SETTINGS_QPACK_MAX_TABLE_CAPACITY,
             Self::MaxFieldSectionSize => setting_ids::SETTINGS_MAX_FIELD_SECTION_SIZE,
             Self::QPackBlockedStreams => setting_ids::SETTINGS_QPACK_BLOCKED_STREAMS,
+            Self::EnableConnectProtocol => setting_ids::SETTINGS_ENABLE_CONNECT_PROTOCOL,
             Self::H3Datagram => setting_ids::SETTINGS_H3_DATAGRAM,
             Self::EnableWebTransport => setting_ids::SETTINGS_ENABLE_WEBTRANSPORT,
             Self::WebTransportMaxSessions => setting_ids::SETTINGS_WEBTRANSPORT_MAX_SESSIONS,
@@ -197,6 +202,14 @@ impl SettingsBuilder {
         self
     }
 
+    /// Enables `CONNECT` method.
+    pub fn enable_connect_protocol(mut self) -> Self {
+        self.0
+             .0
+            .insert(SettingId::EnableConnectProtocol, VarInt::from_u32(1));
+        self
+    }
+
     /// Enables *WebTransport* support.
     pub fn enable_webtransport(mut self) -> Self {
         self.0
@@ -229,6 +242,7 @@ mod setting_ids {
     pub const SETTINGS_QPACK_MAX_TABLE_CAPACITY: VarInt = VarInt::from_u32(0x01);
     pub const SETTINGS_MAX_FIELD_SECTION_SIZE: VarInt = VarInt::from_u32(0x06);
     pub const SETTINGS_QPACK_BLOCKED_STREAMS: VarInt = VarInt::from_u32(0x07);
+    pub const SETTINGS_ENABLE_CONNECT_PROTOCOL: VarInt = VarInt::from_u32(0x08);
     pub const SETTINGS_H3_DATAGRAM: VarInt = VarInt::from_u32(0x33);
     pub const SETTINGS_ENABLE_WEBTRANSPORT: VarInt = VarInt::from_u32(0x2b603742);
     pub const SETTINGS_WEBTRANSPORT_MAX_SESSIONS: VarInt = VarInt::from_u32(0xc671706a);

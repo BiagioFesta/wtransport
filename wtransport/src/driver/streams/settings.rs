@@ -24,6 +24,7 @@ impl LocalSettingsStream {
         let settings = Settings::builder()
             .qpack_max_table_capacity(VarInt::from_u32(0))
             .qpack_blocked_streams(VarInt::from_u32(0))
+            .enable_connect_protocol() // TODO(biagio): it would be nice to have this only for server
             .enable_webtransport()
             .enable_h3_datagrams()
             .webtransport_max_sessions(VarInt::from_u32(1))
