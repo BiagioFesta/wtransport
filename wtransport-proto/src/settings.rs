@@ -229,7 +229,7 @@ mod setting_ids {
     pub const SETTINGS_QPACK_MAX_TABLE_CAPACITY: VarInt = VarInt::from_u32(0x01);
     pub const SETTINGS_MAX_FIELD_SECTION_SIZE: VarInt = VarInt::from_u32(0x06);
     pub const SETTINGS_QPACK_BLOCKED_STREAMS: VarInt = VarInt::from_u32(0x07);
-    pub const SETTINGS_H3_DATAGRAM: VarInt = VarInt::from_u32(0xffd277);
+    pub const SETTINGS_H3_DATAGRAM: VarInt = VarInt::from_u32(0x33);
     pub const SETTINGS_ENABLE_WEBTRANSPORT: VarInt = VarInt::from_u32(0x2b603742);
     pub const SETTINGS_WEBTRANSPORT_MAX_SESSIONS: VarInt = VarInt::from_u32(0xc671706a);
 }
