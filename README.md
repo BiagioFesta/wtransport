@@ -131,3 +131,9 @@ Enjoy!
 ## Examples
 * https://github.com/BiagioFesta/wtransport-examples
 * [Local Examples](wtransport/examples/)
+
+## Other languages
+
+WTransport has bindings for the following languages:
+
+- Elixir: [wtransport-elixir](https://github.com/bugnano/wtransport-elixir)
