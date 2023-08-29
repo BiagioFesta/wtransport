@@ -63,7 +63,25 @@ impl ServerConfigBuilder<WantsCertificate> {
         self,
         certificate: Certificate,
     ) -> ServerConfigBuilder<WantsTransportConfigServer> {
-        let tls_config = Self::build_tls_config(certificate);
+        self.common(|builder| builder.with_single_cert(certificate.certificates, certificate.key))
+    }
+
+    /// Sets the TLS certificate resolver the server will use for incoming
+    /// WebTransport connections.
+    pub fn with_resolver(
+        self,
+        cert_resolver: Arc<dyn rustls::server::ResolvesServerCert>,
+    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
+        self.common(|builder| Ok(builder.with_cert_resolver(cert_resolver)))
+    }
+
+    fn common(
+        self,
+        f: impl FnOnce(
+            rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
+        ) -> Result<rustls::ServerConfig, rustls::Error>,
+    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
+        let tls_config = Self::build_tls_config(f);
         let transport_config = TransportConfig::default();
 
         ServerConfigBuilder(WantsTransportConfigServer {
@@ -74,12 +92,16 @@ impl ServerConfigBuilder<WantsCertificate> {
         })
     }
 
-    fn build_tls_config(certificate: Certificate) -> TlsServerConfig {
-        let mut tls_config = TlsServerConfig::builder()
+    fn build_tls_config(
+        f: impl FnOnce(
+            rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
+        ) -> Result<rustls::ServerConfig, rustls::Error>,
+    ) -> TlsServerConfig {
+        let tls_config_builder = TlsServerConfig::builder()
             .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(certificate.certificates, certificate.key)
-            .unwrap(); // TODO(bfesta): handle this error
+            .with_no_client_auth();
+        let tls_config_builder = f(tls_config_builder);
+        let mut tls_config = tls_config_builder.unwrap(); // TODO(bfesta): handle this error
 
         tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
 
