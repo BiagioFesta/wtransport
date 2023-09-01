@@ -70,7 +70,7 @@ async fn main() -> Result<()> {
         .connect("https://[::1]:4433")
         .await?;
 
-    let mut stream = connection.open_bi().await?.await?;
+    let stream = connection.open_bi().await?.await?;
     // ...
 }
 ```
