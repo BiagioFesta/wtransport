@@ -29,23 +29,23 @@ impl ServerConfig {
     pub fn builder() -> ServerConfigBuilder<WantsBindAddress> {
         ServerConfigBuilder::default()
     }
-}
 
-/// Build a new [`rustls::ServerConfig`] tweaked to the needs of [`wtransport`].
-pub fn build_tls_config(
-    customize: impl FnOnce(
-        rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
-    ) -> Result<rustls::ServerConfig, rustls::Error>,
-) -> TlsServerConfig {
-    let tls_config_builder = TlsServerConfig::builder()
-        .with_safe_defaults()
-        .with_no_client_auth();
-    let tls_config_builder = customize(tls_config_builder);
-    let mut tls_config = tls_config_builder.unwrap(); // TODO(bfesta): handle this error
+    /// Build a new [`rustls::ServerConfig`] tweaked to the needs of [`wtransport`].
+    pub fn tls(
+        customize: impl FnOnce(
+            rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
+        ) -> Result<rustls::ServerConfig, rustls::Error>,
+    ) -> TlsServerConfig {
+        let tls_config_builder = TlsServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth();
+        let tls_config_builder = customize(tls_config_builder);
+        let mut tls_config = tls_config_builder.unwrap(); // TODO(bfesta): handle this error
 
-    tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
+        tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
 
-    tls_config
+        tls_config
+    }
 }
 
 /// Server builder configuration.
@@ -80,7 +80,7 @@ impl ServerConfigBuilder<WantsCertificate> {
         self,
         certificate: Certificate,
     ) -> ServerConfigBuilder<WantsTransportConfigServer> {
-        let tls_config = build_tls_config(|builder| {
+        let tls_config = ServerConfig::tls(|builder| {
             builder.with_single_cert(certificate.certificates, certificate.key)
         });
         self.with_tls_config(tls_config)
