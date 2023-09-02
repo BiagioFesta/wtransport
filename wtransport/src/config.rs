@@ -31,6 +31,23 @@ impl ServerConfig {
     }
 }
 
+/// Build a new [`rustls::ServerConfig`] tweaked to the needs of [`wtransport`].
+pub fn build_tls_config(
+    customize: impl FnOnce(
+        rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
+    ) -> Result<rustls::ServerConfig, rustls::Error>,
+) -> TlsServerConfig {
+    let tls_config_builder = TlsServerConfig::builder()
+        .with_safe_defaults()
+        .with_no_client_auth();
+    let tls_config_builder = customize(tls_config_builder);
+    let mut tls_config = tls_config_builder.unwrap(); // TODO(bfesta): handle this error
+
+    tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
+
+    tls_config
+}
+
 /// Server builder configuration.
 ///
 /// The builder might have different state at compile time.
@@ -63,64 +80,59 @@ impl ServerConfigBuilder<WantsCertificate> {
         self,
         certificate: Certificate,
     ) -> ServerConfigBuilder<WantsTransportConfigServer> {
-        self.common(|builder| builder.with_single_cert(certificate.certificates, certificate.key))
+        let tls_config = build_tls_config(|builder| {
+            builder.with_single_cert(certificate.certificates, certificate.key)
+        });
+        self.with_tls_config(tls_config)
     }
 
     /// Sets the TLS certificate resolver the server will use for incoming
     /// WebTransport connections.
-    pub fn with_resolver(
-        self,
-        cert_resolver: Arc<dyn rustls::server::ResolvesServerCert>,
-    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
-        self.common(|builder| Ok(builder.with_cert_resolver(cert_resolver)))
-    }
-
-    /// Sets the TLS certificate resolver the server will use for incoming
-    /// WebTransport connections.
-    pub fn with_raw(
+    pub fn with_tls_config(
         self,
         tls_config: TlsServerConfig,
-        transport_config: quinn::TransportConfig,
     ) -> ServerConfigBuilder<WantsTransportConfigServer> {
         ServerConfigBuilder(WantsTransportConfigServer {
             bind_address: self.0.bind_address,
+            tls_config,
+        })
+    }
+
+    /// Build the [`ServerConfig`] immediately with the low-level
+    /// [`quinn::ServerConfig`].
+    pub fn build(self, quic_config: quinn::ServerConfig) -> ServerConfig {
+        ServerConfig {
+            bind_address: self.0.bind_address,
+            quic_config,
+        }
+    }
+}
+
+impl ServerConfigBuilder<WantsTransportConfigServer> {
+    /// Sets the default transport config.
+    pub fn with_default(self) -> ServerConfigBuilder<ReadyServer> {
+        self.with_transport_config(quinn::TransportConfig::default())
+    }
+
+    /// Sets the transport config to the provided [`quinn::TransportConfig`].
+    pub fn with_transport_config(
+        self,
+        transport_config: quinn::TransportConfig,
+    ) -> ServerConfigBuilder<ReadyServer> {
+        let WantsTransportConfigServer {
+            bind_address,
+            tls_config,
+        } = self.0;
+        ServerConfigBuilder(ReadyServer {
+            bind_address,
             tls_config,
             transport_config,
             migration: true,
         })
     }
-
-    /// Build a new [`rustls::ServerConfig`] tweaked to the needs
-    /// of [`wtransport`].
-    pub fn build_tls_config(
-        customize: impl FnOnce(
-            rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
-        ) -> Result<rustls::ServerConfig, rustls::Error>,
-    ) -> TlsServerConfig {
-        let tls_config_builder = TlsServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth();
-        let tls_config_builder = customize(tls_config_builder);
-        let mut tls_config = tls_config_builder.unwrap(); // TODO(bfesta): handle this error
-
-        tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
-
-        tls_config
-    }
-
-    fn common(
-        self,
-        f: impl FnOnce(
-            rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
-        ) -> Result<rustls::ServerConfig, rustls::Error>,
-    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
-        let tls_config = Self::build_tls_config(f);
-        let transport_config = TransportConfig::default();
-        self.with_raw(tls_config, transport_config)
-    }
 }
 
-impl ServerConfigBuilder<WantsTransportConfigServer> {
+impl ServerConfigBuilder<ReadyServer> {
     /// Completes configuration process.
     pub fn build(self) -> ServerConfig {
         let mut quic_config = QuicServerConfig::with_crypto(Arc::new(self.0.tls_config));
@@ -349,6 +361,12 @@ pub struct WantsRootStore {
 
 /// Config builder state where transport properties can be set.
 pub struct WantsTransportConfigServer {
+    bind_address: SocketAddr,
+    tls_config: TlsServerConfig,
+}
+
+/// Config builder state that is ready to be built.
+pub struct ReadyServer {
     bind_address: SocketAddr,
     tls_config: TlsServerConfig,
     transport_config: quinn::TransportConfig,
