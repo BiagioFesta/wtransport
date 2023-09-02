@@ -75,15 +75,13 @@ impl ServerConfigBuilder<WantsCertificate> {
         self.common(|builder| Ok(builder.with_cert_resolver(cert_resolver)))
     }
 
-    fn common(
+    /// Sets the TLS certificate resolver the server will use for incoming
+    /// WebTransport connections.
+    pub fn with_raw(
         self,
-        f: impl FnOnce(
-            rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
-        ) -> Result<rustls::ServerConfig, rustls::Error>,
+        tls_config: TlsServerConfig,
+        transport_config: quinn::TransportConfig,
     ) -> ServerConfigBuilder<WantsTransportConfigServer> {
-        let tls_config = Self::build_tls_config(f);
-        let transport_config = TransportConfig::default();
-
         ServerConfigBuilder(WantsTransportConfigServer {
             bind_address: self.0.bind_address,
             tls_config,
@@ -92,20 +90,33 @@ impl ServerConfigBuilder<WantsCertificate> {
         })
     }
 
-    fn build_tls_config(
-        f: impl FnOnce(
+    /// Build a new [`rustls::ServerConfig`] tweaked to the needs
+    /// of [`wtransport`].
+    pub fn build_tls_config(
+        customize: impl FnOnce(
             rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
         ) -> Result<rustls::ServerConfig, rustls::Error>,
     ) -> TlsServerConfig {
         let tls_config_builder = TlsServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth();
-        let tls_config_builder = f(tls_config_builder);
+        let tls_config_builder = customize(tls_config_builder);
         let mut tls_config = tls_config_builder.unwrap(); // TODO(bfesta): handle this error
 
         tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
 
         tls_config
+    }
+
+    fn common(
+        self,
+        f: impl FnOnce(
+            rustls::ConfigBuilder<rustls::ServerConfig, rustls::server::WantsServerCert>,
+        ) -> Result<rustls::ServerConfig, rustls::Error>,
+    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
+        let tls_config = Self::build_tls_config(f);
+        let transport_config = TransportConfig::default();
+        self.with_raw(tls_config, transport_config)
     }
 }
 
