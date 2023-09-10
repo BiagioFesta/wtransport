@@ -12,7 +12,7 @@
 //!
 //! # async fn run() {
 //! let config = ServerConfig::builder()
-//!     .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
+//!     .with_bind_default(4433)
 //!     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap())
 //!     .build();
 //!

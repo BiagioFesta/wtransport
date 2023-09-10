@@ -1,12 +1,10 @@
-use std::net::Ipv6Addr;
-use std::net::SocketAddr;
 use wtransport::ClientConfig;
 use wtransport::Endpoint;
 
 #[tokio::main]
 async fn main() {
     let config = ClientConfig::builder()
-        .with_bind_address(SocketAddr::new(Ipv6Addr::UNSPECIFIED.into(), 0))
+        .with_bind_default()
         .with_no_cert_validation()
         .build();
 

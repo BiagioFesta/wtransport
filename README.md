@@ -39,7 +39,7 @@ It should be used with caution and may undergo changes as the WebTransport speci
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = ServerConfig::builder()
-        .with_bind_address("[::1]:4433".parse()?)
+        .with_bind_default(4433)
         .with_certificate(certificate)
         .build();
 
@@ -62,7 +62,7 @@ async fn main() -> Result<()> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = ClientConfig::builder()
-        .with_bind_address("[::]:0".parse()?)
+        .with_bind_default()
         .with_native_certs()
         .build();
 

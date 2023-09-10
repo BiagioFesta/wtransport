@@ -9,6 +9,12 @@ use crate::driver::Driver;
 use crate::error::ConnectingError;
 use crate::error::ConnectionError;
 use quinn::Endpoint as QuicEndpoint;
+use quinn::EndpointConfig as QuicEndpointConfig;
+use quinn::TokioRuntime;
+use socket2::Domain as SocketDomain;
+use socket2::Protocol as SocketProtocol;
+use socket2::Socket;
+use socket2::Type as SocketType;
 use std::collections::HashMap;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -16,6 +22,7 @@ use std::net::SocketAddr;
 use std::net::SocketAddrV4;
 use std::net::SocketAddrV6;
 use std::pin::Pin;
+use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use tokio::net::lookup_host;
@@ -43,13 +50,34 @@ pub struct Endpoint<Side> {
     _marker: PhantomData<Side>,
 }
 
+impl<Side> Endpoint<Side> {
+    fn bind_socket(bind_address: SocketAddr, only_v6: bool) -> std::io::Result<Socket> {
+        let domain = match bind_address {
+            SocketAddr::V4(_) => SocketDomain::IPV4,
+            SocketAddr::V6(_) => SocketDomain::IPV6,
+        };
+
+        let socket = Socket::new(domain, SocketType::DGRAM, Some(SocketProtocol::UDP))?;
+        socket.set_only_v6(only_v6)?;
+        socket.bind(&bind_address.into())?;
+
+        Ok(socket)
+    }
+}
+
 impl Endpoint<Server> {
     /// Constructs a *server* endpoint.
     pub fn server(server_config: ServerConfig) -> std::io::Result<Self> {
         let quic_config = server_config.quic_config;
-        let bind_address = server_config.bind_address;
+        let socket = Self::bind_socket(server_config.bind_address, server_config.bind_only_ipv6)?;
+        let runtime = Arc::new(TokioRuntime);
 
-        let endpoint = QuicEndpoint::server(quic_config, bind_address)?;
+        let endpoint = QuicEndpoint::new(
+            QuicEndpointConfig::default(),
+            Some(quic_config),
+            socket.into(),
+            runtime,
+        )?;
 
         Ok(Self {
             endpoint,
@@ -75,9 +103,11 @@ impl Endpoint<Client> {
     /// Constructs a *client* endpoint.
     pub fn client(client_config: ClientConfig) -> std::io::Result<Self> {
         let quic_config = client_config.quic_config;
-        let bind_address = client_config.bind_address;
+        let socket = Self::bind_socket(client_config.bind_address, client_config.bind_only_ipv6)?;
+        let runtime = Arc::new(TokioRuntime);
 
-        let mut endpoint = QuicEndpoint::client(bind_address)?;
+        let mut endpoint =
+            QuicEndpoint::new(QuicEndpointConfig::default(), None, socket.into(), runtime)?;
         endpoint.set_default_client_config(quic_config);
 
         Ok(Self {

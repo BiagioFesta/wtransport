@@ -23,6 +23,7 @@ quinn-proto = "0.10.1"
 rustls = "0.21.1"
 rustls-native-certs = "0.6.2"
 rustls-pemfile = "1.0.2"
+socket2 = "0.5.3"
 thiserror = "1.0.40"
 tokio = { version = "1.28.1", default-features = false, features = ["macros"] }
 tracing = "0.1.37"

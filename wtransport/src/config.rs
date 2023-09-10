@@ -5,10 +5,34 @@ use quinn::TransportConfig;
 use rustls::ClientConfig as TlsClientConfig;
 use rustls::RootCertStore;
 use rustls::ServerConfig as TlsServerConfig;
+use std::net::IpAddr;
+use std::net::Ipv4Addr;
+use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 use wtransport_proto::WEBTRANSPORT_ALPN;
+
+/// Configuration for IP address socket bind.
+pub enum IpBindConfig {
+    /// Bind to LOCALHOST IPv4 address (no IPv6).
+    LocalV4,
+
+    /// Bind to LOCALHOST IPv6 address (no IPv4).
+    LocalV6,
+
+    /// Bind to LOCALHOST both IPv4 and IPv6 address (dual stack).
+    LocalDual,
+
+    /// Bind to INADDR_ANY IPv4 address (no IPv6).
+    InAddrAnyV4,
+
+    /// Bind to INADDR_ANY IPv6 address (no IPv4).
+    InAddrAnyV6,
+
+    /// Bind to INADDR_ANY both IPv4 and IPv6 address (dual stack).
+    InAddrAnyDual,
+}
 
 /// Invalid idle timeout.
 #[derive(Debug)]
@@ -19,6 +43,7 @@ pub struct InvalidIdleTimeout;
 /// Configuration can be created via [`ServerConfig::builder`] function.
 pub struct ServerConfig {
     pub(crate) bind_address: SocketAddr,
+    pub(crate) bind_only_ipv6: bool,
     pub(crate) quic_config: QuicServerConfig,
 }
 
@@ -42,16 +67,48 @@ impl ServerConfig {
 /// # use wtransport::tls::Certificate;
 /// # use wtransport::ServerConfig;
 /// let config = ServerConfig::builder()
-///     .with_bind_address(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 4433))
+///     .with_bind_default(4433)
 ///     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap());
 /// ```
 pub struct ServerConfigBuilder<State>(State);
 
 impl ServerConfigBuilder<WantsBindAddress> {
+    /// Configures for accepting incoming connections binding ANY IP (both IPv4 and IPv6).
+    ///
+    /// `listening_port` is the port where the server will accept incoming connections.
+    pub fn with_bind_default(self, listening_port: u16) -> ServerConfigBuilder<WantsCertificate> {
+        self.with_bind_config(IpBindConfig::InAddrAnyDual, listening_port)
+    }
+
+    /// Sets the binding (local) socket address with a specific [`IpBindConfig`].
+    ///
+    /// `listening_port` is the port where the server will accept incoming connections.
+    pub fn with_bind_config(
+        self,
+        ip_bind_config: IpBindConfig,
+        listening_port: u16,
+    ) -> ServerConfigBuilder<WantsCertificate> {
+        let (ip_address, only_v6): (IpAddr, bool) = match ip_bind_config {
+            IpBindConfig::LocalV4 => (Ipv4Addr::LOCALHOST.into(), true),
+            IpBindConfig::LocalV6 => (Ipv4Addr::LOCALHOST.into(), true),
+            IpBindConfig::LocalDual => (Ipv6Addr::LOCALHOST.into(), false),
+            IpBindConfig::InAddrAnyV4 => (Ipv4Addr::UNSPECIFIED.into(), true),
+            IpBindConfig::InAddrAnyV6 => (Ipv6Addr::UNSPECIFIED.into(), true),
+            IpBindConfig::InAddrAnyDual => (Ipv6Addr::UNSPECIFIED.into(), false),
+        };
+
+        self.with_bind_address(SocketAddr::new(ip_address, listening_port), only_v6)
+    }
+
     /// Sets the binding (local) socket address for the endpoint.
-    pub fn with_bind_address(self, address: SocketAddr) -> ServerConfigBuilder<WantsCertificate> {
+    pub fn with_bind_address(
+        self,
+        address: SocketAddr,
+        only_v6: bool,
+    ) -> ServerConfigBuilder<WantsCertificate> {
         ServerConfigBuilder(WantsCertificate {
             bind_address: address,
+            bind_only_ipv6: only_v6,
         })
     }
 }
@@ -68,6 +125,7 @@ impl ServerConfigBuilder<WantsCertificate> {
 
         ServerConfigBuilder(WantsTransportConfigServer {
             bind_address: self.0.bind_address,
+            bind_only_ipv6: self.0.bind_only_ipv6,
             tls_config,
             transport_config,
             migration: true,
@@ -96,6 +154,7 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
 
         ServerConfig {
             bind_address: self.0.bind_address,
+            bind_only_ipv6: self.0.bind_only_ipv6,
             quic_config,
         }
     }
@@ -148,6 +207,7 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
 /// Configuration can be created via [`ClientConfig::builder`] function.
 pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
+    pub(crate) bind_only_ipv6: bool,
     pub(crate) quic_config: QuicClientConfig,
 }
 
@@ -169,16 +229,46 @@ impl ClientConfig {
 /// # use std::net::Ipv4Addr;
 /// # use std::net::SocketAddr;
 /// # use wtransport::ClientConfig;
-/// let config =
-///     ClientConfig::builder().with_bind_address(SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), 0));
+/// let config = ClientConfig::builder().with_bind_default();
 /// ```
 pub struct ClientConfigBuilder<State>(State);
 
 impl ClientConfigBuilder<WantsBindAddress> {
+    /// Configures for connecting binding ANY IP (both IPv4 and IPv6).
+    ///
+    /// Bind port will be randomly picked.
+    pub fn with_bind_default(self) -> ClientConfigBuilder<WantsRootStore> {
+        self.with_bind_config(IpBindConfig::InAddrAnyDual)
+    }
+
+    /// Sets the binding (local) socket address with a specific [`IpBindConfig`].
+    ///
+    /// Bind port will be randomly picked.
+    pub fn with_bind_config(
+        self,
+        ip_bind_config: IpBindConfig,
+    ) -> ClientConfigBuilder<WantsRootStore> {
+        let (ip_address, only_v6): (IpAddr, bool) = match ip_bind_config {
+            IpBindConfig::LocalV4 => (Ipv4Addr::LOCALHOST.into(), true),
+            IpBindConfig::LocalV6 => (Ipv4Addr::LOCALHOST.into(), true),
+            IpBindConfig::LocalDual => (Ipv6Addr::LOCALHOST.into(), false),
+            IpBindConfig::InAddrAnyV4 => (Ipv4Addr::UNSPECIFIED.into(), true),
+            IpBindConfig::InAddrAnyV6 => (Ipv6Addr::UNSPECIFIED.into(), true),
+            IpBindConfig::InAddrAnyDual => (Ipv6Addr::UNSPECIFIED.into(), false),
+        };
+
+        self.with_bind_address(SocketAddr::new(ip_address, 0), only_v6)
+    }
+
     /// Sets the binding (local) socket address for the endpoint.
-    pub fn with_bind_address(self, address: SocketAddr) -> ClientConfigBuilder<WantsRootStore> {
+    pub fn with_bind_address(
+        self,
+        address: SocketAddr,
+        only_v6: bool,
+    ) -> ClientConfigBuilder<WantsRootStore> {
         ClientConfigBuilder(WantsRootStore {
             bind_address: address,
+            bind_only_ipv6: only_v6,
         })
     }
 }
@@ -191,6 +281,7 @@ impl ClientConfigBuilder<WantsRootStore> {
 
         ClientConfigBuilder(WantsTransportConfigClient {
             bind_address: self.0.bind_address,
+            bind_only_ipv6: self.0.bind_only_ipv6,
             tls_config,
             transport_config,
         })
@@ -209,6 +300,7 @@ impl ClientConfigBuilder<WantsRootStore> {
 
         ClientConfigBuilder(WantsTransportConfigClient {
             bind_address: self.0.bind_address,
+            bind_only_ipv6: self.0.bind_only_ipv6,
             tls_config,
             transport_config,
         })
@@ -251,6 +343,7 @@ impl ClientConfigBuilder<WantsTransportConfigClient> {
 
         ClientConfig {
             bind_address: self.0.bind_address,
+            bind_only_ipv6: self.0.bind_only_ipv6,
             quic_config,
         }
     }
@@ -307,16 +400,19 @@ pub struct WantsBindAddress {}
 /// Config builder state where the caller must supply TLS certificate.
 pub struct WantsCertificate {
     bind_address: SocketAddr,
+    bind_only_ipv6: bool,
 }
 
 /// Config builder state where the caller must supply TLS root store.
 pub struct WantsRootStore {
     bind_address: SocketAddr,
+    bind_only_ipv6: bool,
 }
 
 /// Config builder state where transport properties can be set.
 pub struct WantsTransportConfigServer {
     bind_address: SocketAddr,
+    bind_only_ipv6: bool,
     tls_config: TlsServerConfig,
     transport_config: quinn::TransportConfig,
     migration: bool,
@@ -325,6 +421,7 @@ pub struct WantsTransportConfigServer {
 /// Config builder state where transport properties can be set.
 pub struct WantsTransportConfigClient {
     bind_address: SocketAddr,
+    bind_only_ipv6: bool,
     tls_config: TlsClientConfig,
     transport_config: quinn::TransportConfig,
 }

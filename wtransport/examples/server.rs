@@ -1,6 +1,4 @@
 use anyhow::Result;
-use std::net::Ipv6Addr;
-use std::net::SocketAddr;
 use std::time::Duration;
 use tracing::error;
 use tracing::info;
@@ -18,7 +16,7 @@ async fn main() -> Result<()> {
     init_logging();
 
     let config = ServerConfig::builder()
-        .with_bind_address(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 4433))
+        .with_bind_default(4433)
         .with_certificate(Certificate::load("cert.pem", "key.pem")?)
         .keep_alive_interval(Some(Duration::from_secs(3)))
         .build();
