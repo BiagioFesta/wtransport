@@ -289,20 +289,18 @@ mod tests {
 
     #[test]
     fn parse_headers() {
-        assert!(matches!(
-            SessionRequest::try_from(
-                [
-                    (":method", "CONNECT"),
-                    (":scheme", "https"),
-                    (":protocol", "webtransport"),
-                    (":authority", "localhost:4433"),
-                    (":path", "/")
-                ]
-                .into_iter()
-                .collect::<Headers>()
-            ),
-            Ok(_),
-        ));
+        assert!(SessionRequest::try_from(
+            [
+                (":method", "CONNECT"),
+                (":scheme", "https"),
+                (":protocol", "webtransport"),
+                (":authority", "localhost:4433"),
+                (":path", "/")
+            ]
+            .into_iter()
+            .collect::<Headers>()
+        )
+        .is_ok());
     }
 
     #[test]

@@ -293,7 +293,7 @@ impl TryFrom<u16> for StatusCode {
     type Error = InvalidStatusCode;
 
     fn try_from(value: u16) -> Result<Self, Self::Error> {
-        if value >= Self::MIN.0 && value <= Self::MAX.0 {
+        if (Self::MIN.0..=Self::MAX.0).contains(&value) {
             Ok(Self(value))
         } else {
             Err(InvalidStatusCode)

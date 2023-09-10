@@ -824,8 +824,8 @@ mod tests {
     #[test]
     fn none() {
         let mut buffer_reader = BufferReader::new(&[]);
-        assert!(matches!(buffer_reader.get_varint(), None));
-        assert!(matches!(buffer_reader.get_bytes(1), None));
+        assert!(buffer_reader.get_varint().is_none());
+        assert!(buffer_reader.get_bytes(1).is_none());
 
         let mut buffer_writer = BufferWriter::new(&mut []);
         assert!(buffer_writer.put_varint(VarInt::from_u32(0)).is_err());

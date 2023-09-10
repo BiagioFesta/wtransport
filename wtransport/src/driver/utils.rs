@@ -191,7 +191,7 @@ mod tests {
         let set = SharedResultSet::new();
         let get = set.subscribe();
 
-        assert!(matches!(poll_once(get.result()).await, None));
+        assert!(poll_once(get.result()).await.is_none());
 
         set.set(1);
         drop(set);
