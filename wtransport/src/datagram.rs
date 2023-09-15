@@ -13,6 +13,12 @@ pub struct Datagram {
 }
 
 impl Datagram {
+    /// Returns the datagram payload.
+    #[inline(always)]
+    pub fn payload(&self) -> Bytes {
+        self.quic_dgram.slice(self.payload_offset..)
+    }
+
     pub(crate) fn read(quic_dgram: Bytes) -> Result<Self, ErrorCode> {
         let h3dgram = H3Datagram::read(&quic_dgram)?;
         let payload_offset = quic_dgram.len() - h3dgram.payload().len();
