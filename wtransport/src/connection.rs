@@ -1,4 +1,5 @@
 use crate::datagram::Datagram;
+use crate::driver::utils::varint_w2q;
 use crate::driver::Driver;
 use crate::error::ConnectionError;
 use crate::error::SendDatagramError;
@@ -9,6 +10,7 @@ use crate::stream::SendStream;
 use std::net::SocketAddr;
 use std::time::Duration;
 use wtransport_proto::ids::SessionId;
+use wtransport_proto::varint::VarInt;
 
 /// A WebTransport session connection.
 pub struct Connection {
@@ -94,6 +96,11 @@ impl Connection {
         D: AsRef<[u8]>,
     {
         self.driver.send_datagram(self.session_id, payload.as_ref())
+    }
+
+    /// Close the connection immediately.
+    pub fn close(&self, error_code: VarInt, reason: &[u8]) {
+        self.quic_connection.close(varint_w2q(error_code), reason);
     }
 
     /// Waits for the connection to be closed for any reason.
