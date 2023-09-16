@@ -61,12 +61,7 @@ async fn main() -> Result<()> {
 ```rust
 #[tokio::main]
 async fn main() -> Result<()> {
-    let config = ClientConfig::builder()
-        .with_bind_default()
-        .with_native_certs()
-        .build();
-
-    let connection = Endpoint::client(config)?
+    let connection = Endpoint::client(ClientConfig::default())?
         .connect("https://[::1]:4433")
         .await?;
 

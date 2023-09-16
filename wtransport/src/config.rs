@@ -220,6 +220,15 @@ impl ClientConfig {
     }
 }
 
+impl Default for ClientConfig {
+    fn default() -> Self {
+        ClientConfig::builder()
+            .with_bind_default()
+            .with_native_certs()
+            .build()
+    }
+}
+
 /// Client builder configuration.
 ///
 /// The builder might have different state at compile time.

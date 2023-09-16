@@ -3,12 +3,7 @@ use wtransport::Endpoint;
 
 #[tokio::main]
 async fn main() {
-    let config = ClientConfig::builder()
-        .with_bind_default()
-        .with_no_cert_validation()
-        .build();
-
-    let connection = Endpoint::client(config)
+    let connection = Endpoint::client(ClientConfig::default())
         .unwrap()
         .connect("https://[::1]:4433")
         .await
