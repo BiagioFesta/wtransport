@@ -1,4 +1,5 @@
 use crate::config::ClientConfig;
+use crate::config::Ipv6DualStackConfig;
 use crate::config::ServerConfig;
 use crate::connection::Connection;
 use crate::driver::streams::session::StreamSession;
@@ -49,14 +50,23 @@ pub struct Endpoint<Side> {
 }
 
 impl<Side> Endpoint<Side> {
-    fn bind_socket(bind_address: SocketAddr, only_v6: bool) -> std::io::Result<Socket> {
+    fn bind_socket(
+        bind_address: SocketAddr,
+        dual_stack_config: Ipv6DualStackConfig,
+    ) -> std::io::Result<Socket> {
         let domain = match bind_address {
             SocketAddr::V4(_) => SocketDomain::IPV4,
             SocketAddr::V6(_) => SocketDomain::IPV6,
         };
 
         let socket = Socket::new(domain, SocketType::DGRAM, Some(SocketProtocol::UDP))?;
-        socket.set_only_v6(only_v6)?;
+
+        match dual_stack_config {
+            Ipv6DualStackConfig::OsDefault => {}
+            Ipv6DualStackConfig::Deny => socket.set_only_v6(true)?,
+            Ipv6DualStackConfig::Allow => socket.set_only_v6(false)?,
+        }
+
         socket.bind(&bind_address.into())?;
 
         Ok(socket)
@@ -72,7 +82,8 @@ impl Endpoint<Server> {
     /// Constructs a *server* endpoint.
     pub fn server(server_config: ServerConfig) -> std::io::Result<Self> {
         let quic_config = server_config.quic_config;
-        let socket = Self::bind_socket(server_config.bind_address, server_config.bind_only_ipv6)?;
+        let socket =
+            Self::bind_socket(server_config.bind_address, server_config.dual_stack_config)?;
         let runtime = Arc::new(TokioRuntime);
 
         let endpoint = quinn::Endpoint::new(
@@ -106,7 +117,8 @@ impl Endpoint<Client> {
     /// Constructs a *client* endpoint.
     pub fn client(client_config: ClientConfig) -> std::io::Result<Self> {
         let quic_config = client_config.quic_config;
-        let socket = Self::bind_socket(client_config.bind_address, client_config.bind_only_ipv6)?;
+        let socket =
+            Self::bind_socket(client_config.bind_address, client_config.dual_stack_config)?;
         let runtime = Arc::new(TokioRuntime);
 
         let mut endpoint = quinn::Endpoint::new(
