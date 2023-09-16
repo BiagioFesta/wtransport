@@ -13,12 +13,12 @@ workspace = ".."
 rust-version = "1.63.0"
 
 [dependencies]
-ls-qpack = "0.1.2"
+ls-qpack = {git = "https://github.com/BiagioFesta/ls-qpack-rs", rev = "82060420bf6f9d432aa48ac7d7eee57e19dba891"}
 octets = "0.2.0"
 url = "2.4.0"
 
 [dev-dependencies]
-tokio = { version = "1.28.1", default-features = false, features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1.32.0", default-features = false, features = ["macros", "rt-multi-thread"] }
 
 [features]
 default = []
