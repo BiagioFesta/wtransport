@@ -17,6 +17,7 @@ use wtransport_proto::stream_header::StreamHeader;
 use wtransport_proto::varint::VarInt;
 
 /// A stream that can only be used to send data.
+#[derive(Debug)]
 pub struct SendStream(QuicSendStream);
 
 impl SendStream {
@@ -94,6 +95,7 @@ impl SendStream {
 }
 
 /// A stream that can only be used to receive data.
+#[derive(Debug)]
 pub struct RecvStream(QuicRecvStream);
 
 impl RecvStream {

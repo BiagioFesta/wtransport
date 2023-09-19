@@ -13,6 +13,7 @@ use wtransport_proto::ids::SessionId;
 use wtransport_proto::varint::VarInt;
 
 /// A WebTransport session connection.
+#[derive(Debug)]
 pub struct Connection {
     quic_connection: quinn::Connection,
     driver: Driver,

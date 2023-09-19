@@ -25,6 +25,7 @@ pub type ProtoWriteError = wtransport_proto::stream::IoWriteError;
 #[derive(Debug)]
 pub struct AlreadyStop;
 
+#[derive(Debug)]
 pub struct QuicSendStream(quinn::SendStream);
 
 impl QuicSendStream {
@@ -129,6 +130,7 @@ impl tokio::io::AsyncWrite for QuicSendStream {
     }
 }
 
+#[derive(Debug)]
 pub struct QuicRecvStream(quinn::RecvStream);
 
 impl QuicRecvStream {
@@ -193,6 +195,7 @@ impl tokio::io::AsyncRead for QuicRecvStream {
     }
 }
 
+#[derive(Debug)]
 pub struct Stream<S, P> {
     stream: S,
     proto: P,

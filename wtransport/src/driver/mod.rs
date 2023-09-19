@@ -32,6 +32,7 @@ pub enum DriverError {
     NotConnected,
 }
 
+#[derive(Debug)]
 pub struct Driver {
     quic_connection: quinn::Connection,
     ready_settings: Mutex<mpsc::Receiver<Settings>>,

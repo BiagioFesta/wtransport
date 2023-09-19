@@ -6,6 +6,7 @@ use wtransport_proto::ids::QStreamId;
 use wtransport_proto::ids::SessionId;
 
 /// An application Datagram.
+#[derive(Debug)]
 pub struct Datagram {
     quic_dgram: Bytes,
     payload_offset: usize,

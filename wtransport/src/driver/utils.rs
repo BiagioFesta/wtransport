@@ -42,7 +42,7 @@ where
     (set, get)
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct SharedResultSet<T>(Arc<watch::Sender<Option<T>>>);
 
 impl<T> SharedResultSet<T>
@@ -87,6 +87,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub struct SharedResultGet<T>(Mutex<watch::Receiver<Option<T>>>);
 
 impl<T> SharedResultGet<T>
@@ -122,6 +123,7 @@ pub enum TrySendError<T> {
     Closed(T),
 }
 
+#[derive(Debug)]
 pub struct BiChannelEndpoint<T> {
     sender: mpsc::Sender<T>,
     receiver: Mutex<mpsc::Receiver<T>>,
