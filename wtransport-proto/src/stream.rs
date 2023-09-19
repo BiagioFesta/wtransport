@@ -39,6 +39,7 @@ pub enum IoReadError {
 pub type IoWriteError = bytes::IoWriteError;
 
 /// A QUIC/HTTP3/WebTransport stream.
+#[derive(Debug)]
 pub struct Stream<K, S> {
     kind: K,
     stage: S,
@@ -1067,6 +1068,7 @@ pub mod types {
     }
 
     /// Session (HTTP3-CONNECT) stream type.
+    #[derive(Debug)]
     pub struct Session {
         session_request: SessionRequest,
     }
@@ -1084,18 +1086,23 @@ pub mod types {
     }
 
     /// Bidirectional stream type.
+    #[derive(Debug)]
     pub struct Bi;
 
     /// Unidirectional stream type.
+    #[derive(Debug)]
     pub struct Uni;
 
     /// Remote-initialized stream type.
+    #[derive(Debug)]
     pub struct Remote;
 
     /// Local-initialized stream type.
+    #[derive(Debug)]
     pub struct Local;
 
     /// Remote-initialized bi-directional stream type.
+    #[derive(Debug)]
     pub struct BiRemote(Bi, Remote);
 
     impl Default for BiRemote {
