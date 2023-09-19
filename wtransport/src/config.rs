@@ -113,9 +113,11 @@ impl ServerConfig {
 pub struct ServerConfigBuilder<State>(State);
 
 impl ServerConfigBuilder<WantsBindAddress> {
-    /// Configures for accepting incoming connections binding ANY IP (both IPv4 and IPv6).
+    /// Configures for accepting incoming connections binding ANY IP (allowing IP dual-stack).
     ///
     /// `listening_port` is the port where the server will accept incoming connections.
+    ///
+    /// This is equivalent to: [`Self::with_bind_config`] with [`IpBindConfig::InAddrAnyDual`].
     pub fn with_bind_default(self, listening_port: u16) -> ServerConfigBuilder<WantsCertificate> {
         self.with_bind_config(IpBindConfig::InAddrAnyDual, listening_port)
     }
@@ -292,9 +294,11 @@ impl Default for ClientConfig {
 pub struct ClientConfigBuilder<State>(State);
 
 impl ClientConfigBuilder<WantsBindAddress> {
-    /// Configures for connecting binding ANY IP (both IPv4 and IPv6).
+    /// Configures for connecting binding ANY IP (allowing IP dual-stack).
     ///
     /// Bind port will be randomly picked.
+    ///
+    /// This is equivalent to: [`Self::with_bind_config`] with [`IpBindConfig::InAddrAnyDual`].
     pub fn with_bind_default(self) -> ClientConfigBuilder<WantsRootStore> {
         self.with_bind_config(IpBindConfig::InAddrAnyDual)
     }
