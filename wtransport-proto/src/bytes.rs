@@ -375,7 +375,6 @@ pub mod r#async {
         ///      by the destination.
         ///   * [`std::io::ErrorKind::NotConnected`] if the write operation aborted at any point because
         ///      lack of communication with the destionation.
-        // TODO(bfesta): change return time from `usize` to `NonZero`.
         fn poll_write(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
