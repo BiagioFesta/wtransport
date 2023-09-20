@@ -34,16 +34,61 @@ use wtransport_proto::headers::Headers;
 use wtransport_proto::session::SessionRequest as SessionRequestProto;
 use wtransport_proto::session::SessionResponse as SessionResponseProto;
 
-/// Type of endpoint accepting multiple WebTransport connections.
-pub struct Server;
+/// Helper structure for Endpoind types.
+pub mod endpoint_side {
+    /// Type of endpoint accepting multiple WebTransport connections.
+    pub struct Server;
 
-/// Type of endpoint opening a WebTransport connection.
-pub struct Client;
+    /// Type of endpoint opening a WebTransport connection.
+    pub struct Client;
+}
 
 /// Entrypoint for creating client or server connections.
 ///
-/// * For creating a server: [`Endpoint::server`].
-/// * For creating a client: [`Endpoint::client`].
+/// A single endpoint can be used to accept or connect multiple connections.
+/// Each endpoint internally binds an UDP socket.
+///
+/// # Server
+/// Use [`Endpoint::server`] for creating a server-side endpoint.
+/// Afterwards use the method [`Endpoint::accept`] for awaiting on incoming session request.
+///
+/// ```no_run
+/// # use anyhow::Result;
+/// # use wtransport::ServerConfig;
+/// # use wtransport::tls::Certificate;
+/// use wtransport::Endpoint;
+///
+/// # async fn run() -> Result<()> {
+/// # let config = ServerConfig::builder()
+/// #       .with_bind_default(4433)
+/// #       .with_certificate(Certificate::load("cert.pem", "key.pem")?)
+/// #       .build();
+/// let server = Endpoint::server(config)?;
+/// loop {
+///     let incoming_session = server.accept().await;
+///     // Spawn task that handle client incoming session...
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Client
+/// Use [`Endpoint::client`] for creating a client-side endpoint and use [`Endpoint::connect`]
+/// to connect to a server specifying the URL.
+///
+/// ```no_run
+/// # use anyhow::Result;
+/// # use wtransport::tls::Certificate;
+/// use wtransport::ClientConfig;
+/// use wtransport::Endpoint;
+///
+/// # async fn run() -> Result<()> {
+/// let connection = Endpoint::client(ClientConfig::default())?
+///     .connect("https://localhost:4433")
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct Endpoint<Side> {
     endpoint: quinn::Endpoint,
     _marker: PhantomData<Side>,
@@ -78,7 +123,7 @@ impl<Side> Endpoint<Side> {
     }
 }
 
-impl Endpoint<Server> {
+impl Endpoint<endpoint_side::Server> {
     /// Constructs a *server* endpoint.
     pub fn server(server_config: ServerConfig) -> std::io::Result<Self> {
         let quic_config = server_config.quic_config;
@@ -113,7 +158,7 @@ impl Endpoint<Server> {
     }
 }
 
-impl Endpoint<Client> {
+impl Endpoint<endpoint_side::Client> {
     /// Constructs a *client* endpoint.
     pub fn client(client_config: ClientConfig) -> std::io::Result<Self> {
         let quic_config = client_config.quic_config;
