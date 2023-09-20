@@ -188,7 +188,7 @@ impl ServerConfigBuilder<WantsCertificate> {
             .with_safe_defaults()
             .with_no_client_auth()
             .with_single_cert(certificate.certificates, certificate.key)
-            .unwrap(); // TODO(bfesta): handle this error
+            .expect("Certificate and private key should be already validated");
 
         tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
 
