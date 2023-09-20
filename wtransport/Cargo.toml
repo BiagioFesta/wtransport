@@ -19,7 +19,6 @@ required-features = ["dangerous-configuration"]
 [dependencies]
 bytes = "1.4.0"
 quinn = "0.10.1"
-quinn-proto = "0.10.1"
 rustls = "0.21.1"
 rustls-native-certs = "0.6.2"
 rustls-pemfile = "1.0.2"
