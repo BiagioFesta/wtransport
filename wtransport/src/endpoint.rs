@@ -66,7 +66,7 @@ pub mod endpoint_side {
 /// let server = Endpoint::server(config)?;
 /// loop {
 ///     let incoming_session = server.accept().await;
-///     // Spawn task that handle client incoming session...
+///     // Spawn task that handles client incoming session...
 /// }
 /// # Ok(())
 /// # }
