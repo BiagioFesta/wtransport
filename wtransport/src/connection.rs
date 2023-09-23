@@ -1,3 +1,96 @@
+//! # WebTransport Connection
+//!
+//! [`Connection`] provides an essential building block for managing WebTransport
+//! connections. It allows you to initiate, accept, and control data *streams*, send and receive
+//! *datagrams*, monitor connection status, and interact with various aspects of your WebTransport
+//! communication.
+//!
+//! WebTransport exchanges data either via [*streams*](crate#streams) or [*datagrams*](crate#datagrams).
+//!
+//! ## Streams
+//! WebTransport streams provide a lightweight, ordered byte-stream abstraction.
+//!
+//! There are two fundamental types of streams:
+//!  - *Unidirectional* streams carry data in a single direction, from the stream initiator to its peer.
+//!  - *Bidirectional* streams allow for data to be sent in both directions.
+//! Both server and client endpoints have the capability to create an arbitrary number of streams to
+//! operate concurrently.
+//!
+//! Each stream can be independently cancelled by both side.
+//!
+//! ### Examples
+//! #### Open a stream
+//! ```no_run
+//! # use anyhow::Result;
+//! # async fn foo(connection: wtransport::Connection) -> Result<()> {
+//! use wtransport::Connection;
+//!
+//! // Open a bi-directional stream
+//! let (mut send_stream, mut recv_stream) = connection.open_bi().await?.await?;
+//!
+//! // Send data on the stream
+//! send_stream.write_all(b"Hello, wtransport!").await?;
+//!
+//! // Receive data from the stream
+//! let mut buffer = vec![0; 1024];
+//! let bytes_read = recv_stream.read(&mut buffer).await?;
+//!
+//! // Open an uni-directional stream (can only send data)
+//! let mut send_stream = connection.open_uni().await?.await?;
+//!
+//! // Send data on the stream
+//! send_stream.write_all(b"Hello, wtransport!").await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! #### Accept a stream
+//! ```no_run
+//! # use anyhow::Result;
+//! # async fn foo(connection: wtransport::Connection) -> Result<()> {
+//! use wtransport::Connection;
+//!
+//! // Await the peer opens a bi-directional stream
+//! let (mut send_stream, mut recv_stream) = connection.accept_bi().await?;
+//!
+//! // Can send and receive data on peer's stream
+//! send_stream.write_all(b"Hello, wtransport!").await?;
+//! # let mut buffer = vec![0; 1024];
+//! let bytes_read = recv_stream.read(&mut buffer).await?;
+//!
+//! // Await the peer opens an uni-directional stream (can only receive data)
+//! let mut recv_stream = connection.accept_uni().await?;
+//!
+//! // Receive data on the stream
+//! let bytes_read = recv_stream.read(&mut buffer).await?;
+//! # Ok(())
+//! # }
+//! ```
+//!
+//! ## Datagrams
+//! WebTransport datagrams are similar to UDP datagrams but come with an
+//! added layer of security through *encryption* and *congestion control*.
+//! Datagrams can arrive out of order or might not arrive at all, offering
+//! flexibility in data exchange scenarios.
+//!
+//! Unlike streams, which operate as byte-stream abstractions, WebTransport
+//! datagrams act more like messages.
+//!
+//! ### Examples
+//! ```no_run
+//! # use anyhow::Result;
+//! # async fn foo(connection: wtransport::Connection) -> Result<()> {
+//! use wtransport::Connection;
+//!
+//! // Send datagram message
+//! connection.send_datagram(b"Hello, wtransport!")?;
+//!
+//! // Receive a datagram message
+//! let message = connection.receive_datagram().await?;
+//! # Ok(())
+//! # }
+//! ```
+
 use crate::datagram::Datagram;
 use crate::driver::utils::varint_w2q;
 use crate::driver::Driver;
@@ -13,6 +106,8 @@ use wtransport_proto::ids::SessionId;
 use wtransport_proto::varint::VarInt;
 
 /// A WebTransport session connection.
+///
+/// For more details, see the [module documentation](crate::connection).
 #[derive(Debug)]
 pub struct Connection {
     quic_connection: quinn::Connection,
