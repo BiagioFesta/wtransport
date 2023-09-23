@@ -127,4 +127,7 @@ pub use stream::RecvStream;
 #[doc(inline)]
 pub use stream::SendStream;
 
+#[cfg(feature = "quinn")]
+pub use quinn;
+
 mod driver;
