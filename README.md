@@ -21,6 +21,10 @@ It aims to address the limitations of existing protocols like *HTTP* and *WebSoc
 * :twisted_rightwards_arrows: **Multiplexing**: With WebTransport, multiple streams can be multiplexed over a single connection, reducing overhead and improving performance.
 * :lock: **Security**: WebTransport benefits from the security features provided by the web platform, including transport encryption and same-origin policy.
 
+ <p align="center">
+   <a href="https://docs.rs/wtransport/latest/wtransport/">Check Library Documentation</a>
+ </p>
+
 ### Notes
 Please be aware that WebTransport is still a *draft* and not yet standardized.
 The *WTransport* library, while functional, is not considered completely production-ready.
