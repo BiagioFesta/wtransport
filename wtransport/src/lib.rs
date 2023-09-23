@@ -33,7 +33,7 @@
 //! WebTransport datagrams are lightweight and *unordered* communication channels,
 //! prioritizing quick data exchange without guarantees of reliability or sequence.
 //!
-//! *Unordered, No Guaranteed Delivery, Flow-Controlled, Secure (All Traffic Encrypted),
+//! *Unordered, No Guaranteed Delivery, No Flow-Controlled, Secure (All Traffic Encrypted),
 //! Independent Messages*.
 //!
 //!
@@ -65,7 +65,8 @@
 //!     }
 //! }
 //! ```
-//! A more complete example [here](https://github.com/BiagioFesta/wtransport/blob/master/wtransport/examples/server.rs).
+//! See [repository server example](https://github.com/BiagioFesta/wtransport/blob/master/wtransport/examples/server.rs)
+//! for the complete code.
 //!
 //! ## Client
 //! ```no_run
@@ -82,7 +83,8 @@
 //!   # Ok(())
 //! }
 //! ```
-//! A more complete example [here](https://github.com/BiagioFesta/wtransport/blob/master/wtransport/examples/client.rs).
+//! See [repository client example](https://github.com/BiagioFesta/wtransport/blob/master/wtransport/examples/client.rs)
+//! for the complete code.
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
 
