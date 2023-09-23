@@ -1,26 +1,88 @@
-//! WebTransport protocol implementation.
+//! WebTransport protocol implementation in *pure* Rust, *async-friendly*, and *API-simple*.
 //!
-//! The entry point of this crate is [`Endpoint`].
+//! For a quick start with this library, refer to [`Endpoint`].
 //!
-//! # Server
+//! ## About WebTransport
+//! WebTransport is a modern protocol built on [QUIC](https://en.wikipedia.org/wiki/QUIC)
+//! and [HTTP/3](https://en.wikipedia.org/wiki/HTTP/3), providing an alternative to
+//! HTTP and WebSocket.
+//!
+//! It's designed for efficient client-server communication with *low latency* and
+//! bi-directional *multistream* data exchange capabilities, making it suitable for a wide range of
+//! applications.
+//!
+//! WebTransport guarantees *secure* and *reliable* communication by leveraging encryption
+//! and authentication to protect your data during transmission.
+//!
+//! WebTransport offers two key communication channels: *streams* and *datagrams*.
+//!
+//! ### Streams
+//! WebTransport streams are communication channels that provide *ordered* and
+//! *reliable* data transfer.
+//!
+//! WebTransport streams allow sending multiple sets of data at once within a single session.
+//! Each stream operates independently, ensuring that the order and reliability
+//! of one stream do not affect the others.
+//!
+//! Streams can be: *uni-directional* or *bi-directional*.
+//!
+//! *Order Preserved, Guaranteed Delivery, Flow-Controlled, Secure (All Traffic Encrypted),
+//! and Multiple Independent Streams*.
+//!
+//! ## Datagrams
+//! WebTransport datagrams are lightweight and *unordered* communication channels,
+//! prioritizing quick data exchange without guarantees of reliability or sequence.
+//!
+//! *Unordered, No Guaranteed Delivery, Flow-Controlled, Secure (All Traffic Encrypted),
+//! Independent Messages*.
+//!
+//!
+//! # Examples
+//! Explore operational server and client examples below. The elegantly simple yet potent
+//! API empowers you to get started with minimal code.
+//!
+//! ## Server
 //! ```no_run
-//! # use std::net::Ipv6Addr;
-//! # use std::net::SocketAddr;
+//! # use anyhow::Result;
 //! use wtransport::tls::Certificate;
 //! use wtransport::Endpoint;
 //! use wtransport::ServerConfig;
 //!
-//! # async fn run() {
-//! let config = ServerConfig::builder()
-//!     .with_bind_default(4433)
-//!     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap())
-//!     .build();
+//! #[tokio::main]
+//! async fn main() -> Result<()> {
+//!     let config = ServerConfig::builder()
+//!         .with_bind_default(4433)
+//!         .with_certificate(Certificate::load("cert.pem", "key.pem")?)
+//!         .build();
 //!
-//! let server = Endpoint::server(config).unwrap();
-//! let incoming_request = server.accept().await.await.unwrap();
-//! let connection = incoming_request.accept().await.unwrap();
-//! # }
+//!     let server = Endpoint::server(config)?;
+//!
+//!     loop {
+//!         let incoming_session = server.accept().await;
+//!         let incoming_request = incoming_session.await?;
+//!         let connection = incoming_request.accept().await?;
+//!         // ...
+//!     }
+//! }
 //! ```
+//! A more complete example [here](https://github.com/BiagioFesta/wtransport/blob/master/wtransport/examples/server.rs).
+//!
+//! ## Client
+//! ```no_run
+//! # use anyhow::Result;
+//! use wtransport::ClientConfig;
+//! use wtransport::Endpoint;
+//!
+//! #[tokio::main]
+//! async fn main() -> Result<()> {
+//!     let connection = Endpoint::client(ClientConfig::default())?
+//!         .connect("https://localhost:4433")
+//!         .await?;
+//!     // ...
+//!   # Ok(())
+//! }
+//! ```
+//! A more complete example [here](https://github.com/BiagioFesta/wtransport/blob/master/wtransport/examples/client.rs).
 #![cfg_attr(docsrs, feature(doc_cfg))]
 #![warn(missing_docs)]
 
