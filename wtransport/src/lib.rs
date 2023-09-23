@@ -127,7 +127,9 @@ pub use stream::RecvStream;
 #[doc(inline)]
 pub use stream::SendStream;
 
+#[doc(inline)]
 #[cfg(feature = "quinn")]
+#[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
 pub use quinn;
 
 mod driver;
