@@ -5,6 +5,7 @@ use crate::driver::streams::QuicRecvStream;
 use crate::driver::streams::QuicSendStream;
 use crate::error::StreamOpeningError;
 use crate::error::StreamReadError;
+use crate::error::StreamReadExactError;
 use crate::error::StreamWriteError;
 use std::future::Future;
 use std::pin::Pin;
@@ -126,6 +127,14 @@ impl RecvStream {
     #[inline(always)]
     pub async fn read(&mut self, buf: &mut [u8]) -> Result<Option<usize>, StreamReadError> {
         self.0.read(buf).await
+    }
+
+    /// Reads an exact number of bytes contiguously from the stream.
+    ///
+    /// If the stream terminates before the entire length has been read, it
+    /// returns [`StreamReadExactError::FinishedEarly`].
+    pub async fn read_exact(&mut self, buf: &mut [u8]) -> Result<(), StreamReadExactError> {
+        self.0.read_exact(buf).await
     }
 
     /// Returns the [`StreamId`] associated.
