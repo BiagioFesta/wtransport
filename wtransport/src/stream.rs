@@ -92,6 +92,22 @@ impl SendStream {
     pub async fn stopped(mut self) -> StreamWriteError {
         self.0.stopped().await
     }
+
+    /// Returns a reference to the underlying QUIC stream.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    #[inline(always)]
+    pub fn quic_stream(&self) -> &quinn::SendStream {
+        self.0.quic_stream()
+    }
+
+    /// Returns a mutable reference to the underlying QUIC stream.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    #[inline(always)]
+    pub fn quic_stream_mut(&mut self) -> &mut quinn::SendStream {
+        self.0.quic_stream_mut()
+    }
 }
 
 /// A stream that can only be used to receive data.
@@ -116,6 +132,22 @@ impl RecvStream {
     #[inline(always)]
     pub fn id(&self) -> StreamId {
         self.0.id()
+    }
+
+    /// Returns a reference to the underlying QUIC stream.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    #[inline(always)]
+    pub fn quic_stream(&self) -> &quinn::RecvStream {
+        self.0.quic_stream()
+    }
+
+    /// Returns a mutable reference to the underlying QUIC stream.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    #[inline(always)]
+    pub fn quic_stream_mut(&mut self) -> &mut quinn::RecvStream {
+        self.0.quic_stream_mut()
     }
 }
 

@@ -77,6 +77,18 @@ impl QuicSendStream {
     pub fn id(&self) -> StreamId {
         streamid_q2w(self.0.id())
     }
+
+    #[cfg(feature = "quinn")]
+    #[inline(always)]
+    pub fn quic_stream(&self) -> &quinn::SendStream {
+        &self.0
+    }
+
+    #[cfg(feature = "quinn")]
+    #[inline(always)]
+    pub fn quic_stream_mut(&mut self) -> &mut quinn::SendStream {
+        &mut self.0
+    }
 }
 
 impl wtransport_proto::bytes::AsyncWrite for QuicSendStream {
@@ -161,6 +173,18 @@ impl QuicRecvStream {
     #[inline(always)]
     pub fn id(&self) -> StreamId {
         streamid_q2w(self.0.id())
+    }
+
+    #[cfg(feature = "quinn")]
+    #[inline(always)]
+    pub fn quic_stream(&self) -> &quinn::RecvStream {
+        &self.0
+    }
+
+    #[cfg(feature = "quinn")]
+    #[inline(always)]
+    pub fn quic_stream_mut(&mut self) -> &mut quinn::RecvStream {
+        &mut self.0
     }
 }
 
