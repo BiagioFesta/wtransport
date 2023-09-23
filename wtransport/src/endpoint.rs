@@ -181,9 +181,43 @@ impl Endpoint<endpoint_side::Client> {
         })
     }
 
-    /// Connects to a remote endpoint.
+    /// Establishes a WebTransport connection to a specified URL.
     ///
-    /// `server_name` must be covered by the certificate presented by the server.
+    /// This method initiates a WebTransport connection to the specified URL.
+    /// It validates the URL, and performs necessary steps to establish a secure connection.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - A [URL](https://en.wikipedia.org/wiki/URL) string representing the WebTransport
+    ///           endpoint to connect to. It must have an `https` scheme.
+    ///           The URL can specify either an IP address or a hostname.
+    ///           When specifying a hostname, the method will internally perform DNS resolution.
+    ///
+    /// # Examples
+    ///
+    /// Connect using a URL with a hostname (DNS resolution is performed):
+    ///
+    /// ```no_run
+    /// # use anyhow::Result;
+    /// # use wtransport::endpoint::endpoint_side::Client;
+    /// # async fn example(endpoint: wtransport::Endpoint<Client>) -> Result<()> {
+    /// let url = "https://example.com:4433/webtransport";
+    /// let connection = endpoint.connect(url).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Connect using a URL with an IP address:
+    ///
+    /// ```no_run
+    /// # use anyhow::Result;
+    /// # use wtransport::endpoint::endpoint_side::Client;
+    /// # async fn example(endpoint: wtransport::Endpoint<Client>) -> Result<()> {
+    /// let url = "https://192.168.0.1:4343/webtransport";
+    /// let connection = endpoint.connect(url).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn connect<S>(&self, url: S) -> Result<Connection, ConnectingError>
     where
         S: AsRef<str>,
