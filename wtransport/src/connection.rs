@@ -13,6 +13,7 @@
 //! There are two fundamental types of streams:
 //!  - *Unidirectional* streams carry data in a single direction, from the stream initiator to its peer.
 //!  - *Bidirectional* streams allow for data to be sent in both directions.
+//!
 //! Both server and client endpoints have the capability to create an arbitrary number of streams to
 //! operate concurrently.
 //!
