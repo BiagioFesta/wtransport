@@ -29,11 +29,18 @@ pub struct Certificate {
 }
 
 impl Certificate {
-    /// Creates a certificate from encoded data.
+    /// Creates a new `Certificate` instance from encoded certificate data and a private key.
     ///
-    /// `certificates` is a chain where each certificate-data must be *DER-encoded* *X.509*.
-    /// `private_key` is the single private key associated and it must be *DER-encoded* *ASN.1*
-    /// in either *PKCS#8*, *PKCS#1*, or *Sec1* format.
+    /// This method takes a chain of certificate data and a private key in encoded form as input,
+    /// and constructs a `Certificate` object for configuring TLS settings.
+    ///
+    /// # Arguments
+    ///
+    /// * `certificates`: A vector of vectors of bytes (`Vec<Vec<u8>>`) representing the certificate chain.
+    ///   Each certificate data must be *DER-encoded* *X.509* format.
+    ///
+    /// * `private_key`: A vector of bytes (`Vec<u8>`) containing the private key. The private key must be
+    ///   *DER-encoded* in one of the following formats: *PKCS#8*, *PKCS#1*, or *Sec1*.
     pub fn new(certificates: Vec<Vec<u8>>, private_key: Vec<u8>) -> Self {
         let certificates = certificates.into_iter().map(rustls::Certificate).collect();
         let key = rustls::PrivateKey(private_key);
