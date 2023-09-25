@@ -156,6 +156,29 @@ impl Endpoint<endpoint_side::Server> {
 
         IncomingSession::new(quic_connecting)
     }
+
+    /// Reloads the server configuration.
+    ///
+    /// Useful for e.g. refreshing TLS certificates without disrupting existing connections.
+    ///
+    /// # Arguments
+    ///
+    /// * `server_config` - The new configuration for the server.
+    /// * `rebind` - A boolean indicating whether the server should rebind its socket.
+    ///              If `true`, the server will bind to a new socket with the provided configuration.
+    ///              If `false`, the bind address configuration will be ignored.
+    pub fn reload_config(&self, server_config: ServerConfig, rebind: bool) -> std::io::Result<()> {
+        if rebind {
+            let socket =
+                Self::bind_socket(server_config.bind_address, server_config.dual_stack_config)?;
+            self.endpoint.rebind(socket.into())?;
+        }
+
+        let quic_config = server_config.quic_config;
+        self.endpoint.set_server_config(Some(quic_config));
+
+        Ok(())
+    }
 }
 
 impl Endpoint<endpoint_side::Client> {
