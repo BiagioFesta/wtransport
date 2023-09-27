@@ -129,7 +129,16 @@ impl Connection {
         }
     }
 
-    /// Accepts the next bi-directional stream.
+    /// Asynchronously accepts a unidirectional stream.
+    ///
+    /// This method is used to accept incoming unidirectional streams that have been initiated
+    /// by the remote peer.
+    /// It waits for the next unidirectional stream to be available, then wraps it in a
+    /// [`RecvStream`] that can be used to read data from the stream.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe.
     pub async fn accept_uni(&self) -> Result<RecvStream, ConnectionError> {
         let stream = self
             .driver
@@ -143,7 +152,17 @@ impl Connection {
         Ok(RecvStream::new(stream))
     }
 
-    /// Accepts the next uni-directional stream.
+    /// Asynchronously accepts a bidirectional stream.
+    ///
+    /// This method is used to accept incoming bidirectional streams that have been initiated
+    /// by the remote peer.
+    /// It waits for the next bidirectional stream to be available, then wraps it in a
+    /// tuple containing a [`SendStream`] for sending data and a [`RecvStream`] for receiving
+    /// data on the stream.
+    ///
+    /// # Cancel safety
+    ///
+    /// This method is cancel safe.
     pub async fn accept_bi(&self) -> Result<(SendStream, RecvStream), ConnectionError> {
         let stream = self
             .driver
@@ -157,7 +176,31 @@ impl Connection {
         Ok((SendStream::new(stream.0), RecvStream::new(stream.1)))
     }
 
-    /// Initiates a new outgoing bidirectional stream.
+    /// Asynchronously opens a new unidirectional stream.
+    ///
+    /// This method is used to initiate the opening of a new unidirectional stream.
+    ///
+    /// # Asynchronous Behavior
+    ///
+    /// This method is asynchronous and involves two `await` points:
+    ///
+    /// 1. The first `await` occurs during the initial phase of opening the stream, which may involve awaiting
+    ///    the flow controller. This wait is necessary to ensure proper resource allocation and flow control.
+    ///    It is safe to cancel this `await` point if needed.
+    ///
+    /// 2. The second `await` is internal to the returned [`OpeningUniStream`] object when it is used to initialize
+    ///    the WebTransport stream. Cancelling this latter future before it completes may result in the stream
+    ///    being closed during initialization.
+    ///
+    /// # Example
+    /// ```no_run
+    /// # use wtransport::Connection;
+    /// # use anyhow::Result;
+    /// # async fn run(connection: Connection) -> Result<()> {
+    /// let send_stream = connection.open_uni().await?.await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn open_uni(&self) -> Result<OpeningUniStream, ConnectionError> {
         self.driver
             .open_uni(self.session_id)
@@ -167,7 +210,32 @@ impl Connection {
             })
     }
 
-    /// Initiates a new outgoing unidirectional stream.
+    /// Asynchronously opens a new bidirectional stream.
+    ///
+    /// This method is used to initiate the opening of a new bidirectional stream.
+    ///
+    /// # Asynchronous Behavior
+    ///
+    /// This method is asynchronous and involves two `await` points:
+    ///
+    /// 1. The first `await` occurs during the initial phase of opening the stream, which may involve awaiting
+    ///    the flow controller. This wait is necessary to ensure proper resource allocation and flow control.
+    ///    It is safe to cancel this `await` point if needed.
+    ///
+    /// 2. The second `await` is internal to the returned [`OpeningBiStream`] object when it is used to initialize
+    ///    the WebTransport stream. Cancelling this latter future before it completes may result in the stream
+    ///    being closed during initialization.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use wtransport::Connection;
+    /// # use anyhow::Result;
+    /// # async fn run(connection: Connection) -> Result<()> {
+    /// let (send_stream, recv_stream) = connection.open_bi().await?.await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn open_bi(&self) -> Result<OpeningBiStream, ConnectionError> {
         self.driver
             .open_bi(self.session_id)
@@ -177,7 +245,22 @@ impl Connection {
             })
     }
 
-    /// Receives an application datagram.
+    /// Asynchronously receives an application datagram from the remote peer.
+    ///
+    /// This method is used to receive an application datagram sent by the remote
+    /// peer over the connection.
+    /// It waits for a datagram to become available and returns the received [`Datagram`].
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use wtransport::Connection;
+    /// # use anyhow::Result;
+    /// # async fn run(connection: Connection) -> Result<()> {
+    /// let datagram = connection.receive_datagram().await?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub async fn receive_datagram(&self) -> Result<Datagram, ConnectionError> {
         self.driver
             .receive_datagram(self.session_id)
@@ -187,7 +270,22 @@ impl Connection {
             })
     }
 
-    /// Sends an application datagram.
+    /// Sends an application datagram to the remote peer.
+    ///
+    /// This method is used to send an application datagram to the remote peer
+    /// over the connection.
+    /// The datagram payload is provided as a reference to a slice of bytes.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use wtransport::Connection;
+    /// # use anyhow::Result;
+    /// # async fn run(connection: Connection) -> Result<()> {
+    /// connection.send_datagram(b"Hello, wtransport!")?;
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn send_datagram<D>(&self, payload: D) -> Result<(), SendDatagramError>
     where
         D: AsRef<[u8]>,
@@ -195,7 +293,7 @@ impl Connection {
         self.driver.send_datagram(self.session_id, payload.as_ref())
     }
 
-    /// Close the connection immediately.
+    /// Closes the connection immediately.
     pub fn close(&self, error_code: VarInt, reason: &[u8]) {
         self.quic_connection.close(varint_w2q(error_code), reason);
     }
