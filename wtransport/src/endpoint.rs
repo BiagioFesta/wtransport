@@ -236,7 +236,7 @@ impl Endpoint<endpoint_side::Client> {
     /// # use anyhow::Result;
     /// # use wtransport::endpoint::endpoint_side::Client;
     /// # async fn example(endpoint: wtransport::Endpoint<Client>) -> Result<()> {
-    /// let url = "https://192.168.0.1:4343/webtransport";
+    /// let url = "https://127.0.0.1:4343/webtransport";
     /// let connection = endpoint.connect(url).await?;
     /// # Ok(())
     /// # }
