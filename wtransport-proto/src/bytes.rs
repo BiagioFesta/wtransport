@@ -292,9 +292,13 @@ pub mod r#async {
     #[derive(Debug)]
     pub enum IoWriteError {
         /// Write failed because peer stopped operation.
+        ///
+        /// In this case, zero or more bytes might be have written during the operation.
         Stopped,
 
         /// Write failed because peer not is not connected.
+        ///
+        /// In this case, zero or more bytes might be have written during the operation.
         NotConnected,
     }
 
@@ -327,7 +331,7 @@ pub mod r#async {
         /// lenght of bytes written into `buf`.
         ///
         /// It returns `0` if and only if:
-        ///   * `buf` is empty.
+        ///   * `buf` is empty; or
         ///   * The source reached its end (the stream is exhausted / EOF).
         ///
         /// An implementation SHOULD only generates the following errors:
