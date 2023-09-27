@@ -342,7 +342,6 @@ mod tests {
         assert!(stream_header.session_id().is_none());
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn control_async() {
         let stream_header = StreamHeader::new_control();
@@ -367,7 +366,6 @@ mod tests {
         assert!(matches!(stream_header.session_id(), Some(x) if x == session_id));
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn webtransport_async() {
         let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
@@ -387,7 +385,6 @@ mod tests {
         assert!(StreamHeader::read(&mut &buffer[..buffer.len() - 1]).is_none());
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn read_eof_async() {
         let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
@@ -408,7 +405,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn read_eof_webtransport_async() {
         let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
@@ -440,7 +436,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn unknown_stream_async() {
         let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
@@ -462,7 +457,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn invalid_session_id_async() {
         let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));

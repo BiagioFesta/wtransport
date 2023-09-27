@@ -450,7 +450,6 @@ mod tests {
         Settings::with_frame(&frame).unwrap();
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn settings_async() {
         let settings = Settings::builder()
@@ -482,7 +481,6 @@ mod tests {
         Headers::with_frame(&frame, stream_id).unwrap();
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn headers_async() {
         let stream_id = StreamId::new(VarInt::from_u32(0));
@@ -512,7 +510,6 @@ mod tests {
         assert!(matches!(frame.kind(), FrameKind::WebTransport));
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn webtransport_async() {
         let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
@@ -535,7 +532,6 @@ mod tests {
         assert!(Frame::read(&mut &buffer[..buffer.len() - 1]).is_none());
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn read_eof_async() {
         let buffer = Frame::serialize_any(FrameKind::Data.id(), b"This is a test payload");
@@ -556,7 +552,6 @@ mod tests {
         }
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn read_eof_webtransport_async() {
         let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
@@ -588,7 +583,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn unknown_frame_async() {
         let buffer = Frame::serialize_any(VarInt::from_u32(0x424242), b"This is a test payload");
@@ -610,7 +604,6 @@ mod tests {
         ));
     }
 
-    #[cfg(feature = "async")]
     #[tokio::test]
     async fn invalid_session_id_async() {
         let invalid_session_id = SessionId::maybe_invalid(VarInt::from_u32(1));
