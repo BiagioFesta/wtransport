@@ -161,12 +161,16 @@ impl StreamHeader {
     {
         use crate::bytes::BytesReaderAsync;
 
-        let kind_id = reader.get_varint(false).await?;
+        let kind_id = reader.get_varint().await?;
         let kind =
             StreamKind::parse(kind_id).ok_or(IoReadError::Parse(ParseError::UnknownStream))?;
 
         let session_id = if matches!(kind, StreamKind::WebTransport) {
-            let session_id = SessionId::try_from_varint(reader.get_varint(true).await?)
+            let session_id =
+                SessionId::try_from_varint(reader.get_varint().await.map_err(|e| match e {
+                    bytes::IoReadError::ImmediateFin => bytes::IoReadError::UnexpectedFin,
+                    _ => e,
+                })?)
                 .map_err(|InvalidSessionId| IoReadError::Parse(ParseError::InvalidSessionId))?;
 
             Some(session_id)
@@ -388,17 +392,42 @@ mod tests {
     async fn read_eof_async() {
         let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
 
-        assert!(matches!(
-            StreamHeader::read_async(&mut &buffer[..0]).await,
-            Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
-        ));
+        for len in 0..buffer.len() {
+            let result = StreamHeader::read_async(&mut &buffer[..len]).await;
 
-        assert!(buffer.len() > 1);
+            match len {
+                0 => assert!(matches!(
+                    result,
+                    Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
+                )),
+                _ => assert!(matches!(
+                    result,
+                    Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin))
+                )),
+            }
+        }
+    }
 
-        assert!(matches!(
-            StreamHeader::read_async(&mut &buffer[..buffer.len() - 1]).await,
-            Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin))
-        ));
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn read_eof_webtransport_async() {
+        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+        let buffer = StreamHeader::serialize_webtransport(session_id);
+
+        for len in 0..buffer.len() {
+            let result = StreamHeader::read_async(&mut &buffer[..len]).await;
+
+            match len {
+                0 => assert!(matches!(
+                    result,
+                    Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
+                )),
+                _ => assert!(matches!(
+                    result,
+                    Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin))
+                )),
+            }
+        }
     }
 
     #[test]

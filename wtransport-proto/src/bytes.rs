@@ -401,38 +401,22 @@ pub mod r#async {
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub trait BytesReaderAsync {
         /// Reads an unsigned variable-length integer in network byte-order from a source.
-        ///
-        /// If EOF is reached during read the very **first** byte:
-        ///   * [`IoReadError::ImmediateFin`] is returned if `unexpected_fin_first` is false.
-        ///   * [`IoReadError::UnexpectedFin`] is returned if `unexpected_fin_first` is true.
-        fn get_varint(&mut self, unexpected_fin_first: bool) -> GetVarint<Self>;
+        fn get_varint(&mut self) -> GetVarint<Self>;
 
         /// Reads the source until `buffer` is completly filled.
-        ///
-        /// If EOF is reached during read the very **first** byte:
-        ///   * [`IoReadError::ImmediateFin`] is returned if `unexpected_fin_first` is false.
-        ///   * [`IoReadError::UnexpectedFin`] is returned if `unexpected_fin_first` is true.
-        fn get_buffer<'a>(
-            &'a mut self,
-            buffer: &'a mut [u8],
-            unexpected_fin_first: bool,
-        ) -> GetBuffer<Self>;
+        fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<Self>;
     }
 
     impl<T> BytesReaderAsync for T
     where
         T: AsyncRead + ?Sized,
     {
-        fn get_varint(&mut self, unexpected_fin_first: bool) -> GetVarint<Self> {
-            GetVarint::new(self, unexpected_fin_first)
+        fn get_varint(&mut self) -> GetVarint<Self> {
+            GetVarint::new(self)
         }
 
-        fn get_buffer<'a>(
-            &'a mut self,
-            buffer: &'a mut [u8],
-            unexpected_fin_first: bool,
-        ) -> GetBuffer<Self> {
-            GetBuffer::new(self, buffer, unexpected_fin_first)
+        fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<Self> {
+            GetBuffer::new(self, buffer)
         }
     }
 
@@ -469,20 +453,18 @@ pub mod r#async {
         buffer: [u8; VarInt::MAX_SIZE],
         offset: usize,
         varint_size: usize,
-        unexpected_fin_first: bool,
     }
 
     impl<'a, R> GetVarint<'a, R>
     where
         R: AsyncRead + ?Sized,
     {
-        fn new(reader: &'a mut R, unexpected_fin_first: bool) -> Self {
+        fn new(reader: &'a mut R) -> Self {
             Self {
                 reader,
                 buffer: [0; VarInt::MAX_SIZE],
                 offset: 0,
                 varint_size: 0,
-                unexpected_fin_first,
             }
         }
     }
@@ -511,8 +493,6 @@ pub mod r#async {
                     this.offset = 1;
                     this.varint_size = VarInt::parse_size(this.buffer[0]);
                     debug_assert_ne!(this.varint_size, 0);
-                } else if this.unexpected_fin_first {
-                    return Poll::Ready(Err(IoReadError::UnexpectedFin));
                 } else {
                     return Poll::Ready(Err(IoReadError::ImmediateFin));
                 }
@@ -550,19 +530,17 @@ pub mod r#async {
         reader: &'a mut R,
         buffer: &'a mut [u8],
         offset: usize,
-        unexpected_fin_first: bool,
     }
 
     impl<'a, R> GetBuffer<'a, R>
     where
         R: AsyncRead + ?Sized,
     {
-        fn new(reader: &'a mut R, buffer: &'a mut [u8], unexpected_fin_first: bool) -> Self {
+        fn new(reader: &'a mut R, buffer: &'a mut [u8]) -> Self {
             Self {
                 reader,
                 buffer,
                 offset: 0,
-                unexpected_fin_first,
             }
         }
     }
@@ -587,7 +565,7 @@ pub mod r#async {
 
                 if read > 0 {
                     this.offset += read;
-                } else if this.offset > 0 || this.unexpected_fin_first {
+                } else if this.offset > 0 {
                     return Poll::Ready(Err(IoReadError::UnexpectedFin));
                 } else {
                     return Poll::Ready(Err(IoReadError::ImmediateFin));
@@ -731,7 +709,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_varint() {
+    fn read_varint() {
         for (varint_buffer, value_expect) in utils::VARINT_TEST_CASES {
             let mut buffer_reader = BufferReader::new(varint_buffer);
 
@@ -748,12 +726,28 @@ mod tests {
 
     #[cfg(feature = "async")]
     #[tokio::test]
-    async fn parse_varint_async() {
+    async fn read_varint_async() {
         for (varint_buffer, value_expect) in utils::VARINT_TEST_CASES {
             let mut reader = utils::StepReader::new(varint_buffer);
-            let value = reader.get_varint(false).await.unwrap();
+            let value = reader.get_varint().await.unwrap();
             assert_eq!(value, value_expect);
         }
+    }
+
+    #[test]
+    fn read_buffer() {
+        let mut buffer_reader = BufferReader::new(utils::BUFFER_TEST);
+        let value = buffer_reader.get_bytes(utils::BUFFER_TEST.len()).unwrap();
+        assert_eq!(value, utils::BUFFER_TEST);
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn read_buffer_async() {
+        let mut value = [0; utils::BUFFER_TEST.len()];
+        let mut reader = utils::StepReader::new(utils::BUFFER_TEST);
+        reader.get_buffer(&mut value).await.unwrap();
+        assert_eq!(value, utils::BUFFER_TEST);
     }
 
     #[test]
@@ -839,12 +833,44 @@ mod tests {
     #[tokio::test]
     async fn none_async() {
         let mut reader = utils::StepReader::new(vec![]);
-        assert!(reader.get_varint(false).await.is_err());
-        assert!(reader.get_buffer(&mut [0x0], false).await.is_err());
+        assert!(reader.get_varint().await.is_err());
+        assert!(reader.get_buffer(&mut [0x0]).await.is_err());
 
         let mut writer = utils::StepWriter::new(Some(0));
         assert!(writer.put_varint(VarInt::from_u32(0)).await.is_err());
         assert!(writer.put_buffer(&[0x0]).await.is_err());
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn fin_varint() {
+        for (buffer, _) in utils::VARINT_TEST_CASES {
+            for len in 0..buffer.len() {
+                let result = BytesReaderAsync::get_varint(&mut &buffer[..len]).await;
+
+                match len {
+                    0 => assert!(matches!(result, Err(IoReadError::ImmediateFin))),
+                    _ => assert!(matches!(result, Err(IoReadError::UnexpectedFin))),
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn fin_buffer() {
+        let mut buffer = [0; utils::BUFFER_TEST.len()];
+
+        for len in 0..utils::BUFFER_TEST.len() {
+            let result = (&mut &utils::BUFFER_TEST[..len])
+                .get_buffer(&mut buffer)
+                .await;
+
+            match len {
+                0 => assert!(matches!(result, Err(IoReadError::ImmediateFin))),
+                _ => assert!(matches!(result, Err(IoReadError::UnexpectedFin))),
+            }
+        }
     }
 
     mod utils {
@@ -858,6 +884,8 @@ mod tests {
             (&[0x7b, 0xbd], VarInt::from_u32(15_293)),
             (&[0x25], VarInt::from_u32(37)),
         ];
+
+        pub const BUFFER_TEST: &[u8] = b"WebTransport";
 
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]

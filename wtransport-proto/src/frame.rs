@@ -189,19 +189,33 @@ impl<'a> Frame<'a> {
     {
         use crate::bytes::BytesReaderAsync;
 
-        let kind_id = reader.get_varint(false).await?;
+        let kind_id = reader.get_varint().await?;
         let kind = FrameKind::parse(kind_id).ok_or(IoReadError::Parse(ParseError::UnknownFrame))?;
 
         if matches!(kind, FrameKind::WebTransport) {
-            let session_id = SessionId::try_from_varint(reader.get_varint(true).await?)
+            let session_id =
+                SessionId::try_from_varint(reader.get_varint().await.map_err(|e| match e {
+                    bytes::IoReadError::ImmediateFin => bytes::IoReadError::UnexpectedFin,
+                    _ => e,
+                })?)
                 .map_err(|InvalidSessionId| IoReadError::Parse(ParseError::InvalidSessionId))?;
 
             Ok(Self::new_webtransport(session_id))
         } else {
-            let payload_len = reader.get_varint(true).await?.into_inner() as usize;
+            let payload_len = reader
+                .get_varint()
+                .await
+                .map_err(|e| match e {
+                    bytes::IoReadError::ImmediateFin => bytes::IoReadError::UnexpectedFin,
+                    _ => e,
+                })?
+                .into_inner() as usize;
             let mut payload = vec![0; payload_len];
 
-            reader.get_buffer(&mut payload, true).await?;
+            reader.get_buffer(&mut payload).await.map_err(|e| match e {
+                bytes::IoReadError::ImmediateFin => bytes::IoReadError::UnexpectedFin,
+                _ => e,
+            })?;
 
             payload.shrink_to_fit();
 
@@ -526,17 +540,42 @@ mod tests {
     async fn read_eof_async() {
         let buffer = Frame::serialize_any(FrameKind::Data.id(), b"This is a test payload");
 
-        assert!(matches!(
-            Frame::read_async(&mut &buffer[..0]).await,
-            Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
-        ));
+        for len in 0..buffer.len() {
+            let result = Frame::read_async(&mut &buffer[..len]).await;
 
-        assert!(buffer.len() > 1);
+            match len {
+                0 => assert!(matches!(
+                    result,
+                    Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
+                )),
+                _ => assert!(matches!(
+                    result,
+                    Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin))
+                )),
+            }
+        }
+    }
 
-        assert!(matches!(
-            Frame::read_async(&mut &buffer[..buffer.len() - 1]).await,
-            Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin))
-        ));
+    #[cfg(feature = "async")]
+    #[tokio::test]
+    async fn read_eof_webtransport_async() {
+        let session_id = SessionId::try_from_varint(VarInt::from_u32(0)).unwrap();
+        let buffer = Frame::serialize_webtransport(session_id);
+
+        for len in 0..buffer.len() {
+            let result = Frame::read_async(&mut &buffer[..len]).await;
+
+            match len {
+                0 => assert!(matches!(
+                    result,
+                    Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
+                )),
+                _ => assert!(matches!(
+                    result,
+                    Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin))
+                )),
+            }
+        }
     }
 
     #[test]
