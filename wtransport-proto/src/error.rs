@@ -24,6 +24,9 @@ pub enum ErrorCode {
     /// H3_FRAME_ERROR.
     Frame,
 
+    /// H3_EXCESSIVE_LOAD.
+    ExcessiveLoad,
+
     /// H3_ID_ERROR.
     Id,
 
@@ -59,6 +62,7 @@ impl ErrorCode {
             ErrorCode::ClosedCriticalStream => h3_error_codes::H3_CLOSED_CRITICAL_STREAM,
             ErrorCode::FrameUnexpected => h3_error_codes::H3_FRAME_UNEXPECTED,
             ErrorCode::Frame => h3_error_codes::H3_FRAME_ERROR,
+            ErrorCode::ExcessiveLoad => h3_error_codes::H3_EXCESSIVE_LOAD,
             ErrorCode::Id => h3_error_codes::H3_ID_ERROR,
             ErrorCode::Settings => h3_error_codes::H3_SETTINGS_ERROR,
             ErrorCode::MissingSettings => h3_error_codes::H3_MISSING_SETTINGS,
@@ -88,6 +92,7 @@ impl Display for ErrorCode {
             ErrorCode::ClosedCriticalStream => write!(f, "ClosedCriticalStreamError"),
             ErrorCode::FrameUnexpected => write!(f, "FrameUnexpectedError"),
             ErrorCode::Frame => write!(f, "FrameError"),
+            ErrorCode::ExcessiveLoad => write!(f, "ExcessiveLoad"),
             ErrorCode::Id => write!(f, "IdError"),
             ErrorCode::Settings => write!(f, "SettingsError"),
             ErrorCode::MissingSettings => write!(f, "MissingSettingsError"),
@@ -111,6 +116,7 @@ mod h3_error_codes {
     pub const H3_CLOSED_CRITICAL_STREAM: VarInt = VarInt::from_u32(0x0104);
     pub const H3_FRAME_UNEXPECTED: VarInt = VarInt::from_u32(0x0105);
     pub const H3_FRAME_ERROR: VarInt = VarInt::from_u32(0x0106);
+    pub const H3_EXCESSIVE_LOAD: VarInt = VarInt::from_u32(0x0107);
     pub const H3_ID_ERROR: VarInt = VarInt::from_u32(0x0108);
     pub const H3_SETTINGS_ERROR: VarInt = VarInt::from_u32(0x0109);
     pub const H3_MISSING_SETTINGS: VarInt = VarInt::from_u32(0x010a);

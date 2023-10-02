@@ -97,6 +97,9 @@ pub mod biremote {
                     Err(frame::ParseError::InvalidSessionId) => {
                         return Some(Err(ErrorCode::Id));
                     }
+                    Err(frame::ParseError::PayloadTooBig) => {
+                        return Some(Err(ErrorCode::ExcessiveLoad));
+                    }
                 }
             }
         }
@@ -121,6 +124,9 @@ pub mod biremote {
                     }
                     Err(frame::IoReadError::Parse(frame::ParseError::InvalidSessionId)) => {
                         return Err(IoReadError::H3(ErrorCode::Id));
+                    }
+                    Err(frame::IoReadError::Parse(frame::ParseError::PayloadTooBig)) => {
+                        return Err(IoReadError::H3(ErrorCode::ExcessiveLoad));
                     }
                     Err(frame::IoReadError::IO(io_error)) => {
                         if matches!(io_error, bytes::IoReadError::UnexpectedFin) {
@@ -279,6 +285,9 @@ pub mod bilocal {
                     Err(frame::ParseError::InvalidSessionId) => {
                         return Some(Err(ErrorCode::Id));
                     }
+                    Err(frame::ParseError::PayloadTooBig) => {
+                        return Some(Err(ErrorCode::ExcessiveLoad));
+                    }
                 }
             }
         }
@@ -303,6 +312,9 @@ pub mod bilocal {
                     }
                     Err(frame::IoReadError::Parse(frame::ParseError::InvalidSessionId)) => {
                         return Err(IoReadError::H3(ErrorCode::Id));
+                    }
+                    Err(frame::IoReadError::Parse(frame::ParseError::PayloadTooBig)) => {
+                        return Err(IoReadError::H3(ErrorCode::ExcessiveLoad));
                     }
                     Err(frame::IoReadError::IO(io_error)) => {
                         if matches!(io_error, bytes::IoReadError::UnexpectedFin) {
@@ -590,6 +602,9 @@ pub mod uniremote {
                     Err(frame::ParseError::InvalidSessionId) => {
                         return Some(Err(ErrorCode::Id));
                     }
+                    Err(frame::ParseError::PayloadTooBig) => {
+                        return Some(Err(ErrorCode::ExcessiveLoad));
+                    }
                 }
             }
         }
@@ -620,6 +635,9 @@ pub mod uniremote {
                     }
                     Err(frame::IoReadError::Parse(frame::ParseError::InvalidSessionId)) => {
                         return Err(IoReadError::H3(ErrorCode::Id));
+                    }
+                    Err(frame::IoReadError::Parse(frame::ParseError::PayloadTooBig)) => {
+                        return Err(IoReadError::H3(ErrorCode::ExcessiveLoad));
                     }
                     Err(frame::IoReadError::IO(io_error)) => {
                         if matches!(io_error, bytes::IoReadError::UnexpectedFin) {
@@ -913,6 +931,9 @@ pub mod session {
                     Err(frame::ParseError::InvalidSessionId) => {
                         return Some(Err(ErrorCode::Id));
                     }
+                    Err(frame::ParseError::PayloadTooBig) => {
+                        return Some(Err(ErrorCode::ExcessiveLoad));
+                    }
                 }
             }
         }
@@ -937,6 +958,9 @@ pub mod session {
                     }
                     Err(frame::IoReadError::Parse(frame::ParseError::InvalidSessionId)) => {
                         return Err(IoReadError::H3(ErrorCode::Id));
+                    }
+                    Err(frame::IoReadError::Parse(frame::ParseError::PayloadTooBig)) => {
+                        return Err(IoReadError::H3(ErrorCode::ExcessiveLoad));
                     }
                     Err(frame::IoReadError::IO(io_error)) => {
                         if matches!(io_error, bytes::IoReadError::UnexpectedFin) {

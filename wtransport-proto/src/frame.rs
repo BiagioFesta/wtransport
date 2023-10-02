@@ -25,6 +25,9 @@ pub enum ParseError {
 
     /// Error for invalid session ID.
     InvalidSessionId,
+
+    /// Payload required too big.
+    PayloadTooBig,
 }
 
 /// An error during frame I/O read operation.
@@ -107,6 +110,8 @@ pub struct Frame<'a> {
 }
 
 impl<'a> Frame<'a> {
+    const MAX_PARSE_PAYLOAD_ALLOWED: usize = 4096;
+
     /// Creates a new frame of type [`FrameKind::Headers`].
     ///
     /// # Panics
@@ -174,6 +179,11 @@ impl<'a> Frame<'a> {
             Some(Ok(Self::new_webtransport(session_id)))
         } else {
             let payload_len = bytes_reader.get_varint()?.into_inner() as usize;
+
+            if payload_len > Self::MAX_PARSE_PAYLOAD_ALLOWED {
+                return Some(Err(ParseError::PayloadTooBig));
+            }
+
             let payload = bytes_reader.get_bytes(payload_len)?;
 
             Some(Ok(Self::new(kind, Cow::Borrowed(payload), None)))
@@ -210,6 +220,11 @@ impl<'a> Frame<'a> {
                     _ => e,
                 })?
                 .into_inner() as usize;
+
+            if payload_len > Self::MAX_PARSE_PAYLOAD_ALLOWED {
+                return Err(IoReadError::Parse(ParseError::PayloadTooBig));
+            }
+
             let mut payload = vec![0; payload_len];
 
             reader.get_buffer(&mut payload).await.map_err(|e| match e {
@@ -612,6 +627,38 @@ mod tests {
         assert!(matches!(
             Frame::read_async(&mut buffer.as_slice()).await,
             Err(IoReadError::Parse(ParseError::InvalidSessionId))
+        ));
+    }
+
+    #[test]
+    fn payload_too_big() {
+        let mut buffer = Vec::new();
+        buffer.put_varint(FrameKind::Data.id()).unwrap();
+        buffer
+            .put_varint(VarInt::from_u32(
+                Frame::MAX_PARSE_PAYLOAD_ALLOWED as u32 + 1,
+            ))
+            .unwrap();
+
+        assert!(matches!(
+            Frame::read_from_buffer(&mut BufferReader::new(&buffer)),
+            Some(Err(ParseError::PayloadTooBig))
+        ));
+    }
+
+    #[tokio::test]
+    async fn payload_too_big_async() {
+        let mut buffer = Vec::new();
+        buffer.put_varint(FrameKind::Data.id()).unwrap();
+        buffer
+            .put_varint(VarInt::from_u32(
+                Frame::MAX_PARSE_PAYLOAD_ALLOWED as u32 + 1,
+            ))
+            .unwrap();
+
+        assert!(matches!(
+            Frame::read_async(&mut &*buffer).await,
+            Err(IoReadError::Parse(ParseError::PayloadTooBig)),
         ));
     }
 
