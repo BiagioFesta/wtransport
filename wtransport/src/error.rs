@@ -28,8 +28,8 @@ pub enum ConnectionError {
     TimedOut,
 
     /// The connection was closed because a QUIC protocol error.
-    #[error("QUIC protocol error")]
-    QuicProto,
+    #[error("QUIC protocol error: {0}")]
+    QuicProto(QuicProtoError),
 }
 
 impl ConnectionError {
@@ -208,8 +208,16 @@ impl Display for H3Error {
 impl From<quinn::ConnectionError> for ConnectionError {
     fn from(error: quinn::ConnectionError) -> Self {
         match error {
-            quinn::ConnectionError::VersionMismatch => ConnectionError::QuicProto,
-            quinn::ConnectionError::TransportError(_) => ConnectionError::QuicProto,
+            quinn::ConnectionError::VersionMismatch => ConnectionError::QuicProto(QuicProtoError {
+                code: None,
+                reason: "QUIC protocol version mismatched".to_string(),
+            }),
+            quinn::ConnectionError::TransportError(e) => {
+                ConnectionError::QuicProto(QuicProtoError {
+                    code: VarInt::try_from_u64(e.code.into()).ok(),
+                    reason: e.reason,
+                })
+            }
             quinn::ConnectionError::ConnectionClosed(close) => {
                 ConnectionError::ConnectionClosed(ConnectionClose(close))
             }
@@ -219,9 +227,30 @@ impl From<quinn::ConnectionError> for ConnectionError {
                     reason: close.reason.to_vec().into_boxed_slice(),
                 })
             }
-            quinn::ConnectionError::Reset => ConnectionError::QuicProto,
+            quinn::ConnectionError::Reset => ConnectionError::QuicProto(QuicProtoError {
+                code: None,
+                reason: "Connection has been reset".to_string(),
+            }),
             quinn::ConnectionError::TimedOut => ConnectionError::TimedOut,
             quinn::ConnectionError::LocallyClosed => ConnectionError::LocallyClosed,
         }
+    }
+}
+
+/// A complete specification of an error over QUIC protocol.
+#[derive(Debug)]
+pub struct QuicProtoError {
+    code: Option<VarInt>,
+    reason: String,
+}
+
+impl Display for QuicProtoError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let code = self
+            .code
+            .map(|code| format!(" (code: {})", code))
+            .unwrap_or_default();
+
+        f.write_fmt(format_args!("{}{}", self.reason, code))
     }
 }
