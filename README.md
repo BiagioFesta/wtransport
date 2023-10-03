@@ -81,7 +81,7 @@ async fn main() -> Result<()> {
 </table>
 
 ## Getting Started
-### 0. Clone the Repository
+### Clone the Repository
 ```bash
 git clone https://github.com/BiagioFesta/wtransport.git
 ```
@@ -89,48 +89,19 @@ git clone https://github.com/BiagioFesta/wtransport.git
 cd wtransport/
 ```
 
-### 1. Generate TLS Certificate
+### Run `Full` Example
+
+The [`examples/full.rs`](wtransport/examples/full.rs) is a minimal but complete server example that demonstrates the usage of WebTransport.
+
+You can run this example using *Cargo*, Rust's package manager, with the following command:
 ```bash
-cargo run --example gencert
+cargo run --example full
 ```
 
-This will generate `cert.pem` and `key.pem` in the current working directory.
-
-Moreover, the program will also output the *fingerprint* of the certificate. Something like this:
-```
-Certificate generated
-Fingerprint: OjyqTe//WoGnvBrgiO37tkOQJyuN1r7hhyBzwX0gotg=
-```
-
-Please take note of the fingerprint, as you will need it to verify the certificate on the client side.
-
-### 2. Run Example Server
-```bash
-cargo run --example server
-```
-
-### 3. Run Client on Browser
-[Latest versions](https://chromestatus.com/feature/4854144902889472) of *Google Chrome* started
-supporting some implementations of the protocol.
-
-Since the generated certificate is self-signed, it cannot be directly accepted by the browser at the moment.
-In order to allow the local certificate, you need to launch Google Chrome with two additional options:
-```
-google-chrome \
-  --webtransport-developer-mode \
-  --ignore-certificate-errors-spki-list=FINGERPRINT
-```
-
-Replace `FINGERPRINT` with the value obtained in *step 1*.
-For example, `OjyqTe//WoGnvBrgiO37tkOQJyuN1r7hhyBzwX0gotg=`.
-
-### 4. Connect to the Server
-Open the website https://webtransport.day/ on Google Chrome instance. Use the *URL*: `https://localhost:4433`, and click on *Connect*.
-
-Enjoy!
+This example initiates an *echo* WebTransport server that can receive messages. It also includes an integrated HTTP server and
+launches Google Chrome with the necessary options to establish connections using self-signed TLS certificates.
 
 ## Examples
-* https://github.com/BiagioFesta/wtransport-examples
 * [Local Examples](wtransport/examples/)
 
 ## Other languages
