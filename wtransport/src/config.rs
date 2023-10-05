@@ -568,6 +568,8 @@ impl ClientConfigBuilder<WantsRootStore> {
     fn native_cert_store() -> RootCertStore {
         let mut root_store = RootCertStore::empty();
 
+        let _var_restore_guard = utils::remove_var_tmp("SSL_CERT_FILE");
+
         match rustls_native_certs::load_native_certs() {
             Ok(certs) => {
                 for c in certs {
@@ -703,6 +705,36 @@ mod dangerous_configuration {
             _now: std::time::SystemTime,
         ) -> Result<ServerCertVerified, rustls::Error> {
             Ok(ServerCertVerified::assertion())
+        }
+    }
+}
+
+mod utils {
+    use std::env;
+    use std::ffi::OsStr;
+    use std::ffi::OsString;
+
+    pub struct VarRestoreGuard {
+        key: OsString,
+        value: Option<OsString>,
+    }
+
+    impl Drop for VarRestoreGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.value.take() {
+                env::set_var(self.key.clone(), value)
+            }
+        }
+    }
+
+    pub fn remove_var_tmp<K: AsRef<OsStr>>(key: K) -> VarRestoreGuard {
+        let value = env::var_os(key.as_ref());
+
+        env::remove_var(key.as_ref());
+
+        VarRestoreGuard {
+            key: key.as_ref().to_os_string(),
+            value,
         }
     }
 }
