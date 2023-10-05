@@ -80,7 +80,88 @@ pub struct InvalidIdleTimeout;
 
 /// Server configuration.
 ///
-/// Configuration can be created via [`ServerConfig::builder`] function.
+/// You can create an instance of `ServerConfig` using its builder pattern by calling
+/// the [`builder()`](Self::builder) method.
+/// Once you have an instance, you can further customize it by chaining method calls
+/// to set various configuration options.
+///
+/// ## Configuration Builder States
+///
+/// The configuration process follows a *state-based builder pattern*, where the server
+/// configuration progresses through *3* states.
+///
+/// ### 1. `WantsBindAddress`
+///
+/// The caller must supply a binding address for the server. This is where to specify
+/// the listening port of the server.
+/// The following options are mutually exclusive:
+///
+///   - [`with_bind_default`](ServerConfigBuilder::with_bind_default): the simplest
+///     configuration where only the port will be specified.
+///   - [`with_bind_config`](ServerConfigBuilder::with_bind_config): configures
+///     to bind an address determined by a configuration preset.
+///   - [`with_bind_address`](ServerConfigBuilder::with_bind_address): configures
+///     to bind a custom specified socket address.
+///
+/// Only one of these options can be selected during the client configuration process.
+///
+/// #### Examples:
+///
+/// ```
+/// use wtransport::ServerConfig;
+///
+/// // Configuration for accepting incoming connection on port 443
+/// ServerConfig::builder().with_bind_default(443);
+/// ```
+///
+/// ### 2. `WantsCertificate`
+///
+/// The caller must supply a TLS certificate for the server.
+///
+/// - [`with_certificate`](ServerConfigBuilder::with_certificate): configures
+///   a TLS [`Certificate`] for the server.
+///
+/// #### Examples:
+/// ```
+/// # use anyhow::Result;
+/// use wtransport::tls::Certificate;
+/// use wtransport::ServerConfig;
+///
+/// # fn run() -> Result<()> {
+/// ServerConfig::builder()
+///     .with_bind_default(443)
+///     .with_certificate(Certificate::load("cert.pem", "key.pem")?);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ### 3. `WantsTransportConfigServer`
+///
+/// The caller can supply *additional* transport configurations.
+/// Multiple options can be given at this stage. Once the configuration is completed, it is possible
+/// to finalize with the method [`build()`](ServerConfigBuilder::build).
+///
+/// All these options can be omitted in the configuration; default values will be used.
+///
+/// - [`max_idle_timeout`](ServerConfigBuilder::max_idle_timeout)
+/// - [`keep_alive_interval`](ServerConfigBuilder::keep_alive_interval)
+/// - [`allow_migration`](ServerConfigBuilder::allow_migration)
+///
+/// #### Examples:
+/// ```
+/// # use anyhow::Result;
+/// use wtransport::ServerConfig;
+/// use wtransport::tls::Certificate;
+/// use std::time::Duration;
+///
+/// # fn run() -> Result<()> {
+/// let server_config = ServerConfig::builder()
+///     .with_bind_default(443)
+///     .with_certificate(Certificate::load("cert.pem", "key.pem")?)
+///     .keep_alive_interval(Some(Duration::from_secs(3)))
+///     .build();
+/// # Ok(())
+/// # }
 pub struct ServerConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
@@ -341,7 +422,7 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
 /// use std::time::Duration;
 /// use wtransport::ClientConfig;
 ///
-/// ClientConfig::builder()
+/// let client_config = ClientConfig::builder()
 ///     .with_bind_default()
 ///     .with_native_certs()
 ///     .max_idle_timeout(Some(Duration::from_secs(30)))
