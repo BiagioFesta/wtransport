@@ -86,7 +86,7 @@
 //! See [repository client example](https://github.com/BiagioFesta/wtransport/blob/master/wtransport/examples/client.rs)
 //! for the complete code.
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![warn(missing_docs)]
+#![warn(missing_docs, clippy::doc_markdown)]
 
 /// Client and server configurations.
 pub mod config;

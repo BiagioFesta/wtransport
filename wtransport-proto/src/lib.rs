@@ -1,6 +1,6 @@
 //! WebTransport protocol implementation.
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![warn(missing_docs)]
+#![warn(missing_docs, clippy::doc_markdown)]
 
 /// I/O and buffer operations.
 pub mod bytes;
