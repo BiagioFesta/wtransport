@@ -193,6 +193,7 @@ impl Connection {
     ///    being closed during initialization.
     ///
     /// # Example
+    ///
     /// ```no_run
     /// # use wtransport::Connection;
     /// # use anyhow::Result;
