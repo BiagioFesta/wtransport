@@ -133,6 +133,6 @@ mod qpack_error_codes {
 mod wt_error_codes {
     use crate::varint::VarInt;
 
-    pub const WEBTRANSPORT_BUFFERED_STREAM_REJECTED: VarInt = VarInt::from_u32(0x3994bd84);
-    pub const WEBTRANSPORT_SESSION_GONE: VarInt = VarInt::from_u32(0x170d7b68);
+    pub const WEBTRANSPORT_BUFFERED_STREAM_REJECTED: VarInt = VarInt::from_u32(0x3994_bd84);
+    pub const WEBTRANSPORT_SESSION_GONE: VarInt = VarInt::from_u32(0x170d_7b68);
 }

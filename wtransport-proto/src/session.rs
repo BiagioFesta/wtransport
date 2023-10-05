@@ -245,7 +245,7 @@ impl SessionResponse {
         K: ToString,
         V: ToString,
     {
-        self.0.insert(key, value)
+        self.0.insert(key, value);
     }
 
     /// Returns the whole headers associated with the request.

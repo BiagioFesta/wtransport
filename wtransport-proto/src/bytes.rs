@@ -173,7 +173,7 @@ impl<'a, 'b> BufferReaderChild<'a, 'b> {
     pub fn commit(self) {
         self.parent
             .skip(self.reader.offset())
-            .expect("Child offset is bounded to parent")
+            .expect("Child offset is bounded to parent");
     }
 
     #[inline(always)]

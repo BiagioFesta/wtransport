@@ -67,7 +67,7 @@ impl SendStream {
     /// impact on performance.
     #[inline(always)]
     pub fn set_priority(&self, priority: i32) {
-        self.0.set_priority(priority)
+        self.0.set_priority(priority);
     }
 
     /// Gets the priority of the send stream.
@@ -83,7 +83,7 @@ impl SendStream {
     /// already been made to finish the stream, the peer may still receive all written data.
     #[inline(always)]
     pub fn reset(self, error_code: VarInt) {
-        self.0.reset(error_code)
+        self.0.reset(error_code);
     }
 
     /// Awaits for the stream to be stopped by the peer.

@@ -70,7 +70,7 @@ impl QuicSendStream {
     pub fn reset(mut self, error_code: VarInt) {
         self.0
             .reset(varint_w2q(error_code))
-            .expect("Stream has been already reset")
+            .expect("Stream has been already reset");
     }
 
     #[inline(always)]

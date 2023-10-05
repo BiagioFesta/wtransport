@@ -157,7 +157,8 @@ pub struct QStreamId(VarInt);
 impl QStreamId {
     /// The largest quarter stream id.
     // SAFETY: value is less than max varint
-    pub const MAX: QStreamId = unsafe { Self(VarInt::from_u64_unchecked(1152921504606846975)) };
+    pub const MAX: QStreamId =
+        unsafe { Self(VarInt::from_u64_unchecked(1_152_921_504_606_846_975)) };
 
     /// Creates a quarter stream id from its corresponding [`SessionId`]
     #[inline(always)]
@@ -281,8 +282,8 @@ impl TryFrom<u8> for StatusCode {
     type Error = InvalidStatusCode;
 
     fn try_from(value: u8) -> Result<Self, Self::Error> {
-        if value as u16 >= Self::MIN.0 && value as u16 <= Self::MAX.0 {
-            Ok(Self(value as u16))
+        if u16::from(value) >= Self::MIN.0 && u16::from(value) <= Self::MAX.0 {
+            Ok(Self(u16::from(value)))
         } else {
             Err(InvalidStatusCode)
         }
@@ -305,7 +306,7 @@ impl TryFrom<u32> for StatusCode {
     type Error = InvalidStatusCode;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        if value >= Self::MIN.0 as u32 && value <= Self::MAX.0 as u32 {
+        if value >= u32::from(Self::MIN.0) && value <= u32::from(Self::MAX.0) {
             Ok(Self(value as u16))
         } else {
             Err(InvalidStatusCode)
@@ -317,7 +318,7 @@ impl TryFrom<u64> for StatusCode {
     type Error = InvalidStatusCode;
 
     fn try_from(value: u64) -> Result<Self, Self::Error> {
-        if value >= Self::MIN.0 as u64 && value <= Self::MAX.0 as u64 {
+        if value >= u64::from(Self::MIN.0) && value <= u64::from(Self::MAX.0) {
             Ok(Self(value as u16))
         } else {
             Err(InvalidStatusCode)

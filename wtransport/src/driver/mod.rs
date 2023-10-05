@@ -127,18 +127,18 @@ impl Driver {
 
             if stream.session_id() == session_id {
                 return Ok(stream);
-            } else {
-                debug!(
-                    "Discarding WT stream (stream_id: {}, session_id: {})",
-                    stream.id(),
-                    stream.session_id()
-                );
-
-                stream
-                    .into_stream()
-                    .stop(ErrorCode::BufferedStreamRejected.to_code())
-                    .expect("Stream not already stopped");
             }
+
+            debug!(
+                "Discarding WT stream (stream_id: {}, session_id: {})",
+                stream.id(),
+                stream.session_id()
+            );
+
+            stream
+                .into_stream()
+                .stop(ErrorCode::BufferedStreamRejected.to_code())
+                .expect("Stream not already stopped");
         }
     }
 
@@ -153,19 +153,19 @@ impl Driver {
 
             if stream.session_id() == session_id {
                 return Ok(stream);
-            } else {
-                debug!(
-                    "Discarding WT stream (stream_id: {}, session_id: {})",
-                    stream.id(),
-                    stream.session_id()
-                );
-
-                stream
-                    .into_stream()
-                    .1
-                    .stop(ErrorCode::BufferedStreamRejected.to_code())
-                    .expect("Stream not already stopped");
             }
+
+            debug!(
+                "Discarding WT stream (stream_id: {}, session_id: {})",
+                stream.id(),
+                stream.session_id()
+            );
+
+            stream
+                .into_stream()
+                .1
+                .stop(ErrorCode::BufferedStreamRejected.to_code())
+                .expect("Stream not already stopped");
         }
     }
 

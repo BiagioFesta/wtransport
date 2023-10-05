@@ -376,10 +376,10 @@ impl<'a> Frame<'a> {
     /// Panics if the `payload` size if greater than [`VarInt::MAX`].
     fn new(kind: FrameKind, payload: Cow<'a, [u8]>, session_id: Option<SessionId>) -> Self {
         if let FrameKind::Exercise(id) = kind {
-            debug_assert!(FrameKind::is_id_exercise(id))
+            debug_assert!(FrameKind::is_id_exercise(id));
         } else if let FrameKind::WebTransport = kind {
             debug_assert!(payload.is_empty());
-            debug_assert!(session_id.is_some())
+            debug_assert!(session_id.is_some());
         }
 
         assert!(payload.len() <= VarInt::MAX.into_inner() as usize);
@@ -590,7 +590,7 @@ mod tests {
 
     #[test]
     fn unknown_frame() {
-        let buffer = Frame::serialize_any(VarInt::from_u32(0x424242), b"This is a test payload");
+        let buffer = Frame::serialize_any(VarInt::from_u32(0x0042_4242), b"This is a test payload");
 
         assert!(matches!(
             Frame::read(&mut buffer.as_slice()).unwrap(),
@@ -600,7 +600,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_frame_async() {
-        let buffer = Frame::serialize_any(VarInt::from_u32(0x424242), b"This is a test payload");
+        let buffer = Frame::serialize_any(VarInt::from_u32(0x0042_4242), b"This is a test payload");
 
         assert!(matches!(
             Frame::read_async(&mut buffer.as_slice()).await,

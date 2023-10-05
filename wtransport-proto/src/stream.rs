@@ -131,9 +131,9 @@ pub mod biremote {
                     Err(frame::IoReadError::IO(io_error)) => {
                         if matches!(io_error, bytes::IoReadError::UnexpectedFin) {
                             return Err(IoReadError::H3(ErrorCode::Frame));
-                        } else {
-                            return Err(IoReadError::IO(io_error));
                         }
+
+                        return Err(IoReadError::IO(io_error));
                     }
                 }
             }
@@ -319,9 +319,9 @@ pub mod bilocal {
                     Err(frame::IoReadError::IO(io_error)) => {
                         if matches!(io_error, bytes::IoReadError::UnexpectedFin) {
                             return Err(IoReadError::H3(ErrorCode::Frame));
-                        } else {
-                            return Err(IoReadError::IO(io_error));
                         }
+
+                        return Err(IoReadError::IO(io_error));
                     }
                 }
             }
@@ -642,9 +642,9 @@ pub mod uniremote {
                     Err(frame::IoReadError::IO(io_error)) => {
                         if matches!(io_error, bytes::IoReadError::UnexpectedFin) {
                             return Err(IoReadError::H3(ErrorCode::Frame));
-                        } else {
-                            return Err(IoReadError::IO(io_error));
                         }
+
+                        return Err(IoReadError::IO(io_error));
                     }
                 }
             }
@@ -965,9 +965,9 @@ pub mod session {
                     Err(frame::IoReadError::IO(io_error)) => {
                         if matches!(io_error, bytes::IoReadError::UnexpectedFin) {
                             return Err(IoReadError::H3(ErrorCode::Frame));
-                        } else {
-                            return Err(IoReadError::IO(io_error));
                         }
+
+                        return Err(IoReadError::IO(io_error));
                     }
                 }
             }

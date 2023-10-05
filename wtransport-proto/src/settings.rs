@@ -244,6 +244,6 @@ mod setting_ids {
     pub const SETTINGS_QPACK_BLOCKED_STREAMS: VarInt = VarInt::from_u32(0x07);
     pub const SETTINGS_ENABLE_CONNECT_PROTOCOL: VarInt = VarInt::from_u32(0x08);
     pub const SETTINGS_H3_DATAGRAM: VarInt = VarInt::from_u32(0x33);
-    pub const SETTINGS_ENABLE_WEBTRANSPORT: VarInt = VarInt::from_u32(0x2b603742);
-    pub const SETTINGS_WEBTRANSPORT_MAX_SESSIONS: VarInt = VarInt::from_u32(0xc671706a);
+    pub const SETTINGS_ENABLE_WEBTRANSPORT: VarInt = VarInt::from_u32(0x2b60_3742);
+    pub const SETTINGS_WEBTRANSPORT_MAX_SESSIONS: VarInt = VarInt::from_u32(0xc671_706a);
 }

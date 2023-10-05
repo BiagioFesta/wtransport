@@ -381,13 +381,13 @@ mod tests {
 
     #[test]
     fn read_eof() {
-        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
+        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x0042_4242));
         assert!(StreamHeader::read(&mut &buffer[..buffer.len() - 1]).is_none());
     }
 
     #[tokio::test]
     async fn read_eof_async() {
-        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
+        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x0042_4242));
 
         for len in 0..buffer.len() {
             let result = StreamHeader::read_async(&mut &buffer[..len]).await;
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn unknown_stream() {
-        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
+        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x0042_4242));
 
         assert!(matches!(
             StreamHeader::read(&mut buffer.as_slice()).unwrap(),
@@ -438,7 +438,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_stream_async() {
-        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x424242));
+        let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x0042_4242));
 
         assert!(matches!(
             StreamHeader::read_async(&mut buffer.as_slice()).await,

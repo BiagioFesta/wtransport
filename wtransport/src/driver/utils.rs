@@ -74,7 +74,7 @@ where
     /// Awaits all subscribers are dead.
     #[inline(always)]
     pub async fn closed(&self) {
-        self.0.closed().await
+        self.0.closed().await;
     }
 
     /// Generates a new subscriber.

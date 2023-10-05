@@ -12,7 +12,7 @@ pub struct VarInt(u64);
 
 impl VarInt {
     /// The largest value that can be represented by this integer type.
-    pub const MAX: Self = Self(4611686018427387903);
+    pub const MAX: Self = Self(4_611_686_018_427_387_903);
 
     /// The smallest value that can be represented by this integer type.
     pub const MIN: Self = Self(0);
@@ -86,14 +86,14 @@ impl VarInt {
 impl From<u8> for VarInt {
     #[inline(always)]
     fn from(value: u8) -> Self {
-        Self::from_u32(value as u32)
+        Self::from_u32(u32::from(value))
     }
 }
 
 impl From<u16> for VarInt {
     #[inline(always)]
     fn from(value: u16) -> Self {
-        Self::from_u32(value as u32)
+        Self::from_u32(u32::from(value))
     }
 }
 
@@ -155,11 +155,18 @@ mod tests {
         assert!((2..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(16383).unwrap().size()));
 
         assert!((4..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(16384).unwrap().size()));
-        assert!((4..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(1073741823).unwrap().size()));
+        assert!(
+            (4..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(1_073_741_823).unwrap().size())
+        );
 
-        assert!((8..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(1073741824).unwrap().size()));
-        assert!((8..=VarInt::MAX_SIZE)
-            .contains(&VarInt::try_from_u64(4611686018427387903).unwrap().size()));
+        assert!(
+            (8..=VarInt::MAX_SIZE).contains(&VarInt::try_from_u64(1_073_741_824).unwrap().size())
+        );
+        assert!((8..=VarInt::MAX_SIZE).contains(
+            &VarInt::try_from_u64(4_611_686_018_427_387_903)
+                .unwrap()
+                .size()
+        ));
 
         assert_eq!(VarInt::MAX_SIZE, 8);
         assert_eq!(VarInt::MAX.size(), VarInt::MAX_SIZE);
