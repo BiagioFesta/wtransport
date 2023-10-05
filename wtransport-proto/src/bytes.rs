@@ -64,7 +64,7 @@ impl BytesWriter for Vec<u8> {
 
         BufferWriter::new(&mut self[offset..])
             .put_varint(varint)
-            .expect("Enough capacity prellocated");
+            .expect("Enough capacity pre-allocated");
 
         Ok(())
     }
@@ -328,7 +328,7 @@ pub mod r#async {
         /// Generally, an implementation will perform a **copy**.
         ///
         /// On success, it returns `Ok(num_bytes_read)`, that is the
-        /// lenght of bytes written into `buf`.
+        /// length of bytes written into `buf`.
         ///
         /// It returns `0` if and only if:
         ///   * `buf` is empty; or
@@ -378,7 +378,7 @@ pub mod r#async {
         ///   * [`std::io::ErrorKind::ConnectionReset`] if the write operation was explicitly stopped
         ///      by the destination.
         ///   * [`std::io::ErrorKind::NotConnected`] if the write operation aborted at any point because
-        ///      lack of communication with the destionation.
+        ///      lack of communication with the destination.
         fn poll_write(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
@@ -403,7 +403,7 @@ pub mod r#async {
         /// Reads an unsigned variable-length integer in network byte-order from a source.
         fn get_varint(&mut self) -> GetVarint<Self>;
 
-        /// Reads the source until `buffer` is completly filled.
+        /// Reads the source until `buffer` is completely filled.
         fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<Self>;
     }
 

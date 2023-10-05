@@ -190,7 +190,7 @@ impl QStreamId {
     pub const fn into_session_id(self) -> SessionId {
         let stream_id = self.into_stream_id();
 
-        // SAFETY: corresponding stream for qstream is bidirection and client-initiated
+        // SAFETY: corresponding stream for qstream is bidirectional and client-initiated
         unsafe {
             debug_assert!(stream_id.is_bidirectional() && stream_id.is_client_initiated());
             SessionId::from_session_stream_unchecked(stream_id)

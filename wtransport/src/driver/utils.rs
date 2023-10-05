@@ -56,8 +56,8 @@ where
 
     /// Sets the shared result in thread safe manner.
     ///
-    /// The first call will be able to actuall set the inner value,
-    /// successive calles end up into being no-op.
+    /// The first call will be able to actually set the inner value,
+    /// successive calls end up into being no-op.
     ///
     /// Returns `true` if the inner result is actually set.
     pub fn set(&self, result: T) -> bool {

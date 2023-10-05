@@ -125,7 +125,7 @@ Replace `FINGERPRINT` with the value obtained in *step 1*.
 For example, `OjyqTe//WoGnvBrgiO37tkOQJyuN1r7hhyBzwX0gotg=`.
 
 ### 4. Connect to the Server
-Open the website https://webtransport.day/ on Google Chrome instace. Use the *URL*: `https://localhost:4433`, and click on *Connect*.
+Open the website https://webtransport.day/ on Google Chrome instance. Use the *URL*: `https://localhost:4433`, and click on *Connect*.
 
 Enjoy!
 
