@@ -162,7 +162,7 @@ impl Settings {
     ///
     /// This function does *not* allocates memory. It uses `buffer` for frame-payload
     /// serialization.
-    /// See [`Self::generate_frame`] for a versione with inner memory allocation.
+    /// See [`Self::generate_frame`] for a version with inner memory allocation.
     pub fn generate_frame_ref<'a>(&self, buffer: &'a mut [u8]) -> Result<Frame<'a>, EndOfBuffer> {
         let mut bytes_writer = BufferWriter::new(buffer);
 

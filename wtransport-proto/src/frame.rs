@@ -262,7 +262,7 @@ impl<'a> Frame<'a> {
     ///
     /// It returns [`Err`] if the `bytes_writer` does not have enough capacity
     /// to write the entire frame.
-    /// See [`Self::write_size`] to retrieve the extact amount of required capacity.
+    /// See [`Self::write_size`] to retrieve the exact amount of required capacity.
     ///
     /// In case [`Err`], `bytes_writer` might be partially written.
     ///

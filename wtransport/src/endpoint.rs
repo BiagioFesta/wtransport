@@ -34,7 +34,7 @@ use wtransport_proto::headers::Headers;
 use wtransport_proto::session::SessionRequest as SessionRequestProto;
 use wtransport_proto::session::SessionResponse as SessionResponseProto;
 
-/// Helper structure for Endpoind types.
+/// Helper structure for Endpoint types.
 pub mod endpoint_side {
     /// Type of endpoint accepting multiple WebTransport connections.
     pub struct Server;
