@@ -236,8 +236,8 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
     /// Keep-alive packets prevent an inactive but otherwise healthy connection from timing out.
     ///
     /// `None` to disable, which is the default. Only one side of any given connection needs keep-alive
-    /// enabled for the connection to be preserved. Must be set lower than the idle_timeout of both
-    /// peers to be effective.
+    /// enabled for the connection to be preserved. Must be set lower than the
+    /// [`max_idle_timeout`](Self::max_idle_timeout) of both peers to be effective.
     pub fn keep_alive_interval(mut self, interval: Option<Duration>) -> Self {
         self.0.transport_config.keep_alive_interval(interval);
         self
@@ -445,8 +445,8 @@ impl ClientConfigBuilder<WantsTransportConfigClient> {
     /// Keep-alive packets prevent an inactive but otherwise healthy connection from timing out.
     ///
     /// `None` to disable, which is the default. Only one side of any given connection needs keep-alive
-    /// enabled for the connection to be preserved. Must be set lower than the idle_timeout of both
-    /// peers to be effective.
+    /// enabled for the connection to be preserved. Must be set lower than the
+    /// [`max_idle_timeout`](Self::max_idle_timeout) of both peers to be effective.
     pub fn keep_alive_interval(mut self, interval: Option<Duration>) -> Self {
         self.0.transport_config.keep_alive_interval(interval);
         self
