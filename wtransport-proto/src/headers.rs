@@ -32,7 +32,7 @@ impl Headers {
                 .into_iter()
                 .map(|h| (h.name().to_string(), h.value().to_string()))
                 .collect()),
-            DecoderOutput::BlockedStream => todo!(),
+            DecoderOutput::BlockedStream => unreachable!("Dynamic table is not allowed"),
         }
     }
 
