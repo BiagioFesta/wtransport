@@ -269,7 +269,86 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
 
 /// Client configuration.
 ///
-/// Configuration can be created via [`ClientConfig::builder`] function.
+///
+/// You can create an instance of `ClientConfig` using its builder pattern by calling
+/// the [`builder()`](Self::builder) method.
+/// Once you have an instance, you can further customize it by chaining method calls
+/// to set various configuration options.
+///
+/// ## Configuration Builder States
+///
+/// The configuration process follows a *state-based builder pattern*, where the client
+/// configuration progresses through *3* states.
+///
+/// ### 1. `WantsBindAddress`
+///
+/// The caller must supply a binding address for the client.
+/// The following options are mutually exclusive:
+///
+///   - [`with_bind_default`](ClientConfigBuilder::with_bind_default): configures to use
+///     the default bind address. This is generally the *default* choice for a client.
+///   - [`with_bind_config`](ClientConfigBuilder::with_bind_config): configures
+///     to bind an address determined by a configuration preset.
+///   - [`with_bind_address`](ClientConfigBuilder::with_bind_address): configures
+///     to bind a custom specified socket address.
+///
+/// Only one of these options can be selected during the client configuration process.
+///
+/// #### Examples:
+///
+/// ```
+/// use wtransport::ClientConfig;
+///
+/// ClientConfig::builder().with_bind_default();
+/// ```
+///
+/// ### 2. `WantsRootStore`
+///
+/// The caller must supply a TLS root store configuration for server certificate validation.
+/// The following options are mutually exclusive:
+///
+/// - [`with_native_certs`](ClientConfigBuilder::with_native_certs): configures to use
+///   root certificates found in the platform's native certificate store. This is the *default*
+///   configuration as it uses root store installed on the current machine.
+/// - (**unsafe**) [`with_no_cert_validation`](ClientConfigBuilder::with_no_cert_validation):
+///   configure to skip server certificate validation. This might be handy for testing purpose
+///   to accept *self-signed* certificate.
+///
+/// Only one of these options can be selected during the client configuration process.
+///
+/// #### Examples:
+/// ```
+/// use wtransport::ClientConfig;
+///
+/// ClientConfig::builder()
+///     .with_bind_default()
+///     .with_native_certs();
+/// ```
+///
+/// ### 3. `WantsTransportConfigClient`
+///
+/// The caller can supply *additional* transport configurations.
+/// Multiple options can be given at this stage. Once the configuration is completed, it is possible
+/// to finalize with the method [`build()`](ClientConfigBuilder::build).
+///
+/// All these options can be omitted in the configuration; default values will be used.
+///
+/// - [`max_idle_timeout`](ClientConfigBuilder::max_idle_timeout)
+/// - [`keep_alive_interval`](ClientConfigBuilder::keep_alive_interval)
+///
+/// #### Examples:
+/// ```
+/// use std::time::Duration;
+/// use wtransport::ClientConfig;
+///
+/// ClientConfig::builder()
+///     .with_bind_default()
+///     .with_native_certs()
+///     .max_idle_timeout(Some(Duration::from_secs(30)))
+///     .unwrap()
+///     .keep_alive_interval(Some(Duration::from_secs(3)))
+///     .build();
+/// ```
 pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
