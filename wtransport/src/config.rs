@@ -94,6 +94,20 @@ impl ServerConfig {
     pub fn builder() -> ServerConfigBuilder<WantsBindAddress> {
         ServerConfigBuilder::default()
     }
+
+    /// Returns a reference to the inner QUIC configuration.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn quic_config(&self) -> &quinn::ServerConfig {
+        &self.quic_config
+    }
+
+    /// Returns a mutable reference to the inner QUIC configuration.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn quic_config_mut(&mut self) -> &mut quinn::ServerConfig {
+        &mut self.quic_config
+    }
 }
 
 /// Server builder configuration.
@@ -268,6 +282,20 @@ impl ClientConfig {
     /// For more information, see the [`ClientConfigBuilder`] documentation.
     pub fn builder() -> ClientConfigBuilder<WantsBindAddress> {
         ClientConfigBuilder::default()
+    }
+
+    /// Returns a reference to the inner QUIC configuration.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn quic_config(&self) -> &quinn::ClientConfig {
+        &self.quic_config
+    }
+
+    /// Returns a mutable reference to the inner QUIC configuration.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn quic_config_mut(&mut self) -> &mut quinn::ClientConfig {
+        &mut self.quic_config
     }
 }
 
