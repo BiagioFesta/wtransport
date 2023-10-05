@@ -36,7 +36,7 @@ impl VarInt {
         }
     }
 
-    /// Creates a VarInt without ensuring it's in range.
+    /// Creates a [`VarInt`] without ensuring it's in range.
     ///
     /// # Safety
     ///
