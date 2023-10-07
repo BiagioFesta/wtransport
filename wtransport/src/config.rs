@@ -205,6 +205,7 @@ impl ServerConfig {
 ///     .with_bind_default(4433)
 ///     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap());
 /// ```
+#[must_use]
 pub struct ServerConfigBuilder<State>(State);
 
 impl ServerConfigBuilder<WantsBindAddress> {
@@ -293,6 +294,7 @@ impl ServerConfigBuilder<WantsCertificate> {
 
 impl ServerConfigBuilder<WantsTransportConfigServer> {
     /// Completes configuration process.
+    #[must_use]
     pub fn build(self) -> ServerConfig {
         let mut quic_config = QuicServerConfig::with_crypto(Arc::new(self.0.tls_config));
         quic_config.transport_config(Arc::new(self.0.transport_config));
@@ -479,6 +481,7 @@ impl Default for ClientConfig {
 /// # use wtransport::ClientConfig;
 /// let config = ClientConfig::builder().with_bind_default();
 /// ```
+#[must_use]
 pub struct ClientConfigBuilder<State>(State);
 
 impl ClientConfigBuilder<WantsBindAddress> {
@@ -598,6 +601,7 @@ impl ClientConfigBuilder<WantsRootStore> {
 
 impl ClientConfigBuilder<WantsTransportConfigClient> {
     /// Completes configuration process.
+    #[must_use]
     pub fn build(self) -> ClientConfig {
         let mut quic_config = QuicClientConfig::new(Arc::new(self.0.tls_config));
         quic_config.transport_config(Arc::new(self.0.transport_config));
