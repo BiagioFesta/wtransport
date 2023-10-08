@@ -1,3 +1,33 @@
+//! This module defines configurations for the WebTransport server and client.
+//! It provides builders for creating server and client configurations with various options.
+//!
+//! The module includes:
+//! - [`ServerConfig`]: Configuration for the WebTransport server.
+//! - [`ClientConfig`]: Configuration for the WebTransport client.
+//!
+//! Example for creating a server configuration:
+//!
+//! ```no_run
+//! use wtransport::tls::Certificate;
+//! use wtransport::ServerConfig;
+//!
+//! let server_config = ServerConfig::builder()
+//!     .with_bind_default(443)
+//!     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap())
+//!     .build();
+//! ```
+//!
+//! Example for creating a client configuration:
+//!
+//! ```no_run
+//! use wtransport::ClientConfig;
+//!
+//! let client_config = ClientConfig::builder()
+//!     .with_bind_default()
+//!     .with_native_certs()
+//!     .build();
+//! ```
+
 use crate::tls::Certificate;
 use quinn::ClientConfig as QuicClientConfig;
 use quinn::ServerConfig as QuicServerConfig;
