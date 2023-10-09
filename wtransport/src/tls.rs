@@ -123,3 +123,5 @@ impl Display for CertificateLoadError {
         }
     }
 }
+
+pub use rustls;

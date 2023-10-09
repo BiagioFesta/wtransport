@@ -150,6 +150,8 @@ pub struct InvalidIdleTimeout;
 ///
 /// - [`with_certificate`](ServerConfigBuilder::with_certificate): configures
 ///   a TLS [`Certificate`] for the server.
+/// - [`with_custom_tls`](ServerConfigBuilder::with_custom_tls): sets the TLS
+///   server configuration manually.
 ///
 /// #### Examples:
 /// ```
@@ -291,13 +293,65 @@ impl ServerConfigBuilder<WantsBindAddress> {
 }
 
 impl ServerConfigBuilder<WantsCertificate> {
-    /// Sets the TLS certificate the server will present to incoming
-    /// WebTransport connections.
+    /// Configures TLS with safe defaults and a [`Certificate`].
+    ///
+    /// # Example
+    /// ```no_run
+    /// use wtransport::tls::Certificate;
+    /// use wtransport::ServerConfig;
+    /// # use anyhow::Result;
+    ///
+    /// # fn run() -> Result<()> {
+    /// let certificate = Certificate::load("cert.pem", "key.pem")?;
+    ///
+    /// let server_config = ServerConfig::builder()
+    ///     .with_bind_default(4433)
+    ///     .with_certificate(certificate)
+    ///     .build();
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn with_certificate(
         self,
         certificate: Certificate,
     ) -> ServerConfigBuilder<WantsTransportConfigServer> {
-        let tls_config = Self::build_tls_config(certificate);
+        self.with_custom_tls(Self::build_tls_config(certificate))
+    }
+
+    /// Allows for manual configuration of a custom TLS setup using a provided
+    /// [`rustls::ServerConfig`].
+    ///
+    /// This method is provided for advanced users who need fine-grained control over the
+    /// TLS configuration. It allows you to pass a preconfigured [`rustls::ServerConfig`]
+    /// instance to customize the TLS settings according to your specific requirements.
+    ///
+    /// Generally, it is recommended to use the [`with_certificate`](Self::with_certificate) method
+    /// to configure TLS with safe defaults and a [`Certificate`].
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use wtransport::tls::rustls;
+    /// use wtransport::ServerConfig;
+    ///
+    /// // Create a custom rustls::ServerConfig with specific TLS settings
+    /// let custom_tls_config = rustls::ServerConfig::builder();
+    /// // Customize TLS settings here...
+    /// # let custom_tls_config = custom_tls_config
+    /// #          .with_safe_defaults()
+    /// #          .with_no_client_auth()
+    /// #          .with_single_cert(todo!(), todo!()).unwrap();
+    ///
+    /// // Create a ServerConfigBuilder with the custom TLS configuration
+    /// let server_config = ServerConfig::builder()
+    ///     .with_bind_default(4433)
+    ///     .with_custom_tls(custom_tls_config)
+    ///     .build();
+    /// ```
+    pub fn with_custom_tls(
+        self,
+        tls_config: rustls::ServerConfig,
+    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
         let transport_config = TransportConfig::default();
 
         ServerConfigBuilder(WantsTransportConfigServer {
@@ -423,6 +477,8 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
 /// - [`with_native_certs`](ClientConfigBuilder::with_native_certs): configures to use
 ///   root certificates found in the platform's native certificate store. This is the *default*
 ///   configuration as it uses root store installed on the current machine.
+/// - [`with_custom_tls`](ClientConfigBuilder::with_custom_tls): sets the TLS client
+///   configuration manually.
 /// - (**unsafe**) [`with_no_cert_validation`](ClientConfigBuilder::with_no_cert_validation):
 ///   configure to skip server certificate validation. This might be handy for testing purpose
 ///   to accept *self-signed* certificate.
@@ -566,9 +622,29 @@ impl ClientConfigBuilder<WantsBindAddress> {
 }
 
 impl ClientConfigBuilder<WantsRootStore> {
-    /// Loads local (native) root certificate for server validation.
+    /// Configures the client to use native (local) root certificates for server validation.
+    ///
+    /// This method loads trusted root certificates from the system's certificate store,
+    /// ensuring that your client can trust certificates signed by well-known authorities.
+    ///
+    /// It configures safe default TLS configuration.
     pub fn with_native_certs(self) -> ClientConfigBuilder<WantsTransportConfigClient> {
-        let tls_config = Self::build_tls_config(Self::native_cert_store());
+        self.with_custom_tls(Self::build_tls_config(Self::native_cert_store()))
+    }
+
+    /// Allows for manual configuration of a custom TLS setup using a provided
+    /// [`rustls::ClientConfig`].
+    ///
+    /// This method is provided for advanced users who need fine-grained control over the
+    /// TLS configuration. It allows you to pass a preconfigured [`rustls::ClientConfig`]
+    /// instance to customize the TLS settings according to your specific requirements.
+    ///
+    /// For most use cases, it is recommended to use the [`with_native_certs`](Self::with_native_certs)
+    /// method to configure TLS with safe defaults.
+    pub fn with_custom_tls(
+        self,
+        tls_config: rustls::ClientConfig,
+    ) -> ClientConfigBuilder<WantsTransportConfigClient> {
         let transport_config = TransportConfig::default();
 
         ClientConfigBuilder(WantsTransportConfigClient {
@@ -579,7 +655,27 @@ impl ClientConfigBuilder<WantsRootStore> {
         })
     }
 
-    /// Skip certificate server validation.
+    /// Configures the client to skip server certificate validation, potentially
+    /// compromising security.
+    ///
+    /// This method is intended for advanced users and should be used with caution. It
+    /// configures the client to bypass server certificate validation during the TLS
+    /// handshake, effectively trusting any server certificate presented, even if it is
+    /// not signed by a trusted certificate authority (CA). Using this method can expose
+    /// your application to security risks.
+    ///
+    /// # Safety Note
+    ///
+    /// Using [`with_no_cert_validation`] should only be considered when you have a
+    /// specific need to disable certificate validation. In most cases, it is strongly
+    /// recommended to validate server certificates using trusted root certificates
+    /// (e.g., [`with_native_certs`]) to ensure secure communication.
+    ///
+    /// However, this method can be useful in testing environments or situations where
+    /// you intentionally want to skip certificate validation for specific use cases.
+    ///
+    /// [`with_native_certs`]: #method.with_native_certs
+    /// [`with_no_cert_validation`]: #method.with_no_cert_validation
     #[cfg(feature = "dangerous-configuration")]
     #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
     pub fn with_no_cert_validation(self) -> ClientConfigBuilder<WantsTransportConfigClient> {
