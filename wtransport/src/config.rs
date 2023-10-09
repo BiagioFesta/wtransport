@@ -756,7 +756,7 @@ mod utils {
     impl Drop for VarRestoreGuard {
         fn drop(&mut self) {
             if let Some(value) = self.value.take() {
-                env::set_var(self.key.clone(), value)
+                env::set_var(self.key.clone(), value);
             }
         }
     }
