@@ -405,7 +405,8 @@ mod tests {
     #[test]
     fn qstream_id() {
         for (quarter, id) in stream_types(1024)
-            .filter_map(|(id, r#type)| matches!(r#type, StreamType::ClientBi).then(|| id))
+            .filter(|(_id, r#type)| matches!(r#type, StreamType::ClientBi))
+            .map(|(id, _type)| id)
             .enumerate()
         {
             let session_id = SessionId::try_from_varint(id).unwrap();
