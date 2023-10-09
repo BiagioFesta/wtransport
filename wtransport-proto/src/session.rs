@@ -223,6 +223,11 @@ impl SessionResponse {
         Self::with_status_code(StatusCode::OK)
     }
 
+    /// Constructs with [`StatusCode::FORBIDDEN`].
+    pub fn forbidden() -> Self {
+        Self::with_status_code(StatusCode::FORBIDDEN)
+    }
+
     /// Constructs with [`StatusCode::NOT_FOUND`].
     pub fn not_found() -> Self {
         Self::with_status_code(StatusCode::NOT_FOUND)

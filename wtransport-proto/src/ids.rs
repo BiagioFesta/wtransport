@@ -256,6 +256,9 @@ impl StatusCode {
     /// HTTP 200 OK status code.
     pub const OK: Self = Self(200);
 
+    /// HTTP 403 Forbidden status code.
+    pub const FORBIDDEN: Self = Self(403);
+
     /// HTTP 404 Not Found status code.
     pub const NOT_FOUND: Self = Self(404);
 

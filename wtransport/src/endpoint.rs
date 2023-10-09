@@ -423,8 +423,8 @@ impl Future for IncomingSession {
 
 /// A incoming client session request.
 ///
-/// Server should use methods [`accept`](Self::accept) or [`not_found`](Self::not_found)
-/// in order to validate or reject the client request.
+/// Server should use methods [`accept`](Self::accept), [`forbidden`](Self::forbidden),
+/// or [`not_found`](Self::not_found) in order to validate or reject the client request.
 pub struct SessionRequest {
     quic_connection: quinn::Connection,
     driver: Driver,
@@ -498,11 +498,18 @@ impl SessionRequest {
         ))
     }
 
-    /// Rejects the client request by replying with `404` status code.
-    pub async fn not_found(mut self) {
-        let user_agent = self.user_agent().unwrap_or_default();
+    /// Rejects the client request by replying with `403` status code.
+    pub async fn forbidden(self) {
+        self.reject(SessionResponseProto::forbidden()).await;
+    }
 
-        let mut response = SessionResponseProto::not_found();
+    /// Rejects the client request by replying with `404` status code.
+    pub async fn not_found(self) {
+        self.reject(SessionResponseProto::not_found()).await;
+    }
+
+    async fn reject(mut self, mut response: SessionResponseProto) {
+        let user_agent = self.user_agent().unwrap_or_default();
 
         // Chrome support
         if !user_agent.contains("firefox") {
