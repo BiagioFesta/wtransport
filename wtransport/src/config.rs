@@ -1,4 +1,6 @@
+//!
 //! This module defines configurations for the WebTransport server and client.
+//!
 //! It provides builders for creating server and client configurations with various options.
 //!
 //! The module includes:
