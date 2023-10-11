@@ -137,6 +137,13 @@ impl RecvStream {
         self.0.read_exact(buf).await
     }
 
+    /// Stops accepting data on the stream.
+    ///
+    /// Discards unread data and notifies the peer to stop transmitting.
+    pub fn stop(mut self, error_code: VarInt) {
+        let _ = self.0.stop(error_code);
+    }
+
     /// Returns the [`StreamId`] associated.
     #[inline(always)]
     pub fn id(&self) -> StreamId {
