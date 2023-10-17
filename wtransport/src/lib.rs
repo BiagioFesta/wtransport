@@ -52,7 +52,7 @@
 //! async fn main() -> Result<()> {
 //!     let config = ServerConfig::builder()
 //!         .with_bind_default(4433)
-//!         .with_certificate(Certificate::load("cert.pem", "key.pem")?)
+//!         .with_certificate(Certificate::load("cert.pem", "key.pem").await?)
 //!         .build();
 //!
 //!     let server = Endpoint::server(config)?;

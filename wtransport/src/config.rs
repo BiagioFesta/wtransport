@@ -10,13 +10,15 @@
 //! Example for creating a server configuration:
 //!
 //! ```no_run
+//! # async fn run() {
 //! use wtransport::tls::Certificate;
 //! use wtransport::ServerConfig;
 //!
 //! let server_config = ServerConfig::builder()
 //!     .with_bind_default(443)
-//!     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap())
+//!     .with_certificate(Certificate::load("cert.pem", "key.pem").await.unwrap())
 //!     .build();
+//! # }
 //! ```
 //!
 //! Example for creating a client configuration:
@@ -161,10 +163,10 @@ pub struct InvalidIdleTimeout;
 /// use wtransport::tls::Certificate;
 /// use wtransport::ServerConfig;
 ///
-/// # fn run() -> Result<()> {
+/// # async fn run() -> Result<()> {
 /// ServerConfig::builder()
 ///     .with_bind_default(443)
-///     .with_certificate(Certificate::load("cert.pem", "key.pem")?);
+///     .with_certificate(Certificate::load("cert.pem", "key.pem").await?);
 /// # Ok(())
 /// # }
 /// ```
@@ -188,10 +190,10 @@ pub struct InvalidIdleTimeout;
 /// use wtransport::tls::Certificate;
 /// use std::time::Duration;
 ///
-/// # fn run() -> Result<()> {
+/// # async fn run() -> Result<()> {
 /// let server_config = ServerConfig::builder()
 ///     .with_bind_default(443)
-///     .with_certificate(Certificate::load("cert.pem", "key.pem")?)
+///     .with_certificate(Certificate::load("cert.pem", "key.pem").await?)
 ///     .keep_alive_interval(Some(Duration::from_secs(3)))
 ///     .build();
 /// # Ok(())
@@ -231,13 +233,15 @@ impl ServerConfig {
 ///
 /// # Examples:
 /// ```no_run
+/// # async fn run() {
 /// # use std::net::Ipv4Addr;
 /// # use std::net::SocketAddr;
 /// # use wtransport::tls::Certificate;
 /// # use wtransport::ServerConfig;
 /// let config = ServerConfig::builder()
 ///     .with_bind_default(4433)
-///     .with_certificate(Certificate::load("cert.pem", "key.pem").unwrap());
+///     .with_certificate(Certificate::load("cert.pem", "key.pem").await.unwrap());
+/// # }
 /// ```
 #[must_use]
 pub struct ServerConfigBuilder<State>(State);
@@ -303,8 +307,8 @@ impl ServerConfigBuilder<WantsCertificate> {
     /// use wtransport::ServerConfig;
     /// # use anyhow::Result;
     ///
-    /// # fn run() -> Result<()> {
-    /// let certificate = Certificate::load("cert.pem", "key.pem")?;
+    /// # async fn run() -> Result<()> {
+    /// let certificate = Certificate::load("cert.pem", "key.pem").await?;
     ///
     /// let server_config = ServerConfig::builder()
     ///     .with_bind_default(4433)

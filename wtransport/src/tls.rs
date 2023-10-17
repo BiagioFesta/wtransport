@@ -49,12 +49,12 @@ impl Certificate {
     }
 
     /// Loads a PEM certificates and private key from the filesystem.
-    pub fn load(
+    pub async fn load(
         cert_path: impl AsRef<Path>,
         key_path: impl AsRef<Path>,
     ) -> Result<Self, CertificateLoadError> {
         let certificates =
-            rustls_pemfile::certs(&mut &*std::fs::read(cert_path.as_ref()).map_err(
+            rustls_pemfile::certs(&mut &*tokio::fs::read(cert_path.as_ref()).await.map_err(
                 |io_error| CertificateLoadError::FileError {
                     file: cert_path.as_ref().to_path_buf(),
                     error: io_error,
@@ -70,7 +70,7 @@ impl Certificate {
         }
 
         let private_key =
-            rustls_pemfile::read_one(&mut &*std::fs::read(key_path.as_ref()).map_err(
+            rustls_pemfile::read_one(&mut &*tokio::fs::read(key_path.as_ref()).await.map_err(
                 |io_error| CertificateLoadError::FileError {
                     file: key_path.as_ref().to_path_buf(),
                     error: io_error,
