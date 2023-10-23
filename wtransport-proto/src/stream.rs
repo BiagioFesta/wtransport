@@ -82,23 +82,26 @@ pub mod biremote {
         pub fn read_frame<'a, R>(
             &mut self,
             bytes_reader: &mut R,
-        ) -> Option<Result<Frame<'a>, ErrorCode>>
+        ) -> Result<Option<Frame<'a>>, ErrorCode>
         where
             R: BytesReader<'a>,
         {
             loop {
-                match Frame::read(bytes_reader)? {
-                    Ok(frame) => {
-                        return Some(self.validate_frame(frame));
+                match Frame::read(bytes_reader) {
+                    Ok(Some(frame)) => {
+                        return Ok(Some(self.validate_frame(frame)?));
+                    }
+                    Ok(None) => {
+                        return Ok(None);
                     }
                     Err(frame::ParseError::UnknownFrame) => {
                         continue;
                     }
                     Err(frame::ParseError::InvalidSessionId) => {
-                        return Some(Err(ErrorCode::Id));
+                        return Err(ErrorCode::Id);
                     }
                     Err(frame::ParseError::PayloadTooBig) => {
-                        return Some(Err(ErrorCode::ExcessiveLoad));
+                        return Err(ErrorCode::ExcessiveLoad);
                     }
                 }
             }
@@ -143,15 +146,15 @@ pub mod biremote {
         pub fn read_frame_from_buffer<'a>(
             &mut self,
             buffer_reader: &mut BufferReader<'a>,
-        ) -> Option<Result<Frame<'a>, ErrorCode>> {
+        ) -> Result<Option<Frame<'a>>, ErrorCode> {
             let mut buffer_reader_child = buffer_reader.child();
 
             match self.read_frame(&mut *buffer_reader_child)? {
-                Ok(frame) => {
+                Some(frame) => {
                     buffer_reader_child.commit();
-                    Some(Ok(frame))
+                    Ok(Some(frame))
                 }
-                Err(error) => Some(Err(error)),
+                None => Ok(None),
             }
         }
 
@@ -270,23 +273,26 @@ pub mod bilocal {
         pub fn read_frame<'a, R>(
             &self,
             bytes_reader: &mut R,
-        ) -> Option<Result<Frame<'a>, ErrorCode>>
+        ) -> Result<Option<Frame<'a>>, ErrorCode>
         where
             R: BytesReader<'a>,
         {
             loop {
-                match Frame::read(bytes_reader)? {
-                    Ok(frame) => {
-                        return Some(self.validate_frame(frame));
+                match Frame::read(bytes_reader) {
+                    Ok(Some(frame)) => {
+                        return Ok(Some(self.validate_frame(frame)?));
+                    }
+                    Ok(None) => {
+                        return Ok(None);
                     }
                     Err(frame::ParseError::UnknownFrame) => {
                         continue;
                     }
                     Err(frame::ParseError::InvalidSessionId) => {
-                        return Some(Err(ErrorCode::Id));
+                        return Err(ErrorCode::Id);
                     }
                     Err(frame::ParseError::PayloadTooBig) => {
-                        return Some(Err(ErrorCode::ExcessiveLoad));
+                        return Err(ErrorCode::ExcessiveLoad);
                     }
                 }
             }
@@ -331,15 +337,15 @@ pub mod bilocal {
         pub fn read_frame_from_buffer<'a>(
             &self,
             buffer_reader: &mut BufferReader<'a>,
-        ) -> Option<Result<Frame<'a>, ErrorCode>> {
+        ) -> Result<Option<Frame<'a>>, ErrorCode> {
             let mut buffer_reader_child = buffer_reader.child();
 
             match self.read_frame(&mut *buffer_reader_child)? {
-                Ok(frame) => {
+                Some(frame) => {
                     buffer_reader_child.commit();
-                    Some(Ok(frame))
+                    Ok(Some(frame))
                 }
-                Err(error) => Some(Err(error)),
+                None => Ok(None),
             }
         }
 
@@ -528,15 +534,13 @@ pub mod uniremote {
             R: BytesReader<'a>,
         {
             match StreamHeader::read(bytes_reader) {
-                Some(Ok(stream_header)) => Ok(MaybeUpgradeH3::H3(StreamUniRemoteH3 {
+                Ok(Some(stream_header)) => Ok(MaybeUpgradeH3::H3(StreamUniRemoteH3 {
                     kind: self.kind,
                     stage: H3::new(Some(stream_header)),
                 })),
-                Some(Err(stream_header::ParseError::UnknownStream)) => {
-                    Err(ErrorCode::StreamCreation)
-                }
-                Some(Err(stream_header::ParseError::InvalidSessionId)) => Err(ErrorCode::Id),
-                None => Ok(MaybeUpgradeH3::Quic(self)),
+                Ok(None) => Ok(MaybeUpgradeH3::Quic(self)),
+                Err(stream_header::ParseError::UnknownStream) => Err(ErrorCode::StreamCreation),
+                Err(stream_header::ParseError::InvalidSessionId) => Err(ErrorCode::Id),
             }
         }
 
@@ -585,25 +589,28 @@ pub mod uniremote {
         pub fn read_frame<'a, R>(
             &mut self,
             bytes_reader: &mut R,
-        ) -> Option<Result<Frame<'a>, ErrorCode>>
+        ) -> Result<Option<Frame<'a>>, ErrorCode>
         where
             R: BytesReader<'a>,
         {
             assert!(!matches!(self.kind(), StreamKind::WebTransport));
 
             loop {
-                match Frame::read(bytes_reader)? {
-                    Ok(frame) => {
-                        return Some(self.validate_frame(frame));
+                match Frame::read(bytes_reader) {
+                    Ok(Some(frame)) => {
+                        return Ok(Some(self.validate_frame(frame)?));
+                    }
+                    Ok(None) => {
+                        return Ok(None);
                     }
                     Err(frame::ParseError::UnknownFrame) => {
                         continue;
                     }
                     Err(frame::ParseError::InvalidSessionId) => {
-                        return Some(Err(ErrorCode::Id));
+                        return Err(ErrorCode::Id);
                     }
                     Err(frame::ParseError::PayloadTooBig) => {
-                        return Some(Err(ErrorCode::ExcessiveLoad));
+                        return Err(ErrorCode::ExcessiveLoad);
                     }
                 }
             }
@@ -658,15 +665,15 @@ pub mod uniremote {
         pub fn read_frame_from_buffer<'a>(
             &mut self,
             buffer_reader: &mut BufferReader<'a>,
-        ) -> Option<Result<Frame<'a>, ErrorCode>> {
+        ) -> Result<Option<Frame<'a>>, ErrorCode> {
             let mut buffer_reader_child = buffer_reader.child();
 
             match self.read_frame(&mut *buffer_reader_child)? {
-                Ok(frame) => {
+                Some(frame) => {
                     buffer_reader_child.commit();
-                    Some(Ok(frame))
+                    Ok(Some(frame))
                 }
-                Err(error) => Some(Err(error)),
+                None => Ok(None),
             }
         }
 
@@ -916,23 +923,26 @@ pub mod session {
         pub fn read_frame<'a, R>(
             &self,
             bytes_reader: &mut R,
-        ) -> Option<Result<Frame<'a>, ErrorCode>>
+        ) -> Result<Option<Frame<'a>>, ErrorCode>
         where
             R: BytesReader<'a>,
         {
             loop {
-                match Frame::read(bytes_reader)? {
-                    Ok(frame) => {
-                        return Some(self.validate_frame(frame));
+                match Frame::read(bytes_reader) {
+                    Ok(Some(frame)) => {
+                        return Ok(Some(self.validate_frame(frame)?));
+                    }
+                    Ok(None) => {
+                        return Ok(None);
                     }
                     Err(frame::ParseError::UnknownFrame) => {
                         continue;
                     }
                     Err(frame::ParseError::InvalidSessionId) => {
-                        return Some(Err(ErrorCode::Id));
+                        return Err(ErrorCode::Id);
                     }
                     Err(frame::ParseError::PayloadTooBig) => {
-                        return Some(Err(ErrorCode::ExcessiveLoad));
+                        return Err(ErrorCode::ExcessiveLoad);
                     }
                 }
             }
@@ -977,15 +987,15 @@ pub mod session {
         pub fn read_frame_from_buffer<'a>(
             &self,
             buffer_reader: &mut BufferReader<'a>,
-        ) -> Option<Result<Frame<'a>, ErrorCode>> {
+        ) -> Result<Option<Frame<'a>>, ErrorCode> {
             let mut buffer_reader_child = buffer_reader.child();
 
             match self.read_frame(&mut *buffer_reader_child)? {
-                Ok(frame) => {
+                Some(frame) => {
                     buffer_reader_child.commit();
-                    Some(Ok(frame))
+                    Ok(Some(frame))
                 }
-                Err(error) => Some(Err(error)),
+                None => Ok(None),
             }
         }
 
@@ -1214,7 +1224,7 @@ mod tests {
 
         assert!(matches!(frame.kind(), FrameKind::Exercise(_)));
 
-        let frame = stream.read_frame_from_buffer(&mut buffer_reader).unwrap();
+        let frame = stream.read_frame_from_buffer(&mut buffer_reader);
 
         assert!(matches!(frame, Err(ErrorCode::Frame)));
     }

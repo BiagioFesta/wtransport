@@ -128,20 +128,20 @@ impl StreamHeader {
     /// to parse an entire header.
     ///
     /// In case [`None`] or [`Err`], `bytes_reader` might be partially read.
-    pub fn read<'a, R>(bytes_reader: &mut R) -> Option<Result<Self, ParseError>>
+    pub fn read<'a, R>(bytes_reader: &mut R) -> Result<Option<Self>, ParseError>
     where
         R: BytesReader<'a>,
     {
-        let kind_id = bytes_reader.get_varint()?;
-        let kind = match StreamKind::parse(kind_id) {
-            Some(kind) => kind,
-            None => return Some(Err(ParseError::UnknownStream)),
+        let kind = match bytes_reader.get_varint() {
+            Some(kind_id) => StreamKind::parse(kind_id).ok_or(ParseError::UnknownStream)?,
+            None => return Ok(None),
         };
 
         let session_id = if matches!(kind, StreamKind::WebTransport) {
-            let session_id = match SessionId::try_from_varint(bytes_reader.get_varint()?) {
-                Ok(session_id) => session_id,
-                Err(InvalidSessionId) => return Some(Err(ParseError::InvalidSessionId)),
+            let session_id = match bytes_reader.get_varint() {
+                Some(session_id) => SessionId::try_from_varint(session_id)
+                    .map_err(|InvalidSessionId| ParseError::InvalidSessionId)?,
+                None => return Ok(None),
             };
 
             Some(session_id)
@@ -149,7 +149,7 @@ impl StreamHeader {
             None
         };
 
-        Some(Ok(Self::new(kind, session_id)))
+        Ok(Some(Self::new(kind, session_id)))
     }
 
     /// Reads a [`StreamHeader`] from a `reader`.
@@ -187,15 +187,15 @@ impl StreamHeader {
     /// to parse an entire header.
     ///
     /// In case [`None`] or [`Err`], `buffer_reader` offset if not advanced.
-    pub fn read_from_buffer(buffer_reader: &mut BufferReader) -> Option<Result<Self, ParseError>> {
+    pub fn read_from_buffer(buffer_reader: &mut BufferReader) -> Result<Option<Self>, ParseError> {
         let mut buffer_reader_child = buffer_reader.child();
 
         match Self::read(&mut *buffer_reader_child)? {
-            Ok(header) => {
+            Some(header) => {
                 buffer_reader_child.commit();
-                Some(Ok(header))
+                Ok(Some(header))
             }
-            Err(error) => Some(Err(error)),
+            None => Ok(None),
         }
     }
 
@@ -382,7 +382,9 @@ mod tests {
     #[test]
     fn read_eof() {
         let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x0042_4242));
-        assert!(StreamHeader::read(&mut &buffer[..buffer.len() - 1]).is_none());
+        assert!(StreamHeader::read(&mut &buffer[..buffer.len() - 1])
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
@@ -431,7 +433,7 @@ mod tests {
         let buffer = StreamHeader::serialize_any(VarInt::from_u32(0x0042_4242));
 
         assert!(matches!(
-            StreamHeader::read(&mut buffer.as_slice()).unwrap(),
+            StreamHeader::read(&mut buffer.as_slice()),
             Err(ParseError::UnknownStream)
         ));
     }
@@ -452,7 +454,7 @@ mod tests {
         let buffer = StreamHeader::serialize_webtransport(invalid_session_id);
 
         assert!(matches!(
-            StreamHeader::read(&mut buffer.as_slice()).unwrap(),
+            StreamHeader::read(&mut buffer.as_slice()),
             Err(ParseError::InvalidSessionId)
         ));
     }

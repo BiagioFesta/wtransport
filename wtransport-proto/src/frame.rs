@@ -160,33 +160,39 @@ impl<'a> Frame<'a> {
     /// to parse an entire frame.
     ///
     /// In case [`None`] or [`Err`], `bytes_reader` might be partially read.
-    pub fn read<R>(bytes_reader: &mut R) -> Option<Result<Self, ParseError>>
+    pub fn read<R>(bytes_reader: &mut R) -> Result<Option<Self>, ParseError>
     where
         R: BytesReader<'a>,
     {
-        let kind_id = bytes_reader.get_varint()?;
-        let kind = match FrameKind::parse(kind_id) {
-            Some(kind) => kind,
-            None => return Some(Err(ParseError::UnknownFrame)),
+        let kind = match bytes_reader.get_varint() {
+            Some(kind_id) => FrameKind::parse(kind_id).ok_or(ParseError::UnknownFrame)?,
+            None => return Ok(None),
         };
 
         if matches!(kind, FrameKind::WebTransport) {
-            let session_id = match SessionId::try_from_varint(bytes_reader.get_varint()?) {
-                Ok(session_id) => session_id,
-                Err(InvalidSessionId) => return Some(Err(ParseError::InvalidSessionId)),
+            let session_id = match bytes_reader.get_varint() {
+                Some(session_id) => SessionId::try_from_varint(session_id)
+                    .map_err(|InvalidSessionId| ParseError::InvalidSessionId)?,
+                None => return Ok(None),
             };
 
-            Some(Ok(Self::new_webtransport(session_id)))
+            Ok(Some(Self::new_webtransport(session_id)))
         } else {
-            let payload_len = bytes_reader.get_varint()?.into_inner() as usize;
+            let payload_len = match bytes_reader.get_varint() {
+                Some(payload_len) => payload_len.into_inner() as usize,
+                None => return Ok(None),
+            };
 
             if payload_len > Self::MAX_PARSE_PAYLOAD_ALLOWED {
-                return Some(Err(ParseError::PayloadTooBig));
+                return Err(ParseError::PayloadTooBig);
             }
 
-            let payload = bytes_reader.get_bytes(payload_len)?;
+            let payload = match bytes_reader.get_bytes(payload_len) {
+                Some(payload) => payload,
+                None => return Ok(None),
+            };
 
-            Some(Ok(Self::new(kind, Cow::Borrowed(payload), None)))
+            Ok(Some(Self::new(kind, Cow::Borrowed(payload), None)))
         }
     }
 
@@ -246,15 +252,15 @@ impl<'a> Frame<'a> {
     /// In case [`None`] or [`Err`], `buffer_reader` offset if not advanced.
     pub fn read_from_buffer(
         buffer_reader: &mut BufferReader<'a>,
-    ) -> Option<Result<Self, ParseError>> {
+    ) -> Result<Option<Self>, ParseError> {
         let mut buffer_reader_child = buffer_reader.child();
 
         match Self::read(&mut *buffer_reader_child)? {
-            Ok(frame) => {
+            Some(frame) => {
                 buffer_reader_child.commit();
-                Some(Ok(frame))
+                Ok(Some(frame))
             }
-            Err(error) => Some(Err(error)),
+            None => Ok(None),
         }
     }
 
@@ -544,7 +550,9 @@ mod tests {
     #[test]
     fn read_eof() {
         let buffer = Frame::serialize_any(FrameKind::Data.id(), b"This is a test payload");
-        assert!(Frame::read(&mut &buffer[..buffer.len() - 1]).is_none());
+        assert!(Frame::read(&mut &buffer[..buffer.len() - 1])
+            .unwrap()
+            .is_none());
     }
 
     #[tokio::test]
@@ -593,7 +601,7 @@ mod tests {
         let buffer = Frame::serialize_any(VarInt::from_u32(0x0042_4242), b"This is a test payload");
 
         assert!(matches!(
-            Frame::read(&mut buffer.as_slice()).unwrap(),
+            Frame::read(&mut buffer.as_slice()),
             Err(ParseError::UnknownFrame)
         ));
     }
@@ -614,7 +622,7 @@ mod tests {
         let buffer = Frame::serialize_webtransport(invalid_session_id);
 
         assert!(matches!(
-            Frame::read(&mut buffer.as_slice()).unwrap(),
+            Frame::read(&mut buffer.as_slice()),
             Err(ParseError::InvalidSessionId)
         ));
     }
@@ -642,7 +650,7 @@ mod tests {
 
         assert!(matches!(
             Frame::read_from_buffer(&mut BufferReader::new(&buffer)),
-            Some(Err(ParseError::PayloadTooBig))
+            Err(ParseError::PayloadTooBig)
         ));
     }
 
