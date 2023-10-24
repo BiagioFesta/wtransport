@@ -121,6 +121,11 @@ impl<Side> Endpoint<Side> {
     pub async fn wait_idle(&self) {
         self.endpoint.wait_idle().await;
     }
+
+    /// Gets the local [`SocketAddr`] the underlying socket is bound to.
+    pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
+        self.endpoint.local_addr()
+    }
 }
 
 impl Endpoint<endpoint_side::Server> {
