@@ -54,6 +54,9 @@ impl From<bytes::IoReadError> for IoReadError {
 #[cfg(feature = "async")]
 pub type IoWriteError = bytes::IoWriteError;
 
+/// Alias for [`Frame<'static>`](Frame);
+pub type FrameOwned = Frame<'static>;
+
 /// An HTTP3 [`Frame`] type.
 #[derive(Copy, Clone, Debug)]
 pub enum FrameKind {
