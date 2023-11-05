@@ -39,11 +39,15 @@ pub mod endpoint_side {
     use super::*;
 
     /// Type of endpoint accepting multiple WebTransport connections.
+    ///
+    /// Use [`Endpoint::server`] to create and server-endpoint.
     pub struct Server {
         pub(super) _marker: PhantomData<()>,
     }
 
     /// Type of endpoint opening a WebTransport connection.
+    ///
+    /// Use [`Endpoint::client`] to create and client-endpoint.
     pub struct Client {
         pub(super) dns_resolver: Box<dyn DnsResolver>,
     }
