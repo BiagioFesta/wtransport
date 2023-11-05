@@ -233,7 +233,9 @@ impl Endpoint<endpoint_side::Client> {
     /// * `url` - A [URL](https://en.wikipedia.org/wiki/URL) string representing the WebTransport
     ///           endpoint to connect to. It must have an `https` scheme.
     ///           The URL can specify either an IP address or a hostname.
-    ///           When specifying a hostname, the method will internally perform DNS resolution.
+    ///           When specifying a hostname, the method will internally perform DNS resolution,
+    ///           configured with
+    ///           [`ClientConfigBuilder::dns_resolver`](crate::config::ClientConfigBuilder::dns_resolver).
     ///
     /// # Examples
     ///
