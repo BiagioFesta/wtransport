@@ -1,4 +1,5 @@
 use crate::config::ClientConfig;
+use crate::config::DnsResolver;
 use crate::config::Ipv6DualStackConfig;
 use crate::config::ServerConfig;
 use crate::connection::Connection;
@@ -24,7 +25,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
-use tokio::net::lookup_host;
 use tracing::debug;
 use url::Host;
 use url::Url;
@@ -36,11 +36,17 @@ use wtransport_proto::session::SessionResponse as SessionResponseProto;
 
 /// Helper structure for Endpoint types.
 pub mod endpoint_side {
+    use super::*;
+
     /// Type of endpoint accepting multiple WebTransport connections.
-    pub struct Server;
+    pub struct Server {
+        pub(super) _marker: PhantomData<()>,
+    }
 
     /// Type of endpoint opening a WebTransport connection.
-    pub struct Client;
+    pub struct Client {
+        pub(super) dns_resolver: Box<dyn DnsResolver>,
+    }
 }
 
 /// Entrypoint for creating client or server connections.
@@ -91,7 +97,7 @@ pub mod endpoint_side {
 /// ```
 pub struct Endpoint<Side> {
     endpoint: quinn::Endpoint,
-    _marker: PhantomData<Side>,
+    side: Side,
 }
 
 impl<Side> Endpoint<Side> {
@@ -145,7 +151,9 @@ impl Endpoint<endpoint_side::Server> {
 
         Ok(Self {
             endpoint,
-            _marker: PhantomData,
+            side: endpoint_side::Server {
+                _marker: PhantomData,
+            },
         })
     }
 
@@ -205,7 +213,9 @@ impl Endpoint<endpoint_side::Client> {
 
         Ok(Self {
             endpoint,
-            _marker: PhantomData,
+            side: endpoint_side::Client {
+                dns_resolver: client_config.dns_resolver,
+            },
         })
     }
 
@@ -264,11 +274,14 @@ impl Endpoint<endpoint_side::Client> {
 
         let (socket_address, server_name) = match host {
             Host::Domain(domain) => {
-                let socket_address = lookup_host(format!("{domain}:{port}"))
+                let socket_address = self
+                    .side
+                    .dns_resolver
+                    .resolve(&format!("{domain}:{port}"))
                     .await
                     .map_err(ConnectingError::DnsLookup)?
-                    .next()
                     .ok_or(ConnectingError::DnsNotFound)?;
+
                 (socket_address, domain.to_string())
             }
             Host::Ipv4(address) => {

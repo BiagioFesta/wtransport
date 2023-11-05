@@ -39,11 +39,13 @@ use quinn::TransportConfig;
 use rustls::ClientConfig as TlsClientConfig;
 use rustls::RootCertStore;
 use rustls::ServerConfig as TlsServerConfig;
+use std::future::Future;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
 use std::net::Ipv6Addr;
 use std::net::SocketAddr;
 use std::net::SocketAddrV6;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use wtransport_proto::WEBTRANSPORT_ALPN;
@@ -510,6 +512,7 @@ impl ServerConfigBuilder<WantsTransportConfigServer> {
 ///
 /// - [`max_idle_timeout`](ClientConfigBuilder::max_idle_timeout)
 /// - [`keep_alive_interval`](ClientConfigBuilder::keep_alive_interval)
+/// - [`dns_resolver`](ClientConfigBuilder::dns_resolver)
 ///
 /// #### Examples:
 /// ```
@@ -528,6 +531,7 @@ pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
     pub(crate) quic_config: QuicClientConfig,
+    pub(crate) dns_resolver: Box<dyn DnsResolver>,
 }
 
 impl ClientConfig {
@@ -658,6 +662,7 @@ impl ClientConfigBuilder<WantsRootStore> {
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
             transport_config,
+            dns_resolver: Box::<TokioDnsResolver>::default(),
         })
     }
 
@@ -697,6 +702,7 @@ impl ClientConfigBuilder<WantsRootStore> {
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
             transport_config,
+            dns_resolver: Box::<TokioDnsResolver>::default(),
         })
     }
 
@@ -742,6 +748,7 @@ impl ClientConfigBuilder<WantsTransportConfigClient> {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             quic_config,
+            dns_resolver: self.0.dns_resolver,
         }
     }
 
@@ -775,6 +782,14 @@ impl ClientConfigBuilder<WantsTransportConfigClient> {
     /// [`max_idle_timeout`](Self::max_idle_timeout) of both peers to be effective.
     pub fn keep_alive_interval(mut self, interval: Option<Duration>) -> Self {
         self.0.transport_config.keep_alive_interval(interval);
+        self
+    }
+
+    /// Sets the *DNS* resolver used during [`Endpoint::connect`](crate::Endpoint::connect).
+    ///
+    /// Default configuration uses [`TokioDnsResolver`].
+    pub fn dns_resolver(mut self, dns_resolver: Box<dyn DnsResolver>) -> Self {
+        self.0.dns_resolver = dns_resolver;
         self
     }
 }
@@ -821,6 +836,7 @@ pub struct WantsTransportConfigClient {
     dual_stack_config: Ipv6DualStackConfig,
     tls_config: TlsClientConfig,
     transport_config: quinn::TransportConfig,
+    dns_resolver: Box<dyn DnsResolver>,
 }
 
 #[cfg(feature = "dangerous-configuration")]
@@ -842,6 +858,35 @@ mod dangerous_configuration {
         ) -> Result<ServerCertVerified, rustls::Error> {
             Ok(ServerCertVerified::assertion())
         }
+    }
+}
+
+/// A type alias representing a dynamic future for asynchronous DNS resolution.
+///
+/// `DynFutureResolver` is a trait object type alias that represents a future yielding
+/// a result of DNS resolution. The future's output is of type `std::io::Result<Option<SocketAddr>>`,
+/// indicating the result of the DNS resolution operation.
+pub type DynFutureResolver = dyn Future<Output = std::io::Result<Option<SocketAddr>>>;
+
+/// A trait for asynchronously resolving domain names to IP addresses using DNS.
+pub trait DnsResolver {
+    /// Resolves a domain name to one IP address.
+    ///
+    /// It returns a [`Pin<Box<DynFutureResolver>>`](DynFutureResolver) that represents
+    /// the asynchronous result of the DNS resolution.
+    fn resolve(&self, host: &str) -> Pin<Box<DynFutureResolver>>;
+}
+
+/// A DNS resolver implementation using the *Tokio* asynchronous runtime.
+///
+/// Internally, it uses [`tokio::net::lookup_host`].
+#[derive(Default)]
+pub struct TokioDnsResolver;
+
+impl DnsResolver for TokioDnsResolver {
+    fn resolve(&self, host: &str) -> Pin<Box<DynFutureResolver>> {
+        let host = host.to_string();
+        Box::pin(async move { Ok(tokio::net::lookup_host(host).await?.next()) })
     }
 }
 
