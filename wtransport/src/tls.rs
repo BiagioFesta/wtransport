@@ -23,6 +23,7 @@ pub enum CertificateLoadError {
 }
 
 /// A server TLS certificate.
+#[derive(Clone)]
 pub struct Certificate {
     pub(crate) certificates: Vec<rustls::Certificate>,
     pub(crate) key: rustls::PrivateKey,
