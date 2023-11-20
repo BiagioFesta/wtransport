@@ -348,17 +348,24 @@ impl Endpoint<endpoint_side::Client> {
             }
         }
 
-        let frame = match stream_session.read_frame().await {
-            Ok(frame) => frame,
-            Err(ProtoReadError::H3(error_code)) => {
-                quic_connection.close(varint_w2q(error_code.to_code()), b"");
-                return Err(ConnectingError::ConnectionError(
-                    ConnectionError::local_h3_error(error_code),
-                ));
+        let frame = loop {
+            let frame = match stream_session.read_frame().await {
+                Ok(frame) => frame,
+                Err(ProtoReadError::H3(error_code)) => {
+                    quic_connection.close(varint_w2q(error_code.to_code()), b"");
+                    return Err(ConnectingError::ConnectionError(
+                        ConnectionError::local_h3_error(error_code),
+                    ));
+                }
+                Err(ProtoReadError::IO(_io_error)) => {
+                    return Err(ConnectingError::with_no_connection(&quic_connection));
+                }
+            };
+
+            if let FrameKind::Exercise(_) = frame.kind() {
+                continue;
             }
-            Err(ProtoReadError::IO(_io_error)) => {
-                return Err(ConnectingError::with_no_connection(&quic_connection));
-            }
+            break frame;
         };
 
         if !matches!(frame.kind(), FrameKind::Headers) {
