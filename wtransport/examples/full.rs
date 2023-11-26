@@ -20,7 +20,7 @@ async fn main() -> Result<()> {
     info!("Certificate fingerprint: {}", certificate.fingerprint());
 
     let webtransport_server = WebTransportServer::new(&certificate)?;
-    let http_server = HttpServer::new(webtransport_server.local_port());
+    let http_server = HttpServer::new(webtransport_server.local_port()).await?;
     let browser = utils::launch_google_chrome(http_server.local_port(), certificate.fingerprint())?;
 
     tokio::select! {
@@ -224,33 +224,45 @@ mod http {
     use axum::http::header::CONTENT_TYPE;
     use axum::response::Html;
     use axum::routing::get;
-    use axum::routing::IntoMakeService;
+    use axum::serve;
+    use axum::serve::Serve;
     use axum::Router;
-    use axum::Server;
-    use hyper::server::conn::AddrIncoming;
     use std::net::Ipv6Addr;
     use std::net::SocketAddr;
+    use tokio::net::TcpListener;
 
-    pub struct HttpServer(Server<AddrIncoming, IntoMakeService<Router>>);
+    pub struct HttpServer {
+        serve: Serve<Router, Router>,
+        local_port: u16,
+    }
 
     impl HttpServer {
-        pub fn new(webtransport_port: u16) -> Self {
+        pub async fn new(webtransport_port: u16) -> Result<Self> {
             let router = Self::build_router(webtransport_port);
 
-            let server = Server::bind(&SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 0))
-                .serve(router.into_make_service());
+            let listener = TcpListener::bind(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 0))
+                .await
+                .context("Cannot bind TCP listener for HTTP server")?;
 
-            HttpServer(server)
+            let local_port = listener
+                .local_addr()
+                .context("Cannot get local port")?
+                .port();
+
+            Ok(HttpServer {
+                serve: serve(listener, router),
+                local_port,
+            })
         }
 
         pub fn local_port(&self) -> u16 {
-            self.0.local_addr().port()
+            self.local_port
         }
 
         pub async fn serve(self) -> Result<()> {
             info!("Server running on port {}", self.local_port());
 
-            self.0.await.context("HTTP server error")?;
+            self.serve.await.context("HTTP server error")?;
 
             Ok(())
         }
