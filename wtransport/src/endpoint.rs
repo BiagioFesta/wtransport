@@ -50,7 +50,7 @@ pub mod endpoint_side {
     ///
     /// Use [`Endpoint::client`] to create and client-endpoint.
     pub struct Client {
-        pub(super) dns_resolver: Box<dyn DnsResolver>,
+        pub(super) dns_resolver: Box<dyn DnsResolver + Send + Sync>,
     }
 }
 

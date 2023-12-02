@@ -531,7 +531,7 @@ pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
     pub(crate) quic_config: QuicClientConfig,
-    pub(crate) dns_resolver: Box<dyn DnsResolver>,
+    pub(crate) dns_resolver: Box<dyn DnsResolver + Send + Sync>,
 }
 
 impl ClientConfig {
@@ -788,7 +788,7 @@ impl ClientConfigBuilder<WantsTransportConfigClient> {
     /// Sets the *DNS* resolver used during [`Endpoint::connect`](crate::Endpoint::connect).
     ///
     /// Default configuration uses [`TokioDnsResolver`].
-    pub fn dns_resolver(mut self, dns_resolver: Box<dyn DnsResolver>) -> Self {
+    pub fn dns_resolver(mut self, dns_resolver: Box<dyn DnsResolver + Send + Sync>) -> Self {
         self.0.dns_resolver = dns_resolver;
         self
     }
@@ -836,7 +836,7 @@ pub struct WantsTransportConfigClient {
     dual_stack_config: Ipv6DualStackConfig,
     tls_config: TlsClientConfig,
     transport_config: quinn::TransportConfig,
-    dns_resolver: Box<dyn DnsResolver>,
+    dns_resolver: Box<dyn DnsResolver + Send + Sync>,
 }
 
 #[cfg(feature = "dangerous-configuration")]
@@ -866,7 +866,7 @@ mod dangerous_configuration {
 /// `DynFutureResolver` is a trait object type alias that represents a future yielding
 /// a result of DNS resolution. The future's output is of type `std::io::Result<Option<SocketAddr>>`,
 /// indicating the result of the DNS resolution operation.
-pub type DynFutureResolver = dyn Future<Output = std::io::Result<Option<SocketAddr>>>;
+pub type DynFutureResolver = dyn Future<Output = std::io::Result<Option<SocketAddr>>> + Send;
 
 /// A trait for asynchronously resolving domain names to IP addresses using DNS.
 pub trait DnsResolver {
