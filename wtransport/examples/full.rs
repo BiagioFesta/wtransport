@@ -1,27 +1,27 @@
 use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
-use certificate::SelfSignedCertificate;
 use http::HttpServer;
 use tracing::error;
 use tracing::info;
 use tracing::info_span;
 use tracing::Instrument;
 use webtransport::WebTransportServer;
+use wtransport::tls::Certificate;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     utils::init_logging();
     utils::set_additional_paths().context("Cannot set additional paths")?;
 
-    let certificate =
-        SelfSignedCertificate::new().context("Cannot generate self-signed certificate")?;
+    let certificate = Certificate::self_signed(["localhost"]);
+    let certificate_fingerprint = certificate.fingerprints().into_iter().next().unwrap();
 
-    info!("Certificate fingerprint: {}", certificate.fingerprint());
+    info!("Certificate fingerprint: {}", certificate_fingerprint);
 
-    let webtransport_server = WebTransportServer::new(&certificate)?;
+    let webtransport_server = WebTransportServer::new(certificate)?;
     let http_server = HttpServer::new(webtransport_server.local_port()).await?;
-    let browser = utils::launch_google_chrome(http_server.local_port(), certificate.fingerprint())?;
+    let browser = utils::launch_google_chrome(http_server.local_port(), &certificate_fingerprint)?;
 
     tokio::select! {
         result = http_server.serve() => {
@@ -36,71 +36,7 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-mod certificate {
-    use super::*;
-    use base64::engine::general_purpose::STANDARD as Base64Engine;
-    use base64::Engine;
-    use rcgen::CertificateParams;
-    use rcgen::DistinguishedName;
-    use rcgen::DnType;
-    use rcgen::KeyPair;
-    use rcgen::PKCS_ECDSA_P256_SHA256;
-    use ring::digest::digest;
-    use ring::digest::SHA256;
-    use time::Duration;
-    use time::OffsetDateTime;
-
-    pub struct SelfSignedCertificate {
-        certificate: Vec<u8>,
-        key: Vec<u8>,
-        fingerprint: String,
-    }
-
-    impl SelfSignedCertificate {
-        pub fn new() -> Result<Self> {
-            let keypair = KeyPair::generate(&PKCS_ECDSA_P256_SHA256)?;
-            let digest = digest(&SHA256, &keypair.public_key_der());
-            let fingerprint = Base64Engine.encode(digest);
-
-            let mut dname = DistinguishedName::new();
-            dname.push(DnType::CommonName, "localhost");
-
-            let mut cert_params = CertificateParams::new(vec!["localhost".to_string()]);
-            cert_params.distinguished_name = dname;
-            cert_params.alg = &PKCS_ECDSA_P256_SHA256;
-            cert_params.key_pair = Some(keypair);
-            cert_params.not_before = OffsetDateTime::now_utc()
-                .checked_sub(Duration::days(5))
-                .unwrap();
-            cert_params.not_after = OffsetDateTime::now_utc()
-                .checked_add(Duration::days(5))
-                .unwrap();
-
-            let certificate = rcgen::Certificate::from_params(cert_params)?;
-
-            Ok(SelfSignedCertificate {
-                certificate: certificate.serialize_der()?,
-                key: certificate.serialize_private_key_der(),
-                fingerprint,
-            })
-        }
-
-        pub fn certificate_der(&self) -> &[u8] {
-            &self.certificate
-        }
-
-        pub fn private_key_der(&self) -> &[u8] {
-            &self.key
-        }
-
-        pub fn fingerprint(&self) -> &str {
-            &self.fingerprint
-        }
-    }
-}
-
 mod webtransport {
-    use super::certificate::SelfSignedCertificate;
     use super::*;
     use std::time::Duration;
     use wtransport::endpoint::endpoint_side::Server;
@@ -114,12 +50,7 @@ mod webtransport {
     }
 
     impl WebTransportServer {
-        pub fn new(certificate: &SelfSignedCertificate) -> Result<Self> {
-            let certificate = Certificate::new(
-                vec![certificate.certificate_der().to_vec()],
-                certificate.private_key_der().to_vec(),
-            );
-
+        pub fn new(certificate: Certificate) -> Result<Self> {
             let config = ServerConfig::builder()
                 .with_bind_default(0)
                 .with_certificate(certificate)

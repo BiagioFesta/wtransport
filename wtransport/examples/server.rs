@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     let config = ServerConfig::builder()
         .with_bind_default(4433)
-        .with_certificate(Certificate::load("cert.pem", "key.pem").await?)
+        .with_certificate(Certificate::self_signed(["localhost"]))
         .keep_alive_interval(Some(Duration::from_secs(3)))
         .build();
 
