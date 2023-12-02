@@ -7,7 +7,7 @@ use tracing::Instrument;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use wtransport::endpoint::IncomingSession;
-use wtransport::tls::Certificate;
+use wtransport::Certificate;
 use wtransport::Endpoint;
 use wtransport::ServerConfig;
 

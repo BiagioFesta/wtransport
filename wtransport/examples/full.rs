@@ -7,7 +7,7 @@ use tracing::info;
 use tracing::info_span;
 use tracing::Instrument;
 use webtransport::WebTransportServer;
-use wtransport::tls::Certificate;
+use wtransport::Certificate;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -41,7 +41,6 @@ mod webtransport {
     use std::time::Duration;
     use wtransport::endpoint::endpoint_side::Server;
     use wtransport::endpoint::IncomingSession;
-    use wtransport::tls::Certificate;
     use wtransport::Endpoint;
     use wtransport::ServerConfig;
 

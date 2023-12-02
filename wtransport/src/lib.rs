@@ -44,7 +44,7 @@
 //! ## Server
 //! ```no_run
 //! # use anyhow::Result;
-//! use wtransport::tls::Certificate;
+//! use wtransport::Certificate;
 //! use wtransport::Endpoint;
 //! use wtransport::ServerConfig;
 //!
@@ -114,6 +114,9 @@ pub use config::ClientConfig;
 
 #[doc(inline)]
 pub use config::ServerConfig;
+
+#[doc(inline)]
+pub use tls::Certificate;
 
 #[doc(inline)]
 pub use endpoint::Endpoint;

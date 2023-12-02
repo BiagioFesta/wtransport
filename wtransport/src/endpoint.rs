@@ -66,7 +66,7 @@ pub mod endpoint_side {
 /// ```no_run
 /// # use anyhow::Result;
 /// # use wtransport::ServerConfig;
-/// # use wtransport::tls::Certificate;
+/// # use wtransport::Certificate;
 /// use wtransport::Endpoint;
 ///
 /// # async fn run() -> Result<()> {
@@ -89,7 +89,7 @@ pub mod endpoint_side {
 ///
 /// ```no_run
 /// # use anyhow::Result;
-/// # use wtransport::tls::Certificate;
+/// # use wtransport::Certificate;
 /// use wtransport::ClientConfig;
 /// use wtransport::Endpoint;
 ///

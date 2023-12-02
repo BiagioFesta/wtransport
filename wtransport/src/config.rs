@@ -11,7 +11,7 @@
 //!
 //! ```no_run
 //! # async fn run() {
-//! use wtransport::tls::Certificate;
+//! use wtransport::Certificate;
 //! use wtransport::ServerConfig;
 //!
 //! let server_config = ServerConfig::builder()
@@ -32,7 +32,7 @@
 //!     .build();
 //! ```
 
-use crate::tls::Certificate;
+use crate::Certificate;
 use quinn::ClientConfig as QuicClientConfig;
 use quinn::ServerConfig as QuicServerConfig;
 use quinn::TransportConfig;
@@ -162,7 +162,7 @@ pub struct InvalidIdleTimeout;
 /// #### Examples:
 /// ```
 /// # use anyhow::Result;
-/// use wtransport::tls::Certificate;
+/// use wtransport::Certificate;
 /// use wtransport::ServerConfig;
 ///
 /// # async fn run() -> Result<()> {
@@ -189,7 +189,7 @@ pub struct InvalidIdleTimeout;
 /// ```
 /// # use anyhow::Result;
 /// use wtransport::ServerConfig;
-/// use wtransport::tls::Certificate;
+/// use wtransport::Certificate;
 /// use std::time::Duration;
 ///
 /// # async fn run() -> Result<()> {
@@ -238,7 +238,7 @@ impl ServerConfig {
 /// # async fn run() {
 /// # use std::net::Ipv4Addr;
 /// # use std::net::SocketAddr;
-/// # use wtransport::tls::Certificate;
+/// # use wtransport::Certificate;
 /// # use wtransport::ServerConfig;
 /// let config = ServerConfig::builder()
 ///     .with_bind_default(4433)
@@ -305,7 +305,7 @@ impl ServerConfigBuilder<WantsCertificate> {
     ///
     /// # Example
     /// ```no_run
-    /// use wtransport::tls::Certificate;
+    /// use wtransport::Certificate;
     /// use wtransport::ServerConfig;
     /// # use anyhow::Result;
     ///

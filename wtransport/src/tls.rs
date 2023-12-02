@@ -89,7 +89,7 @@ impl Certificate {
     /// # Examples
     ///
     /// ```
-    /// use wtransport::tls::Certificate;
+    /// use wtransport::Certificate;
     ///
     /// let certificate = Certificate::self_signed(&["localhost", "127.0.0.1"]);
     /// ```
