@@ -272,12 +272,10 @@ impl Endpoint<endpoint_side::Client> {
     /// # use wtransport::endpoint::endpoint_side::Client;
     /// # use wtransport::endpoint::ConnectOptions;
     /// # async fn example(endpoint: wtransport::Endpoint<Client>) -> Result<()> {
-    /// let connection = endpoint
-    ///     .connect(
-    ///         ConnectOptions::builder("https://example.com:4433/webtransport")
-    ///             .add_header("Authorization", "AuthToken")
-    ///     )
-    ///     .await?;
+    /// let options = ConnectOptions::builder("https://example.com:4433/webtransport")
+    ///     .add_header("Authorization", "AuthToken")
+    ///     .build();
+    /// let connection = endpoint.connect(options).await?;
     /// # Ok(())
     /// # }
     /// ```
