@@ -77,11 +77,33 @@ pub enum HeadersParseError {
     InvalidStatusCode,
 }
 
+/// An error when attempting to insert a value for a reserved header.
+///
+/// It is returned as an error when trying to insert a key-value pair into
+/// [`SessionRequest`] where the key is one of the
+/// [reserved headers](SessionRequest::RESERVED_HEADERS).
+#[derive(Debug)]
+pub struct ReservedHeader;
+
 /// A CONNECT WebTransport request.
 #[derive(Debug)]
 pub struct SessionRequest(Headers);
 
 impl SessionRequest {
+    /// A collection of reserved headers used in the WebTransport protocol.
+    ///
+    /// Reserved headers have special significance in the WebTransport protocol and
+    /// cannot be used as additional headers with the [`insert`](Self::insert) method.
+    ///
+    /// The following headers are considered reserved:
+    /// - `:method`
+    /// - `:scheme`
+    /// - `:protocol`
+    /// - `:authority`
+    /// - `:path`
+    pub const RESERVED_HEADERS: &'static [&'static str] =
+        &[":method", ":scheme", ":protocol", ":authority", ":path"];
+
     /// Parses an URL to build a Session request.
     pub fn new<S>(url: S) -> Result<Self, UrlParseError>
     where
@@ -142,6 +164,30 @@ impl SessionRequest {
         K: AsRef<str>,
     {
         self.0.get(key)
+    }
+
+    /// Inserts a key-value pair into the header map, checking for reserved headers.
+    ///
+    /// This method inserts a key-value pair into the header map after ensuring that
+    /// the specified key is not one of the [reserved headers](Self::RESERVED_HEADERS).
+    /// If the key is reserved, the method returns an `Err(ReservedHeader)` indicating
+    /// the attempt to insert a value for a reserved header.
+    ///
+    /// If the key already exists in the header map, the corresponding value is updated with
+    /// the new value.
+    pub fn insert<K, V>(&mut self, key: K, value: V) -> Result<(), ReservedHeader>
+    where
+        K: ToString,
+        V: ToString,
+    {
+        let key = key.to_string();
+
+        if Self::RESERVED_HEADERS.iter().any(|rh| rh == &key) {
+            return Err(ReservedHeader);
+        }
+
+        self.0.insert(key, value);
+        Ok(())
     }
 
     /// Returns the whole headers associated with the request.
@@ -369,6 +415,43 @@ mod tests {
                 .collect::<Headers>()
             ),
             Err(HeadersParseError::SchemeNotHttps),
+        ));
+    }
+
+    #[test]
+    fn insert() {
+        let mut request = SessionRequest::new("https://example.com").unwrap();
+        request.insert("version", "test").unwrap();
+        assert_eq!(request.get("version").unwrap(), "test");
+    }
+
+    #[test]
+    fn insert_reseved() {
+        let mut request = SessionRequest::new("https://example.com").unwrap();
+
+        assert!(matches!(
+            request.insert(":method", "GET"),
+            Err(ReservedHeader)
+        ));
+
+        assert!(matches!(
+            request.insert(":scheme", "ftp"),
+            Err(ReservedHeader)
+        ));
+
+        assert!(matches!(
+            request.insert(":protocol", "web"),
+            Err(ReservedHeader)
+        ));
+
+        assert!(matches!(
+            request.insert(":authority", "me"),
+            Err(ReservedHeader)
+        ));
+
+        assert!(matches!(
+            request.insert(":path", "example"),
+            Err(ReservedHeader)
         ));
     }
 }
