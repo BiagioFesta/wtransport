@@ -77,6 +77,10 @@ pub enum ConnectingError {
     /// Request rejected.
     #[error("Server rejected WebTransport session request")]
     SessionRejected,
+
+    /// Cannot use reserved key for additional headers.
+    #[error("Additional header '{0}' is reserved")]
+    ReservedHeader(String),
 }
 
 impl ConnectingError {

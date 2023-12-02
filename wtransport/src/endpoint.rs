@@ -31,6 +31,7 @@ use url::Url;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::FrameKind;
 use wtransport_proto::headers::Headers;
+use wtransport_proto::session::ReservedHeader;
 use wtransport_proto::session::SessionRequest as SessionRequestProto;
 use wtransport_proto::session::SessionResponse as SessionResponseProto;
 
@@ -230,12 +231,13 @@ impl Endpoint<endpoint_side::Client> {
     ///
     /// # Arguments
     ///
-    /// * `url` - A [URL](https://en.wikipedia.org/wiki/URL) string representing the WebTransport
-    ///           endpoint to connect to. It must have an `https` scheme.
-    ///           The URL can specify either an IP address or a hostname.
-    ///           When specifying a hostname, the method will internally perform DNS resolution,
-    ///           configured with
-    ///           [`ClientConfigBuilder::dns_resolver`](crate::config::ClientConfigBuilder::dns_resolver).
+    /// * `options` - Connection options specifying the URL and additional headers.
+    ///               It can be simply an [URL](https://en.wikipedia.org/wiki/URL) string representing
+    ///               the WebTransport endpoint to connect to. It must have an `https` scheme.
+    ///               The URL can specify either an IP address or a hostname.
+    ///               When specifying a hostname, the method will internally perform DNS resolution,
+    ///               configured with
+    ///               [`ClientConfigBuilder::dns_resolver`](crate::config::ClientConfigBuilder::dns_resolver).
     ///
     /// # Examples
     ///
@@ -262,11 +264,30 @@ impl Endpoint<endpoint_side::Client> {
     /// # Ok(())
     /// # }
     /// ```
-    pub async fn connect<S>(&self, url: S) -> Result<Connection, ConnectingError>
+    ///
+    /// Connect adding an additional header:
+    ///
+    /// ```no_run
+    /// # use anyhow::Result;
+    /// # use wtransport::endpoint::endpoint_side::Client;
+    /// # use wtransport::endpoint::ConnectOptions;
+    /// # async fn example(endpoint: wtransport::Endpoint<Client>) -> Result<()> {
+    /// let connection = endpoint
+    ///     .connect(
+    ///         ConnectOptions::builder("https://example.com:4433/webtransport")
+    ///             .add_header("Authorization", "AuthToken")
+    ///     )
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn connect<O>(&self, options: O) -> Result<Connection, ConnectingError>
     where
-        S: AsRef<str>,
+        O: IntoConnectOptions,
     {
-        let url = Url::parse(url.as_ref())
+        let options = options.into_options();
+
+        let url = Url::parse(&options.url)
             .map_err(|parse_error| ConnectingError::InvalidUrl(parse_error.to_string()))?;
 
         if url.scheme() != "https" {
@@ -320,8 +341,14 @@ impl Endpoint<endpoint_side::Client> {
 
         // TODO(biagio): validate settings
 
-        let session_request_proto =
+        let mut session_request_proto =
             SessionRequestProto::new(url.as_ref()).expect("Url has been already validate");
+
+        for (k, v) in options.additional_headers {
+            session_request_proto
+                .insert(k.clone(), v)
+                .map_err(|ReservedHeader| ConnectingError::ReservedHeader(k))?;
+        }
 
         let mut stream_session = match driver.open_session(session_request_proto).await {
             Ok(stream_session) => stream_session,
@@ -409,6 +436,117 @@ impl Endpoint<endpoint_side::Client> {
         }
 
         Ok(Connection::new(quic_connection, driver, session_id))
+    }
+}
+
+/// Options for establishing a client WebTransport connection.
+///
+/// Used in [`Endpoint::connect`].
+///
+/// # Examples
+///
+/// ```no_run
+/// # use anyhow::Result;
+/// # use wtransport::endpoint::endpoint_side::Client;
+/// # use wtransport::endpoint::ConnectOptions;
+/// # async fn example(endpoint: wtransport::Endpoint<Client>) -> Result<()> {
+/// let options = ConnectOptions::builder("https://example.com:4433/webtransport")
+///     .add_header("Authorization", "AuthToken")
+///     .build();
+/// let connection = endpoint.connect(options).await?;
+/// # Ok(())
+/// # }
+/// ```
+pub struct ConnectOptions {
+    url: String,
+    additional_headers: HashMap<String, String>,
+}
+
+impl ConnectOptions {
+    /// Creates a new `ConnectOptions` using a builder pattern.
+    ///
+    /// # Arguments
+    ///
+    /// * `url` - A [URL](https://en.wikipedia.org/wiki/URL) string representing the WebTransport
+    ///           endpoint to connect to. It must have an `https` scheme.
+    ///           The URL can specify either an IP address or a hostname.
+    ///           When specifying a hostname, the method will internally perform DNS resolution,
+    ///           configured with
+    ///           [`ClientConfigBuilder::dns_resolver`](crate::config::ClientConfigBuilder::dns_resolver).
+    pub fn builder<S>(url: S) -> ConnectRequestBuilder
+    where
+        S: ToString,
+    {
+        ConnectRequestBuilder {
+            url: url.to_string(),
+            additional_headers: Default::default(),
+        }
+    }
+}
+
+/// A trait for converting types into `ConnectOptions`.
+pub trait IntoConnectOptions {
+    /// Perform value-to-value conversion into [`ConnectOptions`].
+    fn into_options(self) -> ConnectOptions;
+}
+
+/// A builder for [`ConnectOptions`].
+///
+/// See [`ConnectOptions::builder`].
+pub struct ConnectRequestBuilder {
+    url: String,
+    additional_headers: HashMap<String, String>,
+}
+
+impl ConnectRequestBuilder {
+    /// Adds a header to the connection options.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use wtransport::endpoint::ConnectOptions;
+    ///
+    /// let options = ConnectOptions::builder("https://example.com:4433/webtransport")
+    ///     .add_header("Authorization", "AuthToken")
+    ///     .build();
+    /// ```
+    pub fn add_header<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: ToString,
+        V: ToString,
+    {
+        self.additional_headers
+            .insert(key.to_string(), value.to_string());
+        self
+    }
+
+    /// Constructs the [`ConnectOptions`] from the builder configuration.
+    pub fn build(self) -> ConnectOptions {
+        ConnectOptions {
+            url: self.url,
+            additional_headers: self.additional_headers,
+        }
+    }
+}
+
+impl IntoConnectOptions for ConnectRequestBuilder {
+    fn into_options(self) -> ConnectOptions {
+        self.build()
+    }
+}
+
+impl IntoConnectOptions for ConnectOptions {
+    fn into_options(self) -> ConnectOptions {
+        self
+    }
+}
+
+impl<S> IntoConnectOptions for S
+where
+    S: ToString,
+{
+    fn into_options(self) -> ConnectOptions {
+        ConnectOptions::builder(self).build()
     }
 }
 
