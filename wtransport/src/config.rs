@@ -39,6 +39,8 @@ use quinn::TransportConfig;
 use rustls::ClientConfig as TlsClientConfig;
 use rustls::RootCertStore;
 use rustls::ServerConfig as TlsServerConfig;
+use std::fmt::Debug;
+use std::fmt::Display;
 use std::future::Future;
 use std::net::IpAddr;
 use std::net::Ipv4Addr;
@@ -111,7 +113,6 @@ pub enum Ipv6DualStackConfig {
 }
 
 /// Invalid idle timeout.
-#[derive(Debug)]
 pub struct InvalidIdleTimeout;
 
 /// Server configuration.
@@ -903,6 +904,20 @@ impl DnsResolver for TokioDnsResolver {
     fn resolve(&self, host: &str) -> Pin<Box<DynFutureResolver>> {
         let host = host.to_string();
         Box::pin(async move { Ok(tokio::net::lookup_host(host).await?.next()) })
+    }
+}
+
+impl std::error::Error for InvalidIdleTimeout {}
+
+impl Debug for InvalidIdleTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("idle timeout value configuration is invalid")
+    }
+}
+
+impl Display for InvalidIdleTimeout {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(self, f)
     }
 }
 
