@@ -210,7 +210,7 @@ impl ServerConfig {
     /// Creates a builder to build up the server configuration.
     ///
     /// For more information, see the [`ServerConfigBuilder`] documentation.
-    pub fn builder() -> ServerConfigBuilder<WantsBindAddress> {
+    pub fn builder() -> ServerConfigBuilder<states::WantsBindAddress> {
         ServerConfigBuilder::default()
     }
 
@@ -248,13 +248,16 @@ impl ServerConfig {
 #[must_use]
 pub struct ServerConfigBuilder<State>(State);
 
-impl ServerConfigBuilder<WantsBindAddress> {
+impl ServerConfigBuilder<states::WantsBindAddress> {
     /// Configures for accepting incoming connections binding ANY IP (allowing IP dual-stack).
     ///
     /// `listening_port` is the port where the server will accept incoming connections.
     ///
     /// This is equivalent to: [`Self::with_bind_config`] with [`IpBindConfig::InAddrAnyDual`].
-    pub fn with_bind_default(self, listening_port: u16) -> ServerConfigBuilder<WantsCertificate> {
+    pub fn with_bind_default(
+        self,
+        listening_port: u16,
+    ) -> ServerConfigBuilder<states::WantsCertificate> {
         self.with_bind_config(IpBindConfig::InAddrAnyDual, listening_port)
     }
 
@@ -265,7 +268,7 @@ impl ServerConfigBuilder<WantsBindAddress> {
         self,
         ip_bind_config: IpBindConfig,
         listening_port: u16,
-    ) -> ServerConfigBuilder<WantsCertificate> {
+    ) -> ServerConfigBuilder<states::WantsCertificate> {
         let ip_address: IpAddr = ip_bind_config.into_ip();
 
         match ip_address {
@@ -278,8 +281,11 @@ impl ServerConfigBuilder<WantsBindAddress> {
     }
 
     /// Sets the binding (local) socket address for the endpoint.
-    pub fn with_bind_address(self, address: SocketAddr) -> ServerConfigBuilder<WantsCertificate> {
-        ServerConfigBuilder(WantsCertificate {
+    pub fn with_bind_address(
+        self,
+        address: SocketAddr,
+    ) -> ServerConfigBuilder<states::WantsCertificate> {
+        ServerConfigBuilder(states::WantsCertificate {
             bind_address: address,
             dual_stack_config: Ipv6DualStackConfig::OsDefault,
         })
@@ -292,15 +298,15 @@ impl ServerConfigBuilder<WantsBindAddress> {
         self,
         address: SocketAddrV6,
         dual_stack_config: Ipv6DualStackConfig,
-    ) -> ServerConfigBuilder<WantsCertificate> {
-        ServerConfigBuilder(WantsCertificate {
+    ) -> ServerConfigBuilder<states::WantsCertificate> {
+        ServerConfigBuilder(states::WantsCertificate {
             bind_address: address.into(),
             dual_stack_config,
         })
     }
 }
 
-impl ServerConfigBuilder<WantsCertificate> {
+impl ServerConfigBuilder<states::WantsCertificate> {
     /// Configures TLS with safe defaults and a [`Certificate`].
     ///
     /// # Example
@@ -322,7 +328,7 @@ impl ServerConfigBuilder<WantsCertificate> {
     pub fn with_certificate(
         self,
         certificate: Certificate,
-    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
+    ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         self.with_custom_tls(Self::build_tls_config(certificate))
     }
 
@@ -359,10 +365,10 @@ impl ServerConfigBuilder<WantsCertificate> {
     pub fn with_custom_tls(
         self,
         tls_config: rustls::ServerConfig,
-    ) -> ServerConfigBuilder<WantsTransportConfigServer> {
+    ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         let transport_config = TransportConfig::default();
 
-        ServerConfigBuilder(WantsTransportConfigServer {
+        ServerConfigBuilder(states::WantsTransportConfigServer {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
@@ -384,7 +390,7 @@ impl ServerConfigBuilder<WantsCertificate> {
     }
 }
 
-impl ServerConfigBuilder<WantsTransportConfigServer> {
+impl ServerConfigBuilder<states::WantsTransportConfigServer> {
     /// Completes configuration process.
     #[must_use]
     pub fn build(self) -> ServerConfig {
@@ -538,7 +544,7 @@ impl ClientConfig {
     /// Creates a builder to build up the client configuration.
     ///
     /// For more information, see the [`ClientConfigBuilder`] documentation.
-    pub fn builder() -> ClientConfigBuilder<WantsBindAddress> {
+    pub fn builder() -> ClientConfigBuilder<states::WantsBindAddress> {
         ClientConfigBuilder::default()
     }
 
@@ -580,13 +586,13 @@ impl Default for ClientConfig {
 #[must_use]
 pub struct ClientConfigBuilder<State>(State);
 
-impl ClientConfigBuilder<WantsBindAddress> {
+impl ClientConfigBuilder<states::WantsBindAddress> {
     /// Configures for connecting binding ANY IP (allowing IP dual-stack).
     ///
     /// Bind port will be randomly picked.
     ///
     /// This is equivalent to: [`Self::with_bind_config`] with [`IpBindConfig::InAddrAnyDual`].
-    pub fn with_bind_default(self) -> ClientConfigBuilder<WantsRootStore> {
+    pub fn with_bind_default(self) -> ClientConfigBuilder<states::WantsRootStore> {
         self.with_bind_config(IpBindConfig::InAddrAnyDual)
     }
 
@@ -596,7 +602,7 @@ impl ClientConfigBuilder<WantsBindAddress> {
     pub fn with_bind_config(
         self,
         ip_bind_config: IpBindConfig,
-    ) -> ClientConfigBuilder<WantsRootStore> {
+    ) -> ClientConfigBuilder<states::WantsRootStore> {
         let ip_address: IpAddr = ip_bind_config.into_ip();
 
         match ip_address {
@@ -609,8 +615,11 @@ impl ClientConfigBuilder<WantsBindAddress> {
     }
 
     /// Sets the binding (local) socket address for the endpoint.
-    pub fn with_bind_address(self, address: SocketAddr) -> ClientConfigBuilder<WantsRootStore> {
-        ClientConfigBuilder(WantsRootStore {
+    pub fn with_bind_address(
+        self,
+        address: SocketAddr,
+    ) -> ClientConfigBuilder<states::WantsRootStore> {
+        ClientConfigBuilder(states::WantsRootStore {
             bind_address: address,
             dual_stack_config: Ipv6DualStackConfig::OsDefault,
         })
@@ -623,22 +632,22 @@ impl ClientConfigBuilder<WantsBindAddress> {
         self,
         address: SocketAddrV6,
         dual_stack_config: Ipv6DualStackConfig,
-    ) -> ClientConfigBuilder<WantsRootStore> {
-        ClientConfigBuilder(WantsRootStore {
+    ) -> ClientConfigBuilder<states::WantsRootStore> {
+        ClientConfigBuilder(states::WantsRootStore {
             bind_address: address.into(),
             dual_stack_config,
         })
     }
 }
 
-impl ClientConfigBuilder<WantsRootStore> {
+impl ClientConfigBuilder<states::WantsRootStore> {
     /// Configures the client to use native (local) root certificates for server validation.
     ///
     /// This method loads trusted root certificates from the system's certificate store,
     /// ensuring that your client can trust certificates signed by well-known authorities.
     ///
     /// It configures safe default TLS configuration.
-    pub fn with_native_certs(self) -> ClientConfigBuilder<WantsTransportConfigClient> {
+    pub fn with_native_certs(self) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         self.with_custom_tls(Self::build_tls_config(Self::native_cert_store()))
     }
 
@@ -654,10 +663,10 @@ impl ClientConfigBuilder<WantsRootStore> {
     pub fn with_custom_tls(
         self,
         tls_config: rustls::ClientConfig,
-    ) -> ClientConfigBuilder<WantsTransportConfigClient> {
+    ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         let transport_config = TransportConfig::default();
 
-        ClientConfigBuilder(WantsTransportConfigClient {
+        ClientConfigBuilder(states::WantsTransportConfigClient {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
@@ -689,7 +698,9 @@ impl ClientConfigBuilder<WantsRootStore> {
     /// [`with_no_cert_validation`]: #method.with_no_cert_validation
     #[cfg(feature = "dangerous-configuration")]
     #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
-    pub fn with_no_cert_validation(self) -> ClientConfigBuilder<WantsTransportConfigClient> {
+    pub fn with_no_cert_validation(
+        self,
+    ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         let mut tls_config = Self::build_tls_config(RootCertStore::empty());
         tls_config
             .dangerous()
@@ -697,7 +708,7 @@ impl ClientConfigBuilder<WantsRootStore> {
 
         let transport_config = TransportConfig::default();
 
-        ClientConfigBuilder(WantsTransportConfigClient {
+        ClientConfigBuilder(states::WantsTransportConfigClient {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
@@ -737,7 +748,7 @@ impl ClientConfigBuilder<WantsRootStore> {
     }
 }
 
-impl ClientConfigBuilder<WantsTransportConfigClient> {
+impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     /// Completes configuration process.
     #[must_use]
     pub fn build(self) -> ClientConfig {
@@ -794,49 +805,54 @@ impl ClientConfigBuilder<WantsTransportConfigClient> {
     }
 }
 
-impl Default for ServerConfigBuilder<WantsBindAddress> {
+impl Default for ServerConfigBuilder<states::WantsBindAddress> {
     fn default() -> Self {
-        Self(WantsBindAddress {})
+        Self(states::WantsBindAddress {})
     }
 }
 
-impl Default for ClientConfigBuilder<WantsBindAddress> {
+impl Default for ClientConfigBuilder<states::WantsBindAddress> {
     fn default() -> Self {
-        Self(WantsBindAddress {})
+        Self(states::WantsBindAddress {})
     }
 }
 
-/// Config builder state where the caller must supply binding address.
-pub struct WantsBindAddress {}
+/// State-types for client/server builder.
+pub mod states {
+    use super::*;
 
-/// Config builder state where the caller must supply TLS certificate.
-pub struct WantsCertificate {
-    bind_address: SocketAddr,
-    dual_stack_config: Ipv6DualStackConfig,
-}
+    /// Config builder state where the caller must supply binding address.
+    pub struct WantsBindAddress {}
 
-/// Config builder state where the caller must supply TLS root store.
-pub struct WantsRootStore {
-    bind_address: SocketAddr,
-    dual_stack_config: Ipv6DualStackConfig,
-}
+    /// Config builder state where the caller must supply TLS certificate.
+    pub struct WantsCertificate {
+        pub(super) bind_address: SocketAddr,
+        pub(super) dual_stack_config: Ipv6DualStackConfig,
+    }
 
-/// Config builder state where transport properties can be set.
-pub struct WantsTransportConfigServer {
-    bind_address: SocketAddr,
-    dual_stack_config: Ipv6DualStackConfig,
-    tls_config: TlsServerConfig,
-    transport_config: quinn::TransportConfig,
-    migration: bool,
-}
+    /// Config builder state where the caller must supply TLS root store.
+    pub struct WantsRootStore {
+        pub(super) bind_address: SocketAddr,
+        pub(super) dual_stack_config: Ipv6DualStackConfig,
+    }
 
-/// Config builder state where transport properties can be set.
-pub struct WantsTransportConfigClient {
-    bind_address: SocketAddr,
-    dual_stack_config: Ipv6DualStackConfig,
-    tls_config: TlsClientConfig,
-    transport_config: quinn::TransportConfig,
-    dns_resolver: Box<dyn DnsResolver + Send + Sync>,
+    /// Config builder state where transport properties can be set.
+    pub struct WantsTransportConfigServer {
+        pub(super) bind_address: SocketAddr,
+        pub(super) dual_stack_config: Ipv6DualStackConfig,
+        pub(super) tls_config: TlsServerConfig,
+        pub(super) transport_config: quinn::TransportConfig,
+        pub(super) migration: bool,
+    }
+
+    /// Config builder state where transport properties can be set.
+    pub struct WantsTransportConfigClient {
+        pub(super) bind_address: SocketAddr,
+        pub(super) dual_stack_config: Ipv6DualStackConfig,
+        pub(super) tls_config: TlsClientConfig,
+        pub(super) transport_config: quinn::TransportConfig,
+        pub(super) dns_resolver: Box<dyn DnsResolver + Send + Sync>,
+    }
 }
 
 #[cfg(feature = "dangerous-configuration")]
