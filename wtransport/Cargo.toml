@@ -17,17 +17,17 @@ name = "client"
 required-features = ["dangerous-configuration"]
 
 [dependencies]
-base64 = "0.21.0"
+base64 = { version = "0.21.0", optional = true }
 bytes = "1.4.0"
 quinn = "0.10.1"
-rcgen = "0.11.1"
-ring = "0.17.6"
+rcgen = { version = "0.11.1", optional = true }
+ring = { version = "0.17.6", optional = true }
 rustls = "0.21.1"
 rustls-native-certs = "0.6.2"
 rustls-pemfile = "1.0.2"
 socket2 = "0.5.3"
 thiserror = "1.0.40"
-time = "0.3.21"
+time = { version = "0.3.21", optional = true }
 tokio = { version = "1.28.1", default-features = false, features = ["macros", "fs"] }
 tracing = "0.1.37"
 url = "2.4.0"
@@ -44,9 +44,10 @@ tokio = { version = "1.28.1", features = ["rt", "rt-multi-thread", "macros", "pr
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 [features]
-default = []
+default = ["self-signed"]
 dangerous-configuration = ["rustls/dangerous_configuration"]
 quinn = []
+self-signed = ["dep:base64", "dep:rcgen", "dep:ring", "dep:time"]
 
 [package.metadata.docs.rs]
 all-features = true

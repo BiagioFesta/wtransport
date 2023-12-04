@@ -1,7 +1,3 @@
-use base64::engine::general_purpose::STANDARD as Base64Engine;
-use base64::Engine;
-use ring::digest::digest;
-use ring::digest::SHA256;
 use std::error::Error;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -93,6 +89,8 @@ impl Certificate {
     ///
     /// let certificate = Certificate::self_signed(&["localhost", "127.0.0.1"]);
     /// ```
+    #[cfg(feature = "self-signed")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
     pub fn self_signed<I, S>(subject_alt_names: I) -> Self
     where
         I: IntoIterator<Item = S>,
@@ -184,7 +182,14 @@ impl Certificate {
     ///
     /// This method iterates through the certificate's chain computes the SHA256 fingerprint
     /// of each certificate's public key, and encodes the resulting digest in Base64 format.
+    #[cfg(feature = "self-signed")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
     pub fn fingerprints(&self) -> Vec<String> {
+        use base64::engine::general_purpose::STANDARD as Base64Engine;
+        use base64::Engine;
+        use ring::digest::digest;
+        use ring::digest::SHA256;
+
         self.certificates
             .iter()
             .map(|cert| {
@@ -255,6 +260,7 @@ mod tests {
         ));
     }
 
+    #[cfg(feature = "self-signed")]
     #[test]
     fn valid_self() {
         let cert = Certificate::self_signed(["localhost"]);
