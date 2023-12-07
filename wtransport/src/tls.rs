@@ -33,8 +33,8 @@ pub struct InvalidCertificate(usize);
 /// A server TLS certificate.
 #[derive(Clone)]
 pub struct Certificate {
-    pub(crate) certificates: Vec<rustls::Certificate>,
-    pub(crate) key: rustls::PrivateKey,
+    pub(crate) certificates: Vec<Vec<u8>>,
+    pub(crate) private_key: Vec<u8>,
 }
 
 impl Certificate {
@@ -50,20 +50,33 @@ impl Certificate {
     ///
     /// * `private_key`: A vector of bytes (`Vec<u8>`) containing the private key. The private key must be
     ///   *DER-encoded* in one of the following formats: *PKCS#8*, *PKCS#1*, or *Sec1*.
-    pub fn new(
-        certificates: Vec<Vec<u8>>,
-        private_key: Vec<u8>,
-    ) -> Result<Self, InvalidCertificate> {
+    pub fn new<CertChain, Key, Cert>(
+        certificates: CertChain,
+        private_key: Key,
+    ) -> Result<Self, InvalidCertificate>
+    where
+        CertChain: Into<Vec<Cert>>,
+        Key: Into<Vec<u8>>,
+        Cert: Into<Vec<u8>>,
+    {
+        let certificates = certificates
+            .into()
+            .into_iter()
+            .map(|c| c.into())
+            .collect::<Vec<_>>();
+
+        let private_key = private_key.into();
+
         for (index, cert) in certificates.iter().enumerate() {
             if X509Certificate::from_der(cert).is_err() {
                 return Err(InvalidCertificate(index));
             }
         }
 
-        let certificates = certificates.into_iter().map(rustls::Certificate).collect();
-        let key = rustls::PrivateKey(private_key);
-
-        Ok(Self { certificates, key })
+        Ok(Self {
+            certificates,
+            private_key,
+        })
     }
 
     /// Generates a self-signed certificate.
@@ -177,29 +190,18 @@ impl Certificate {
         Ok(Self::new(certificates, private_key.0).expect("validated certificate"))
     }
 
-    /// Retrieves a vector of Base64-encoded SHA256 fingerprints for each certificate
-    /// in chain.
+    /// Gets a reference to the certificate data chain associated with this `Certificate`.
     ///
-    /// This method iterates through the certificate's chain computes the SHA256 fingerprint
-    /// of each certificate's public key, and encodes the resulting digest in Base64 format.
-    #[cfg(feature = "self-signed")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
-    pub fn fingerprints(&self) -> Vec<String> {
-        use base64::engine::general_purpose::STANDARD as Base64Engine;
-        use base64::Engine;
-        use ring::digest::digest;
-        use ring::digest::SHA256;
+    /// Each certificate is *DER-encoded*.
+    pub fn certificates(&self) -> &[Vec<u8>] {
+        &self.certificates
+    }
 
-        self.certificates
-            .iter()
-            .map(|cert| {
-                let x509_cert = X509Certificate::from_der(&cert.0)
-                    .expect("valid certificate")
-                    .1;
-                let digest = digest(&SHA256, x509_cert.public_key().raw);
-                Base64Engine.encode(digest)
-            })
-            .collect()
+    /// Gets a reference to the private key associated with this `Certificate`.
+    ///
+    /// Each certificate is *DER-encoded*.
+    pub fn private_key(&self) -> &[u8] {
+        &self.private_key
     }
 }
 
@@ -255,7 +257,7 @@ mod tests {
     #[test]
     fn invalid() {
         assert!(matches!(
-            Certificate::new(vec![b"hello".to_vec()], b"hello".to_vec()),
+            Certificate::new([b"wtransport"], b"wtransport"),
             Err(InvalidCertificate(0))
         ));
     }
@@ -264,8 +266,6 @@ mod tests {
     #[test]
     fn valid_self() {
         let cert = Certificate::self_signed(["localhost"]);
-        let chain = cert.certificates.into_iter().map(|c| c.0).collect();
-        let private_key = cert.key.0;
-        Certificate::new(chain, private_key).unwrap();
+        Certificate::new(cert.certificates, cert.private_key).unwrap();
     }
 }

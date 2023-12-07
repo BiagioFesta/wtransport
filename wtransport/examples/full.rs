@@ -1,4 +1,3 @@
-use anyhow::anyhow;
 use anyhow::Context;
 use anyhow::Result;
 use http::HttpServer;
@@ -12,16 +11,17 @@ use wtransport::Certificate;
 #[tokio::main]
 async fn main() -> Result<()> {
     utils::init_logging();
-    utils::set_additional_paths().context("Cannot set additional paths")?;
 
-    let certificate = Certificate::self_signed(["localhost"]);
-    let certificate_fingerprint = certificate.fingerprints().into_iter().next().unwrap();
-
-    info!("Certificate fingerprint: {}", certificate_fingerprint);
+    let certificate = Certificate::self_signed(["localhost", "127.0.0.1", "::1"]);
+    let cert_digest = utils::digest_certificate(&certificate);
 
     let webtransport_server = WebTransportServer::new(certificate)?;
-    let http_server = HttpServer::new(webtransport_server.local_port()).await?;
-    let browser = utils::launch_google_chrome(http_server.local_port(), &certificate_fingerprint)?;
+    let http_server = HttpServer::new(cert_digest, webtransport_server.local_port()).await?;
+
+    info!(
+        "Open Google Chrome and go to: http://127.0.0.1:{}",
+        http_server.local_port()
+    );
 
     tokio::select! {
         result = http_server.serve() => {
@@ -30,7 +30,6 @@ async fn main() -> Result<()> {
         result = webtransport_server.serve() => {
             error!("WebTransport server: {:?}", result);
         }
-        () = browser.wait() => {}
     }
 
     Ok(())
@@ -157,7 +156,7 @@ mod http {
     use axum::serve;
     use axum::serve::Serve;
     use axum::Router;
-    use std::net::Ipv6Addr;
+    use std::net::Ipv4Addr;
     use std::net::SocketAddr;
     use tokio::net::TcpListener;
 
@@ -167,12 +166,15 @@ mod http {
     }
 
     impl HttpServer {
-        pub async fn new(webtransport_port: u16) -> Result<Self> {
-            let router = Self::build_router(webtransport_port);
+        const PORT: u16 = 8080;
 
-            let listener = TcpListener::bind(SocketAddr::new(Ipv6Addr::LOCALHOST.into(), 0))
-                .await
-                .context("Cannot bind TCP listener for HTTP server")?;
+        pub async fn new(cert_digest: String, webtransport_port: u16) -> Result<Self> {
+            let router = Self::build_router(cert_digest, webtransport_port);
+
+            let listener =
+                TcpListener::bind(SocketAddr::new(Ipv4Addr::LOCALHOST.into(), Self::PORT))
+                    .await
+                    .context("Cannot bind TCP listener for HTTP server")?;
 
             let local_port = listener
                 .local_addr()
@@ -197,7 +199,7 @@ mod http {
             Ok(())
         }
 
-        fn build_router(webtransport_port: u16) -> Router {
+        fn build_router(cert_digest: String, webtransport_port: u16) -> Router {
             let root = move || async move {
                 Html(
                     http_data::INDEX_DATA
@@ -211,7 +213,7 @@ mod http {
             let client = move || async move {
                 (
                     [(CONTENT_TYPE, "application/javascript")],
-                    http_data::CLIENT_DATA,
+                    http_data::CLIENT_DATA.replace("${CERT_DIGEST}", &cert_digest),
                 )
             };
 
@@ -225,16 +227,8 @@ mod http {
 
 mod utils {
     use super::*;
-    use pathsearch::find_executable_in_path;
-    use std::path::PathBuf;
-    use std::process::Stdio;
-    use sysinfo::ProcessExt;
-    use sysinfo::ProcessRefreshKind;
-    use sysinfo::RefreshKind;
-    use sysinfo::System;
-    use sysinfo::SystemExt;
-    use tokio::process::Child;
-    use tokio::process::Command;
+    use ring::digest::digest;
+    use ring::digest::SHA256;
     use tracing_subscriber::filter::LevelFilter;
     use tracing_subscriber::EnvFilter;
 
@@ -250,73 +244,18 @@ mod utils {
             .init();
     }
 
-    pub fn set_additional_paths() -> Result<()> {
-        const GOOGLE_CHROME_ADDS_PATHS: &[&str] = if cfg!(windows) {
-            &[r"C:\Program Files\Google\Chrome\Application"]
-        } else {
-            &[]
-        };
-
-        let old_path = std::env::var_os("PATH").unwrap_or_default();
-        let new_path = std::env::join_paths(
-            std::env::split_paths(&old_path)
-                .chain(GOOGLE_CHROME_ADDS_PATHS.iter().map(PathBuf::from)),
-        )?;
-
-        std::env::set_var("PATH", new_path);
-
-        Ok(())
-    }
-
-    pub struct BrowerHandler(Child);
-
-    impl BrowerHandler {
-        pub async fn wait(mut self) {
-            let _ = self.0.wait().await;
-        }
-    }
-
-    pub fn launch_google_chrome(http_port: u16, cert_fingerprint: &str) -> Result<BrowerHandler> {
-        info!("Launching google-chrome brower...");
-
-        if is_google_chrome_running() {
-            return Err(anyhow!(
-                "Google Chrome is already running. Please close it before running this example."
-            ));
-        }
-
-        let chrome_bin = google_chrome_bin()?;
-
-        let child = Command::new(chrome_bin)
-            .arg("--webtransport-developer-mode")
-            .arg(format!(
-                "--ignore-certificate-errors-spki-list={cert_fingerprint}"
-            ))
-            .arg(format!("http://localhost:{http_port}"))
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()?;
-
-        Ok(BrowerHandler(child))
-    }
-
-    fn is_google_chrome_running() -> bool {
-        let mut system = System::new();
-        system.refresh_specifics(RefreshKind::new().with_processes(ProcessRefreshKind::new()));
-
-        system
-            .processes()
-            .values()
-            .any(|p| p.exe().to_string_lossy().contains("chrome"))
-    }
-
-    fn google_chrome_bin() -> Result<PathBuf> {
-        const GOOGLE_CHROME_EXES: [&str; 3] = ["google-chrome", "google-chrome-stable", "chrome"];
-
-        GOOGLE_CHROME_EXES
+    pub fn digest_certificate(certificate: &Certificate) -> String {
+        assert_eq!(certificate.certificates().len(), 1);
+        certificate
+            .certificates()
             .iter()
-            .find_map(find_executable_in_path)
-            .ok_or_else(|| anyhow!("Cannot find Google Chrome executable"))
+            .map(|cert| digest(&SHA256, cert).as_ref().to_vec())
+            .next()
+            .unwrap()
+            .iter()
+            .map(|byte| format!("{:02x}", byte))
+            .collect::<Vec<_>>()
+            .join(":")
     }
 }
 
@@ -464,13 +403,20 @@ textarea {
 // Adds an entry to the event log on the page, optionally applying a specified
 // CSS class.
 
+const HASH = "${CERT_DIGEST}";
+
+function hexStringToArrayBuffer(hexString) {
+  const hexArray = hexString.split(':').map(hex => parseInt(hex, 16));
+  return new Uint8Array(hexArray).buffer;
+}
+
 let currentTransport, streamNumber, currentTransportDatagramWriter;
 
 // "Connect" button handler.
 async function connect() {
   const url = document.getElementById('url').value;
   try {
-    var transport = new WebTransport(url);
+    var transport = new WebTransport(url, { serverCertificateHashes: [ { algorithm: "sha-256", value: hexStringToArrayBuffer(HASH) } ] } );
     addToEventLog('Initiating connection...');
   } catch (e) {
     addToEventLog('Failed to create connection object. ' + e, 'error');

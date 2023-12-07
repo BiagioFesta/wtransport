@@ -379,10 +379,18 @@ impl ServerConfigBuilder<states::WantsCertificate> {
     }
 
     fn build_tls_config(certificate: Certificate) -> TlsServerConfig {
+        let certificates = certificate
+            .certificates
+            .into_iter()
+            .map(|cert| rustls::Certificate(cert.to_vec()))
+            .collect();
+
+        let private_key = rustls::PrivateKey(certificate.private_key.to_vec());
+
         let mut tls_config = TlsServerConfig::builder()
             .with_safe_defaults()
             .with_no_client_auth()
-            .with_single_cert(certificate.certificates, certificate.key)
+            .with_single_cert(certificates, private_key)
             .expect("Certificate and private key should be already validated");
 
         tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
