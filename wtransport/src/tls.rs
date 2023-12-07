@@ -87,7 +87,7 @@ impl Certificate {
     /// ```
     /// use wtransport::Certificate;
     ///
-    /// let certificate = Certificate::self_signed(&["localhost", "127.0.0.1"]);
+    /// let certificate = Certificate::self_signed(&["localhost", "127.0.0.1", "::1"]);
     /// ```
     #[cfg(feature = "self-signed")]
     #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
