@@ -98,8 +98,9 @@ You can run this example using *Cargo*, Rust's package manager, with the followi
 cargo run --example full
 ```
 
-This example initiates an *echo* WebTransport server that can receive messages. It also includes an integrated HTTP server and
-launches Google Chrome with the necessary options to establish connections using self-signed TLS certificates.
+This example initiates an *echo* WebTransport server that can receive messages. It also includes an integrated HTTP server.
+
+Open *Google Chrome* and navigate to the page http://127.0.0.1:8080.
 
 ## Examples
 * [Local Examples](wtransport/examples/)
