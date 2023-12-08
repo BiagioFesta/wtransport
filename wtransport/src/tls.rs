@@ -257,7 +257,7 @@ mod tests {
     #[test]
     fn invalid() {
         assert!(matches!(
-            Certificate::new([b"wtransport"], b"wtransport"),
+            Certificate::new([b"wtransport".to_vec()], b"wtransport".to_vec()),
             Err(InvalidCertificate(0))
         ));
     }
