@@ -20,7 +20,7 @@ required-features = ["dangerous-configuration"]
 bytes = "1.4.0"
 quinn = "0.10.1"
 rcgen = { version = "0.11.1", optional = true }
-rustls = "0.21.1"
+rustls = "0.22.0"
 rustls-native-certs = "0.6.2"
 rustls-pemfile = "1.0.2"
 socket2 = "0.5.3"
