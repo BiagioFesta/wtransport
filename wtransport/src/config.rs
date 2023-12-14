@@ -813,10 +813,10 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
         self
     }
 
-    /// Write key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
+    /// Writes key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
     pub fn enable_key_log(mut self) -> Self {
-	self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
-	self
+        self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
+        self
     }
 }
 
