@@ -812,6 +812,12 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
         self.0.dns_resolver = dns_resolver;
         self
     }
+
+    /// Write key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
+    pub fn enable_key_log(mut self) -> Self {
+	self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
+	self
+    }
 }
 
 impl Default for ServerConfigBuilder<states::WantsBindAddress> {
