@@ -38,6 +38,17 @@ jobs:
       - uses: actions/setup-python@v5
       - uses: pre-commit/action@v3.0.0
 
+  doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        run: rustup toolchain install nightly
+      - name: Doc (stable)
+        run: cargo doc --all-features
+      - name: Doc (nightly)
+        run: RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
+
   unused-deps:
     runs-on: ubuntu-latest
     steps:
