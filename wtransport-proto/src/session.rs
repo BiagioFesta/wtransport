@@ -4,76 +4,98 @@ use crate::ids::StatusCode;
 use url::Url;
 
 /// Error when parsing URL.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum UrlParseError {
     /// Missing host part in the URL.
+    #[error("host is missing in the URL")]
     EmptyHost,
 
     /// Invalid international domain name.
+    #[error("invalid international domain name")]
     IdnaError,
 
     /// Invalid port number.
+    #[error("invalid port number")]
     InvalidPort,
 
     /// Invalid IPv4 address
+    #[error("invalid IPv4 address")]
     InvalidIpv4Address,
 
     /// Invalid IPv6 address
+    #[error("invalid IPv6 address")]
     InvalidIpv6Address,
 
     /// Invalid domain character.
+    #[error("invalid domain character")]
     InvalidDomainCharacter,
 
     /// Relative URL without a base.
+    #[error("relative URL without a base")]
     RelativeUrlWithoutBase,
 
     /// Relative URL with a cannot-be-a-base base
+    #[error("relative URL with a cannot-be-a-base base")]
     RelativeUrlWithCannotBeABaseBase,
 
     /// A cannot-be-a-base URL doesn’t have a host to set
+    #[error("a cannot-be-a-base URL doesn’t have a host to set")]
     SetHostOnCannotBeABaseUrl,
 
     /// URLs more than 4 GB are not supported.
+    #[error("URLs more than 4 GB are not supported")]
     Overflow,
 
     /// Unknown error during URL parsing.
+    #[error("unknown error during URL parsing")]
     Unknown,
 
     /// WebTransport only support HTTPS method.
+    #[error("URL scheme is not 'https'")]
     SchemeNotHttps,
 }
 
 /// Error when parsing [`Headers`].
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum HeadersParseError {
     /// Method field is missing.
+    #[error("':method' field is missing")]
     MissingMethod,
 
     /// Method is not 'CONNECT'.
+    #[error("':method' is not CONNECT")]
     MethodNotConnect,
 
     /// Scheme field is missing.
+    #[error("':scheme' field is missing")]
     MissingScheme,
 
     /// Scheme is not 'https'.
+    #[error("':scheme' is not 'https'")]
     SchemeNotHttps,
 
     /// Protocol field is missing.
+    #[error("':protocol' field is missing")]
     MissingProtocol,
 
     /// Protocol is not 'webtransport'.
+    #[error("':protocol' is not 'webtransport'")]
     ProtocolNotWebTransport,
 
     /// Authority field is missing.
+    #[error("':authority' field is missing")]
     MissingAuthority,
 
     /// Path field is missing.
+    #[error("':path' field is missing")]
     MissingPath,
 
     /// Status field is missing.
+    #[error("':status' field is missing")]
     MissingStatusCode,
 
     /// The status code value is not valid.
+    #[error("invalid HTTP status code")]
     InvalidStatusCode,
 }
 
@@ -82,7 +104,8 @@ pub enum HeadersParseError {
 /// It is returned as an error when trying to insert a key-value pair into
 /// [`SessionRequest`] where the key is one of the
 /// [reserved headers](SessionRequest::RESERVED_HEADERS).
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("used reserved header")]
 pub struct ReservedHeader;
 
 /// A CONNECT WebTransport request.

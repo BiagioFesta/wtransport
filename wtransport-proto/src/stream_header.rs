@@ -17,24 +17,28 @@ use crate::bytes::AsyncWrite;
 use crate::bytes;
 
 /// Error stream header parsing.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     /// Error for unknown stream type.
+    #[error("cannot parse HTTP3 stream header as ID is unknown")]
     UnknownStream,
 
     /// Error for invalid session ID.
+    #[error("cannot parse HTTP3 stream header as session ID is invalid")]
     InvalidSessionId,
 }
 
 /// An error during stream header I/O read operation.
 #[cfg(feature = "async")]
 #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum IoReadError {
     /// Error during parsing stream header.
+    #[error(transparent)]
     Parse(ParseError),
 
     /// Error due to I/O operation.
+    #[error(transparent)]
     IO(bytes::IoReadError),
 }
 

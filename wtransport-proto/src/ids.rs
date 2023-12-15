@@ -69,7 +69,8 @@ impl fmt::Display for StreamId {
 }
 
 /// Error for invalid Session ID value.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("invalid session ID")]
 pub struct InvalidSessionId;
 
 /// A WebTransport session id.
@@ -147,7 +148,8 @@ impl fmt::Display for SessionId {
 }
 
 /// Error for invalid Quarter Stream ID value (too large).
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("invalid QStream ID")]
 pub struct InvalidQStreamId;
 
 /// HTTP3 Quarter Stream ID.
@@ -239,7 +241,8 @@ impl fmt::Display for QStreamId {
 }
 
 /// Error for invalid HTTP status code.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("invalid HTTP status code")]
 pub struct InvalidStatusCode;
 
 /// HTTP status code (rfc9110).

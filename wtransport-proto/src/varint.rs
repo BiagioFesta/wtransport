@@ -1,7 +1,8 @@
 use std::fmt;
 
 /// Error returned when constructing a [`VarInt`] from a value >= 2^62
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("varint value is out of bounds")]
 pub struct VarIntBoundsExceeded;
 
 /// QUIC variable-length integer.

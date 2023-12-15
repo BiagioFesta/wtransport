@@ -6,7 +6,8 @@ use std::ops::DerefMut;
 
 /// An error indicating write operation was not able to complete because
 /// end of buffer has been reached.
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
+#[error("end of buffer has been reached")]
 pub struct EndOfBuffer;
 
 /// Reads bytes or varint from a source.
@@ -264,41 +265,47 @@ pub mod r#async {
 
     /// Error during read operations.
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    #[derive(Debug)]
+    #[derive(Debug, thiserror::Error)]
     pub enum IoReadError {
         /// Read failed because immediate EOF (attempt reading the first byte).
         ///
         /// In this case, *zero* bytes have been read during the operation.
+        #[error("read operation failed because EOF reached on first byte")]
         ImmediateFin,
 
         /// Read failed because EOF reached in the middle of operation.
         ///
         /// In this case, *at least* one byte has been read during the operation.
+        #[error("read operation failed because EOF reached after first byte")]
         UnexpectedFin,
 
         /// Read failed because peer interrupted operation (at any point).
         ///
         /// In this case, zero or more bytes might be have read during the operation.
+        #[error("read operation failed because interrupted")]
         Reset,
 
         /// Read failed because peer not is not connected, or disconnected (at any point).
         ///
         /// In this case, zero or more bytes might be have read during the operation.
+        #[error("read operation failed because not connected")]
         NotConnected,
     }
 
     /// Error during write operation.
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-    #[derive(Debug)]
+    #[derive(Debug, thiserror::Error)]
     pub enum IoWriteError {
         /// Write failed because peer stopped operation.
         ///
         /// In this case, zero or more bytes might be have written during the operation.
+        #[error("write operation failed because operation has been stopped")]
         Stopped,
 
         /// Write failed because peer not is not connected.
         ///
         /// In this case, zero or more bytes might be have written during the operation.
+        #[error("write operation failed because not connected")]
         NotConnected,
     }
 
