@@ -49,6 +49,22 @@ jobs:
       - name: Doc (nightly)
         run: RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
 
+  check-external-types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: nightly
+      - name: Setup
+        run: cargo install cargo-check-external-types --locked
+      - name: Check Ext Types (wtransport)
+        working-directory: wtransport/
+        run: cargo check-external-types --all-features
+      - name: Check Ext Types (wtransport-proto)
+        working-directory: wtransport-proto/
+        run: cargo check-external-types --all-features
+
   unused-deps:
     runs-on: ubuntu-latest
     steps:
