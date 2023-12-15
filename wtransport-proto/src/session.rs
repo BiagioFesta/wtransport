@@ -109,7 +109,7 @@ impl SessionRequest {
     where
         S: AsRef<str>,
     {
-        let url = Url::parse(url.as_ref())?;
+        let url = Url::parse(url.as_ref()).map_err(UrlParseError::from_url_parse_error)?;
 
         if url.scheme() != "https" {
             return Err(UrlParseError::SchemeNotHttps);
@@ -234,8 +234,8 @@ impl TryFrom<Headers> for SessionRequest {
     }
 }
 
-impl From<url::ParseError> for UrlParseError {
-    fn from(error: url::ParseError) -> Self {
+impl UrlParseError {
+    fn from_url_parse_error(error: url::ParseError) -> Self {
         match error {
             url::ParseError::EmptyHost => UrlParseError::EmptyHost,
             url::ParseError::IdnaError => UrlParseError::IdnaError,
