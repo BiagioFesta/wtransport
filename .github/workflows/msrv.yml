@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Setup
-        run: cargo install cargo-msrv
+        run: cargo install cargo-msrv --locked
       - name: Msrv Check WTransport
         run: cargo msrv --path wtransport --log-level trace verify
       - name: Msrv Check WTransport-Proto
