@@ -10,7 +10,7 @@ categories = [ "network-programming", "asynchronous" ]
 edition = "2021"
 readme = "../README.md"
 workspace = ".."
-rust-version = "1.67"
+rust-version = "1.70"
 
 [[example]]
 name = "client"
