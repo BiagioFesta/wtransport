@@ -8,23 +8,23 @@ use wtransport_proto::varint::VarInt;
 #[derive(thiserror::Error, Debug)]
 pub enum ConnectionError {
     /// The connection was aborted by the peer (protocol level).
-    #[error("Connection aborted by peer: {0}")]
+    #[error("connection aborted by peer: {0}")]
     ConnectionClosed(ConnectionClose),
 
     /// The connection was closed by the peer (application level).
-    #[error("Connection closed by peer: {0}")]
+    #[error("connection closed by peer: {0}")]
     ApplicationClosed(ApplicationClose),
 
     /// The connection was locally closed.
-    #[error("Connection locally closed")]
+    #[error("connection locally closed")]
     LocallyClosed,
 
     /// The connection was locally closed because an HTTP3 protocol violation.
-    #[error("Connection locally aborted: {0}")]
+    #[error("connection locally aborted: {0}")]
     LocalH3Error(H3Error),
 
     /// The connection timed out.
-    #[error("Connection timed out")]
+    #[error("connection timed out")]
     TimedOut,
 
     /// The connection was closed because a QUIC protocol error.
@@ -59,15 +59,15 @@ impl ConnectionError {
 #[derive(thiserror::Error, Debug)]
 pub enum ConnectingError {
     /// URL provided for connection is not valid.
-    #[error("Invalid URL: {0}")]
+    #[error("invalid URL: {0}")]
     InvalidUrl(String),
 
     /// Failure during DNS resolution.
-    #[error("Cannot resolve domain: {0}")]
+    #[error("cannot resolve domain: {0}")]
     DnsLookup(std::io::Error),
 
     /// Cannot find any DNS.
-    #[error("No domain found for dns resolution")]
+    #[error("cannot resolve domain")]
     DnsNotFound,
 
     /// Connection error during handshaking.
@@ -75,11 +75,11 @@ pub enum ConnectingError {
     ConnectionError(ConnectionError),
 
     /// Request rejected.
-    #[error("Server rejected WebTransport session request")]
+    #[error("server rejected WebTransport session request")]
     SessionRejected,
 
     /// Cannot use reserved key for additional headers.
-    #[error("Additional header '{0}' is reserved")]
+    #[error("additional header '{0}' is reserved")]
     ReservedHeader(String),
 }
 
@@ -98,11 +98,11 @@ impl ConnectingError {
 #[derive(thiserror::Error, Debug)]
 pub enum StreamWriteError {
     /// Connection has been dropped.
-    #[error("Not connected")]
+    #[error("not connected")]
     NotConnected,
 
     /// The peer is no longer accepting data on this stream.
-    #[error("Stream stopped (code: {0})")]
+    #[error("stream stopped (code: {0})")]
     Stopped(VarInt),
 
     /// QUIC protocol error.
@@ -114,11 +114,11 @@ pub enum StreamWriteError {
 #[derive(thiserror::Error, Debug)]
 pub enum StreamReadError {
     /// Connection has been dropped.
-    #[error("Not connected")]
+    #[error("not connected")]
     NotConnected,
 
     /// The peer abandoned transmitting data on this stream
-    #[error("Stream reset (code: {0})")]
+    #[error("stream reset (code: {0})")]
     Reset(VarInt),
 
     /// QUIC protocol error.
@@ -130,7 +130,7 @@ pub enum StreamReadError {
 #[derive(thiserror::Error, Debug)]
 pub enum StreamReadExactError {
     /// The stream finished before all bytes were read.
-    #[error("Stream finished too early")]
+    #[error("stream finished too early")]
     FinishedEarly,
 
     /// A read error occurred.
@@ -142,15 +142,15 @@ pub enum StreamReadExactError {
 #[derive(thiserror::Error, Debug)]
 pub enum SendDatagramError {
     /// Connection has been dropped.
-    #[error("Not connected")]
+    #[error("not connected")]
     NotConnected,
 
     /// The peer does not support receiving datagram frames.
-    #[error("Peer does not support datagrams")]
+    #[error("peer does not support datagrams")]
     UnsupportedByPeer,
 
     /// The datagram is larger than the connection can currently accommodate.
-    #[error("Datagram payload too large")]
+    #[error("datagram payload too large")]
     TooLarge,
 }
 
@@ -158,11 +158,11 @@ pub enum SendDatagramError {
 #[derive(thiserror::Error, Debug)]
 pub enum StreamOpeningError {
     /// Connection has been dropped.
-    #[error("Not connected")]
+    #[error("not connected")]
     NotConnected,
 
     /// The peer refused the stream, stopping it during initialization.
-    #[error("Opening stream refused")]
+    #[error("opening stream refused")]
     Refused,
 }
 
@@ -233,7 +233,7 @@ impl From<quinn::ConnectionError> for ConnectionError {
             }
             quinn::ConnectionError::Reset => ConnectionError::QuicProto(QuicProtoError {
                 code: None,
-                reason: "Connection has been reset".to_string(),
+                reason: "connection has been reset".to_string(),
             }),
             quinn::ConnectionError::TimedOut => ConnectionError::TimedOut,
             quinn::ConnectionError::LocallyClosed => ConnectionError::LocallyClosed,
