@@ -98,3 +98,62 @@ impl From<StreamId> for ls_qpack::StreamId {
         ls_qpack::StreamId::new(value.into_u64())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::varint::VarInt;
+
+    const STREAM_ID: StreamId = StreamId::new(VarInt::from_u32(42));
+
+    #[test]
+    fn generate_frame() {
+        let headers = [("key1", "value1"), ("key2", "value2")]
+            .into_iter()
+            .collect::<Headers>();
+
+        let frame = headers.generate_frame(STREAM_ID);
+
+        assert!(matches!(frame.kind(), FrameKind::Headers));
+    }
+
+    #[test]
+    fn get() {
+        let headers = [("key1", "value1"), ("key2", "value2")]
+            .into_iter()
+            .collect::<Headers>();
+
+        assert_eq!(headers.get("key1"), Some("value1"));
+        assert_eq!(headers.get("key2"), Some("value2"));
+        assert_eq!(headers.get("key3"), None);
+    }
+
+    #[test]
+    fn insert() {
+        let mut headers = [("key1", "value1"), ("key2", "value2")]
+            .into_iter()
+            .collect::<Headers>();
+
+        assert_eq!(headers.get("key1"), Some("value1"));
+        headers.insert("key1", "value1bis");
+        assert_eq!(headers.get("key1"), Some("value1bis"));
+
+        assert_eq!(headers.get("key3"), None);
+        headers.insert("key3", "value3");
+        assert_eq!(headers.get("key3"), Some("value3"));
+    }
+
+    #[test]
+    fn idempotence() {
+        let headers = [("key1", "value1"), ("key2", "value2")]
+            .into_iter()
+            .collect::<Headers>();
+
+        let frame = headers.generate_frame(STREAM_ID);
+
+        assert_eq!(
+            headers.as_ref(),
+            Headers::with_frame(&frame, STREAM_ID).unwrap().as_ref()
+        );
+    }
+}
