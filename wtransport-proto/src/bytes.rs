@@ -1,6 +1,7 @@
 use crate::varint::VarInt;
 use octets::Octets;
 use octets::OctetsMut;
+use std::fmt::Debug;
 use std::ops::Deref;
 use std::ops::DerefMut;
 
@@ -151,6 +152,15 @@ impl<'a> BytesReader<'a> for BufferReader<'a> {
     #[inline(always)]
     fn get_bytes(&mut self, len: usize) -> Option<&'a [u8]> {
         self.0.get_bytes(len).ok().map(|o| o.buf())
+    }
+}
+
+impl Debug for BufferReader<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BufferReader")
+            .field("buf", &self.0.buf())
+            .field("off", &self.offset())
+            .finish()
     }
 }
 
