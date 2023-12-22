@@ -39,10 +39,6 @@ pub enum DecodingError {
     #[error("dynamic table is not supported")]
     DynamicNotSupported,
 
-    /// Field type is unknown.
-    #[error("unknown field type")]
-    UnknownField,
-
     /// Index is out-of-bound in the static table.
     #[error("index not found in the static table")]
     IndexNotfound,
@@ -82,7 +78,7 @@ impl Decoder {
             let field = buffer_reader.buffer_remaining()[0];
 
             match Self::decode_field_line_type(field) {
-                Some(FieldLineType::Indexed) => {
+                FieldLineType::Indexed => {
                     let is_dynamic = field & 0b0100_0000 == 0;
                     if is_dynamic {
                         return Err(DecodingError::DynamicNotSupported);
@@ -93,10 +89,10 @@ impl Decoder {
                         StaticTable::lookup_field(index).ok_or(DecodingError::IndexNotfound)?;
                     headers.insert(key.to_string(), value.to_string());
                 }
-                Some(FieldLineType::IndexedPost) => {
+                FieldLineType::IndexedPost => {
                     return Err(DecodingError::DynamicNotSupported);
                 }
-                Some(FieldLineType::LiteralRefName) => {
+                FieldLineType::LiteralRefName => {
                     let is_dynamic = field & 0b0001_0000 == 0;
                     if is_dynamic {
                         return Err(DecodingError::DynamicNotSupported);
@@ -110,17 +106,14 @@ impl Decoder {
 
                     headers.insert(key.to_string(), value);
                 }
-                Some(FieldLineType::LiteralPostRefName) => {
+                FieldLineType::LiteralPostRefName => {
                     return Err(DecodingError::DynamicNotSupported);
                 }
-                Some(FieldLineType::LiteralLitName) => {
+                FieldLineType::LiteralLitName => {
                     let key = Self::decode_string::<3, _>(&mut buffer_reader)?;
                     let value = Self::decode_string::<7, _>(&mut buffer_reader)?;
 
                     headers.insert(key, value);
-                }
-                None => {
-                    return Err(DecodingError::UnknownField);
                 }
             }
         }
@@ -128,7 +121,7 @@ impl Decoder {
         Ok(headers)
     }
 
-    fn decode_field_line_type(byte: u8) -> Option<FieldLineType> {
+    fn decode_field_line_type(byte: u8) -> FieldLineType {
         const MASK_INDEXED: u8 = 0b0000_0001;
         const MASK_INDEXED_POST: u8 = 0b0000_0001;
         const MASK_LITERAL_REF_NAME: u8 = 0b0000_0001;
@@ -136,17 +129,17 @@ impl Decoder {
         const MASK_LITERAL_LIT_NAME: u8 = 0b0000_0001;
 
         if byte >> 7 == MASK_INDEXED {
-            Some(FieldLineType::Indexed)
+            FieldLineType::Indexed
         } else if byte >> 4 == MASK_INDEXED_POST {
-            Some(FieldLineType::IndexedPost)
+            FieldLineType::IndexedPost
         } else if byte >> 6 == MASK_LITERAL_REF_NAME {
-            Some(FieldLineType::LiteralRefName)
+            FieldLineType::LiteralRefName
         } else if byte >> 4 == MASK_LITERAL_POST_REF_NAME {
-            Some(FieldLineType::LiteralPostRefName)
+            FieldLineType::LiteralPostRefName
         } else if byte >> 5 == MASK_LITERAL_LIT_NAME {
-            Some(FieldLineType::LiteralLitName)
+            FieldLineType::LiteralLitName
         } else {
-            None
+            unreachable!()
         }
     }
 
@@ -475,6 +468,13 @@ mod tests {
     use rand::random;
     use rand::thread_rng;
     use rand::Rng;
+
+    #[test]
+    fn decode_field_line_type() {
+        for i in 0..=u8::MAX {
+            Decoder::decode_field_line_type(i);
+        }
+    }
 
     #[test]
     fn encode_decode() {
