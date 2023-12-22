@@ -1,11 +1,8 @@
 use crate::error::ErrorCode;
 use crate::frame::Frame;
 use crate::frame::FrameKind;
-use crate::ids::StreamId;
-use ls_qpack::decoder::Decoder;
-use ls_qpack::decoder::DecoderOutput;
-use ls_qpack::encoder::Encoder;
-use ls_qpack::errors::DecoderError;
+use crate::qpack::Decoder;
+use crate::qpack::Encoder;
 use std::borrow::Cow;
 use std::collections::HashMap;
 
@@ -19,35 +16,18 @@ impl Headers {
     /// # Panics
     ///
     /// Panics if `frame` is not type [`FrameKind::Headers`].
-    pub fn with_frame(frame: &Frame, stream_id: StreamId) -> Result<Self, ErrorCode> {
+    pub fn with_frame(frame: &Frame) -> Result<Self, ErrorCode> {
         assert!(matches!(frame.kind(), FrameKind::Headers));
 
-        let mut decoder = Decoder::new(0, 0);
+        let headers = Decoder::decode(frame.payload()).map_err(|_| ErrorCode::Decompression)?;
 
-        match decoder
-            .decode(stream_id.into(), frame.payload())
-            .map_err(|DecoderError| ErrorCode::Decompression)?
-        {
-            DecoderOutput::Done(headers) => Ok(headers
-                .into_iter()
-                .map(|h| (h.name().to_string(), h.value().to_string()))
-                .collect()),
-            DecoderOutput::BlockedStream => unreachable!("Dynamic table is not allowed"),
-        }
+        Ok(Self(headers))
     }
 
     /// Generates a [`Frame`] with these headers.
-    pub fn generate_frame(&self, stream_id: StreamId) -> Frame<'static> {
-        let mut encoder = Encoder::new();
-
-        let (enc_headers, enc_stream) = encoder
-            .encode_all(stream_id.into(), self.0.iter())
-            .expect("Static encoding is not expected to fail")
-            .take();
-
-        debug_assert_eq!(enc_stream.len(), 0);
-
-        Frame::new_headers(Cow::Owned(enc_headers.to_vec()))
+    pub fn generate_frame(&self) -> Frame<'static> {
+        let payload = Encoder::encode(&self.0);
+        Frame::new_headers(Cow::Owned(payload.to_vec()))
     }
 
     /// Returns a reference to the value associated with the key.
@@ -92,28 +72,17 @@ impl AsRef<HashMap<String, String>> for Headers {
     }
 }
 
-impl From<StreamId> for ls_qpack::StreamId {
-    #[inline(always)]
-    fn from(value: StreamId) -> Self {
-        ls_qpack::StreamId::new(value.into_u64())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::varint::VarInt;
-
-    const STREAM_ID: StreamId = StreamId::new(VarInt::from_u32(42));
 
     #[test]
-    fn generate_frame() {
+    fn generate_frame_kind() {
         let headers = [("key1", "value1"), ("key2", "value2")]
             .into_iter()
             .collect::<Headers>();
 
-        let frame = headers.generate_frame(STREAM_ID);
-
+        let frame = headers.generate_frame();
         assert!(matches!(frame.kind(), FrameKind::Headers));
     }
 
@@ -149,11 +118,11 @@ mod tests {
             .into_iter()
             .collect::<Headers>();
 
-        let frame = headers.generate_frame(STREAM_ID);
+        let frame = headers.generate_frame();
 
         assert_eq!(
             headers.as_ref(),
-            Headers::with_frame(&frame, STREAM_ID).unwrap().as_ref()
+            Headers::with_frame(&frame).unwrap().as_ref()
         );
     }
 }

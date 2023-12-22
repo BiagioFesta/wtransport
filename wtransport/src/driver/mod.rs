@@ -584,7 +584,7 @@ mod worker {
                     return Err(DriverError::Proto(ErrorCode::FrameUnexpected));
                 }
                 FrameKind::Headers => {
-                    let headers = match Headers::with_frame(&first_frame, stream.id()) {
+                    let headers = match Headers::with_frame(&first_frame) {
                         Ok(headers) => headers,
                         Err(error_code) => return Err(DriverError::Proto(error_code)),
                     };

@@ -20,6 +20,9 @@ pub mod headers;
 /// Types for identifiers.
 pub mod ids;
 
+/// Basic QPACK implementation.
+pub mod qpack;
+
 /// WebTransport session utilities.
 pub mod session;
 

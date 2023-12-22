@@ -458,7 +458,6 @@ mod frame_kind_ids {
 mod tests {
     use super::*;
     use crate::headers::Headers;
-    use crate::ids::StreamId;
     use crate::settings::Settings;
 
     #[test]
@@ -499,28 +498,26 @@ mod tests {
 
     #[test]
     fn headers() {
-        let stream_id = StreamId::new(VarInt::from_u32(0));
         let headers = Headers::from_iter([("key1", "value1")]);
 
-        let frame = headers.generate_frame(stream_id);
+        let frame = headers.generate_frame();
         assert!(frame.session_id().is_none());
         assert!(matches!(frame.kind(), FrameKind::Headers));
 
         let frame = utils::assert_serde(frame);
-        Headers::with_frame(&frame, stream_id).unwrap();
+        Headers::with_frame(&frame).unwrap();
     }
 
     #[tokio::test]
     async fn headers_async() {
-        let stream_id = StreamId::new(VarInt::from_u32(0));
         let headers = Headers::from_iter([("key1", "value1")]);
 
-        let frame = headers.generate_frame(stream_id);
+        let frame = headers.generate_frame();
         assert!(frame.session_id().is_none());
         assert!(matches!(frame.kind(), FrameKind::Headers));
 
         let frame = utils::assert_serde_async(frame).await;
-        Headers::with_frame(&frame, stream_id).unwrap();
+        Headers::with_frame(&frame).unwrap();
     }
 
     #[test]

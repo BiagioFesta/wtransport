@@ -357,11 +357,10 @@ impl Endpoint<endpoint_side::Client> {
             }
         };
 
-        let stream_id = stream_session.id();
         let session_id = stream_session.session_id();
 
         match stream_session
-            .write_frame(stream_session.request().headers().generate_frame(stream_id))
+            .write_frame(stream_session.request().headers().generate_frame())
             .await
         {
             Ok(()) => {}
@@ -400,7 +399,7 @@ impl Endpoint<endpoint_side::Client> {
             ));
         }
 
-        let headers = match Headers::with_frame(&frame, stream_id) {
+        let headers = match Headers::with_frame(&frame) {
             Ok(headers) => headers,
             Err(error_code) => {
                 quic_connection.close(varint_w2q(error_code.to_code()), b"");
@@ -691,7 +690,7 @@ impl SessionRequest {
         &mut self,
         response: SessionResponseProto,
     ) -> Result<(), ConnectionError> {
-        let frame = response.headers().generate_frame(self.stream_session.id());
+        let frame = response.headers().generate_frame();
 
         match self.stream_session.write_frame(frame).await {
             Ok(()) => Ok(()),
