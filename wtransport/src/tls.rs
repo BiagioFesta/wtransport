@@ -141,6 +141,33 @@ impl Certificate {
         .expect("valid certificate")
     }
 
+    /// For each certificate in this chain, computes its corresponding *hash*.
+    ///
+    /// The hash is the *SHA-256* of the DER encoding of the certificate.
+    ///
+    /// This function can be used to make a *web* client accept a self-signed
+    /// certificate by using the [`WebTransportOptions.serverCertificateHashes`] W3C API.
+    ///
+    /// [`WebTransportOptions.serverCertificateHashes`]: https://www.w3.org/TR/webtransport/#dom-webtransportoptions-servercertificatehashes
+    #[cfg(feature = "self-signed")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+    pub fn hashes(&self) -> Vec<Sha256Digest> {
+        use ring::digest::digest;
+        use ring::digest::SHA256;
+
+        self.certificates
+            .iter()
+            .map(|cert| {
+                Sha256Digest(
+                    digest(&SHA256, cert)
+                        .as_ref()
+                        .try_into()
+                        .expect("SHA256 digest is 32 bytes len"),
+                )
+            })
+            .collect()
+    }
+
     /// Loads a PEM certificates and private key from the filesystem.
     pub async fn load(
         cert_path: impl AsRef<Path>,
@@ -245,6 +272,89 @@ impl Debug for InvalidCertificate {
 impl Display for InvalidCertificate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(self, f)
+    }
+}
+
+/// Represents a *SHA-256* digest, which is a fixed-size array of 32 bytes.
+///
+/// See [`Certificate::hashes`].
+#[cfg(feature = "self-signed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+pub struct Sha256Digest([u8; 32]);
+
+#[cfg(feature = "self-signed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+impl Sha256Digest {
+    /// Formats the digest as a string in byte array format.
+    ///
+    /// The format is as follows: `[b0, b1, b2, ..., b31]`,
+    /// where `b` is the byte represented as a decimal integer.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use wtransport::tls::Certificate;
+    ///
+    /// let certificate = Certificate::self_signed(["localhost"]);
+    /// println!("{}", certificate.hashes()[0].fmt_as_byte_array());
+    /// // [145, 179, 40, 18, 164, ..., 232, 76, 132, 97, 129]
+    /// ```
+    pub fn fmt_as_byte_array(&self) -> String {
+        format!("{:?}", self.0)
+    }
+
+    /// Formats the digest as a string in dotted hex format.
+    ///
+    /// The format is as follows: `"x0:x1:x2:...:x31"`,
+    /// where `x` is the byte represented as a hexadecimal integer.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use wtransport::tls::Certificate;
+    ///
+    /// let certificate = Certificate::self_signed(["localhost"]);
+    /// println!("{}", certificate.hashes()[0].fmt_as_dotted_hex());
+    /// // 2e:6e:6f:d2:41:11:...:06:75:0c:7a:af:f6:09
+    /// ```
+    pub fn fmt_as_dotted_hex(&self) -> String {
+        self.0
+            .iter()
+            .map(|byte| format!("{:02x}", byte))
+            .collect::<Vec<_>>()
+            .join(":")
+    }
+}
+
+#[cfg(feature = "self-signed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+impl AsRef<[u8]> for Sha256Digest {
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+#[cfg(feature = "self-signed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+impl AsRef<[u8; 32]> for Sha256Digest {
+    fn as_ref(&self) -> &[u8; 32] {
+        &self.0
+    }
+}
+
+#[cfg(feature = "self-signed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+impl Debug for Sha256Digest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Debug::fmt(&self.fmt_as_byte_array(), f)
+    }
+}
+
+#[cfg(feature = "self-signed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+impl Display for Sha256Digest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        Display::fmt(&self.fmt_as_dotted_hex(), f)
     }
 }
 

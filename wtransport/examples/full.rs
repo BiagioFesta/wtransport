@@ -6,6 +6,7 @@ use tracing::info;
 use tracing::info_span;
 use tracing::Instrument;
 use webtransport::WebTransportServer;
+use wtransport::tls::Sha256Digest;
 use wtransport::Certificate;
 
 #[tokio::main]
@@ -13,10 +14,10 @@ async fn main() -> Result<()> {
     utils::init_logging();
 
     let certificate = Certificate::self_signed(["localhost", "127.0.0.1", "::1"]);
-    let cert_digest = utils::digest_certificate(&certificate);
+    let cert_digest = certificate.hashes().pop().unwrap();
 
     let webtransport_server = WebTransportServer::new(certificate)?;
-    let http_server = HttpServer::new(cert_digest, webtransport_server.local_port()).await?;
+    let http_server = HttpServer::new(&cert_digest, webtransport_server.local_port()).await?;
 
     info!(
         "Open Google Chrome and go to: http://127.0.0.1:{}",
@@ -168,7 +169,7 @@ mod http {
     impl HttpServer {
         const PORT: u16 = 8080;
 
-        pub async fn new(cert_digest: String, webtransport_port: u16) -> Result<Self> {
+        pub async fn new(cert_digest: &Sha256Digest, webtransport_port: u16) -> Result<Self> {
             let router = Self::build_router(cert_digest, webtransport_port);
 
             let listener =
@@ -199,7 +200,9 @@ mod http {
             Ok(())
         }
 
-        fn build_router(cert_digest: String, webtransport_port: u16) -> Router {
+        fn build_router(cert_digest: &Sha256Digest, webtransport_port: u16) -> Router {
+            let cert_digest = cert_digest.fmt_as_byte_array();
+
             let root = move || async move {
                 Html(
                     http_data::INDEX_DATA
@@ -226,9 +229,6 @@ mod http {
 }
 
 mod utils {
-    use super::*;
-    use ring::digest::digest;
-    use ring::digest::SHA256;
     use tracing_subscriber::filter::LevelFilter;
     use tracing_subscriber::EnvFilter;
 
@@ -242,20 +242,6 @@ mod utils {
             .with_level(true)
             .with_env_filter(env_filter)
             .init();
-    }
-
-    pub fn digest_certificate(certificate: &Certificate) -> String {
-        assert_eq!(certificate.certificates().len(), 1);
-        certificate
-            .certificates()
-            .iter()
-            .map(|cert| digest(&SHA256, cert).as_ref().to_vec())
-            .next()
-            .unwrap()
-            .iter()
-            .map(|byte| format!("{:02x}", byte))
-            .collect::<Vec<_>>()
-            .join(":")
     }
 }
 
@@ -403,12 +389,7 @@ textarea {
 // Adds an entry to the event log on the page, optionally applying a specified
 // CSS class.
 
-const HASH = "${CERT_DIGEST}";
-
-function hexStringToArrayBuffer(hexString) {
-  const hexArray = hexString.split(':').map(hex => parseInt(hex, 16));
-  return new Uint8Array(hexArray).buffer;
-}
+const HASH = new Uint8Array(${CERT_DIGEST});
 
 let currentTransport, streamNumber, currentTransportDatagramWriter;
 
@@ -416,7 +397,7 @@ let currentTransport, streamNumber, currentTransportDatagramWriter;
 async function connect() {
   const url = document.getElementById('url').value;
   try {
-    var transport = new WebTransport(url, { serverCertificateHashes: [ { algorithm: "sha-256", value: hexStringToArrayBuffer(HASH) } ] } );
+    var transport = new WebTransport(url, { serverCertificateHashes: [ { algorithm: "sha-256", value: HASH.buffer } ] } );
     addToEventLog('Initiating connection...');
   } catch (e) {
     addToEventLog('Failed to create connection object. ' + e, 'error');
