@@ -1,5 +1,6 @@
 use crate::config::ClientConfig;
 use crate::config::DnsResolver;
+use crate::config::DnsResolverExt;
 use crate::config::Ipv6DualStackConfig;
 use crate::config::ServerConfig;
 use crate::connection::Connection;
@@ -25,6 +26,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
+use tokio::sync::Mutex;
 use tracing::debug;
 use url::Host;
 use url::Url;
@@ -50,7 +52,7 @@ pub mod endpoint_side {
     ///
     /// Use [`Endpoint::client`] to create and client-endpoint.
     pub struct Client {
-        pub(super) dns_resolver: Box<dyn DnsResolver + Send + Sync>,
+        pub(super) dns_resolver: Mutex<Box<dyn DnsResolver + Unpin>>,
     }
 }
 
@@ -219,7 +221,7 @@ impl Endpoint<endpoint_side::Client> {
         Ok(Self {
             endpoint,
             side: endpoint_side::Client {
-                dns_resolver: client_config.dns_resolver,
+                dns_resolver: Mutex::new(client_config.dns_resolver),
             },
         })
     }
@@ -302,6 +304,8 @@ impl Endpoint<endpoint_side::Client> {
                 let socket_address = self
                     .side
                     .dns_resolver
+                    .lock()
+                    .await
                     .resolve(&format!("{domain}:{port}"))
                     .await
                     .map_err(ConnectingError::DnsLookup)?
