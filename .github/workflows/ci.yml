@@ -51,6 +51,10 @@ jobs:
 
   check-external-types:
     runs-on: ubuntu-latest
+    # TODO(bfesta): https://github.com/awslabs/cargo-check-external-types/blob/v0.1.10/Cargo.toml#L16
+    # cargo-check-external-types should bump rustdoc-types to >= 0.24
+    # For now, disable this job
+    if: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions-rust-lang/setup-rust-toolchain@v1
