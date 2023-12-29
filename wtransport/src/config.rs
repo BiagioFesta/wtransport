@@ -548,7 +548,7 @@ pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
     pub(crate) quic_config: QuicClientConfig,
-    pub(crate) dns_resolver: Box<dyn DnsResolver + Unpin>,
+    pub(crate) dns_resolver: Box<dyn DnsResolver + Send + Sync + Unpin>,
 }
 
 impl ClientConfig {
@@ -810,8 +810,11 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     /// Sets the *DNS* resolver used during [`Endpoint::connect`](crate::Endpoint::connect).
     ///
     /// Default configuration uses [`TokioDnsResolver`].
-    pub fn dns_resolver(mut self, dns_resolver: Box<dyn DnsResolver + Unpin>) -> Self {
-        self.0.dns_resolver = dns_resolver;
+    pub fn dns_resolver<R>(mut self, dns_resolver: R) -> Self
+    where
+        R: DnsResolver + Send + Sync + Unpin + 'static,
+    {
+        self.0.dns_resolver = Box::new(dns_resolver);
         self
     }
 
@@ -868,7 +871,7 @@ pub mod states {
         pub(super) dual_stack_config: Ipv6DualStackConfig,
         pub(super) tls_config: TlsClientConfig,
         pub(super) transport_config: quinn::TransportConfig,
-        pub(super) dns_resolver: Box<dyn DnsResolver + Unpin>,
+        pub(super) dns_resolver: Box<dyn DnsResolver + Send + Sync + Unpin>,
     }
 }
 
@@ -954,7 +957,7 @@ where
 #[derive(Default)]
 pub struct TokioDnsResolver {
     #[allow(clippy::type_complexity)]
-    fut: Option<Pin<Box<dyn Future<Output = std::io::Result<Option<SocketAddr>>>>>>,
+    fut: Option<Pin<Box<dyn Future<Output = std::io::Result<Option<SocketAddr>>> + Send + Sync>>>,
 }
 
 impl DnsResolver for TokioDnsResolver {

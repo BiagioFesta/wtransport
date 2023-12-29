@@ -52,7 +52,7 @@ pub mod endpoint_side {
     ///
     /// Use [`Endpoint::client`] to create and client-endpoint.
     pub struct Client {
-        pub(super) dns_resolver: Mutex<Box<dyn DnsResolver + Unpin>>,
+        pub(super) dns_resolver: Mutex<Box<dyn DnsResolver + Send + Sync + Unpin>>,
     }
 }
 
