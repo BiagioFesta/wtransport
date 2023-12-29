@@ -643,7 +643,6 @@ pub mod r#async {
                     &this.buffer[this.offset..this.varint_size]
                 ))?;
 
-                // TODO(bfesta): what if AsyncWrite returns Ok(0)? maybe wake and pending?
                 debug_assert!(written > 0);
 
                 this.offset += written;
@@ -692,7 +691,6 @@ pub mod r#async {
                     &this.buffer[this.offset..]
                 ))?;
 
-                // TODO(bfesta): what if AsyncWrite returns Ok(0)? maybe wake and pending?
                 debug_assert!(written > 0);
 
                 this.offset += written;
