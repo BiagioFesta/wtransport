@@ -12,6 +12,9 @@ readme = "../README.md"
 workspace = ".."
 rust-version = "1.70"
 
+[lib]
+bench = false
+
 [[bench]]
 name = "bytes"
 harness = false
