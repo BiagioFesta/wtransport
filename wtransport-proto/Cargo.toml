@@ -17,6 +17,10 @@ name = "bytes"
 harness = false
 
 [[bench]]
+name = "datagram"
+harness = false
+
+[[bench]]
 name = "qpack"
 harness = false
 
