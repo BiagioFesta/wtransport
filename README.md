@@ -106,7 +106,7 @@ Open *Google Chrome* and navigate to the page http://127.0.0.1:8080.
 ## Examples
 * [Local Examples](wtransport/examples/)
 
-## Other languages
+## Other Languages
 
 WTransport has bindings for the following languages:
 
