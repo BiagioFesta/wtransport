@@ -81,6 +81,32 @@ async fn main() -> Result<()> {
 </tr>
 </table>
 
+## Browser Integration
+WebTransport [is supported](https://caniuse.com/mdn-api_webtransport) in modern browsers,
+enhancing the capabilities of web applications.
+
+For instance, you can create a native *browser WebTransport* client connecting to a *Rust 
+server* using the following JavaScript code:
+
+```javascript
+// Create a WebTransport instance connecting to the Rust server
+let transport = new WebTransport('https://[::1]:4433');
+await transport.ready;
+
+// Create a bidirectional stream
+let stream = await transport.createBidirectionalStream();
+
+// Send data from the client to the server
+await stream.writable.getWriter().write(new TextEncoder().encode("hello"));
+
+// Read data reply from the server
+let data = await stream.readable.getReader().read();
+console.log(data);
+```
+
+Check out the [W3C WebTransport API documentation](https://w3c.github.io/webtransport/) for more details and to 
+explore the full capabilities of WebTransport in the browser.
+
 ## Getting Started
 ### Clone the Repository
 ```bash
