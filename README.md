@@ -85,7 +85,7 @@ async fn main() -> Result<()> {
 WebTransport [is supported](https://caniuse.com/mdn-api_webtransport) in modern browsers,
 enhancing the capabilities of web applications.
 
-For instance, you can create a native *browser WebTransport* client connecting to a *Rust 
+For instance, you can create a native *browser WebTransport* client connecting to a *Rust
 server* using the following JavaScript code:
 
 ```javascript
@@ -104,7 +104,7 @@ let data = await stream.readable.getReader().read();
 console.log(data);
 ```
 
-Check out the [W3C WebTransport API documentation](https://w3c.github.io/webtransport/) for more details and to 
+Check out the [W3C WebTransport API documentation](https://w3c.github.io/webtransport/) for more details and to
 explore the full capabilities of WebTransport in the browser.
 
 ## Getting Started
