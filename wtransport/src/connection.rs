@@ -300,8 +300,8 @@ impl Connection {
     }
 
     /// Waits for the connection to be closed for any reason.
-    pub async fn closed(&self) {
-        let _ = self.quic_connection.closed().await;
+    pub async fn closed(&self) -> ConnectionError {
+        self.quic_connection.closed().await.into()
     }
 
     /// Returns the WebTransport session identifier.
