@@ -201,7 +201,7 @@ mod http {
         }
 
         fn build_router(cert_digest: &Sha256Digest, webtransport_port: u16) -> Router {
-            let cert_digest = cert_digest.fmt_as_byte_array();
+            let cert_hash = cert_digest.fmt_as_byte_array();
 
             let root = move || async move {
                 Html(
@@ -216,7 +216,7 @@ mod http {
             let client = move || async move {
                 (
                     [(CONTENT_TYPE, "application/javascript")],
-                    http_data::CLIENT_DATA.replace("${CERT_DIGEST}", &cert_digest),
+                    http_data::CLIENT_DATA.replace("${CERT_HASH}", &cert_hash),
                 )
             };
 
@@ -386,10 +386,7 @@ textarea {
 "#;
 
     pub const CLIENT_DATA: &str = r#"
-// Adds an entry to the event log on the page, optionally applying a specified
-// CSS class.
-
-const HASH = new Uint8Array(${CERT_DIGEST});
+const CERT_HASH = new Uint8Array(${CERT_HASH});
 
 let currentTransport, streamNumber, currentTransportDatagramWriter;
 
@@ -397,7 +394,7 @@ let currentTransport, streamNumber, currentTransportDatagramWriter;
 async function connect() {
   const url = document.getElementById('url').value;
   try {
-    var transport = new WebTransport(url, { serverCertificateHashes: [ { algorithm: "sha-256", value: HASH.buffer } ] } );
+    var transport = new WebTransport(url, { serverCertificateHashes: [ { algorithm: "sha-256", value: CERT_HASH.buffer } ] } );
     addToEventLog('Initiating connection...');
   } catch (e) {
     addToEventLog('Failed to create connection object. ' + e, 'error');
