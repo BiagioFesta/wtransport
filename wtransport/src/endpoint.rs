@@ -205,6 +205,11 @@ impl Endpoint<endpoint_side::Server> {
 
         Ok(())
     }
+
+    /// Rejects new incoming connections without affecting existing connections
+    pub fn reject_new_connections(&self) {
+        self.endpoint.reject_new_connections();
+    }
 }
 
 impl Endpoint<endpoint_side::Client> {
