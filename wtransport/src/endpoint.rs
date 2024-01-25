@@ -36,6 +36,7 @@ use wtransport_proto::headers::Headers;
 use wtransport_proto::session::ReservedHeader;
 use wtransport_proto::session::SessionRequest as SessionRequestProto;
 use wtransport_proto::session::SessionResponse as SessionResponseProto;
+use wtransport_proto::varint::VarInt;
 
 /// Helper structure for Endpoint types.
 pub mod endpoint_side {
@@ -128,6 +129,11 @@ impl<Side> Endpoint<Side> {
         socket.bind(&bind_address.into())?;
 
         Ok(socket)
+    }
+
+    /// Closes all of this endpoint's connections immediately and cease accepting new connections.
+    pub fn close(&self, error_code: VarInt, reason: &[u8]) {
+        self.endpoint.close(varint_w2q(error_code), reason);
     }
 
     /// Waits for all connections on the endpoint to be cleanly shut down.
