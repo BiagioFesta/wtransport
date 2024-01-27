@@ -275,88 +275,161 @@ impl Display for InvalidCertificate {
     }
 }
 
+/// Represents the formatting options for displaying a SHA-256 digest.
+#[derive(Debug, Copy, Clone)]
+pub enum Sha256DigestFmt {
+    /// Represents the SHA-256 digest as an array of bytes.
+    ///
+    /// The string-format is as follows: `"[b0, b1, b2, ..., b31]"`,
+    /// where `b` is the byte represented as a *decimal* integer.
+    BytesArray,
+
+    /// Represents the SHA-256 digest as a dotted hexadecimal string.
+    ///
+    /// The string-format is as follows: `"x0:x1:x2:...:x31"` where `x`
+    /// is the byte represented as a *hexadecimal* integer.
+    DottedHex,
+}
+
 /// Represents a *SHA-256* digest, which is a fixed-size array of 32 bytes.
-///
-/// See [`Certificate::hashes`].
-#[cfg(feature = "self-signed")]
-#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+#[derive(Debug, Clone, Eq, Hash, PartialEq, PartialOrd, Ord)]
 pub struct Sha256Digest([u8; 32]);
 
-#[cfg(feature = "self-signed")]
-#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
 impl Sha256Digest {
-    /// Formats the digest as a string in byte array format.
+    /// Creates a new instance from a given array of 32 bytes.
     ///
-    /// The format is as follows: `[b0, b1, b2, ..., b31]`,
-    /// where `b` is the byte represented as a decimal integer.
-    ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
-    /// use wtransport::tls::Certificate;
+    /// use wtransport::tls::Sha256Digest;
     ///
-    /// let certificate = Certificate::self_signed(["localhost"]);
-    /// println!("{}", certificate.hashes()[0].fmt_as_byte_array());
-    /// // [145, 179, 40, 18, 164, ..., 232, 76, 132, 97, 129]
+    /// // Create a new SHA-256 digest instance.
+    /// let digest = Sha256Digest::new([97; 32]);
     /// ```
-    pub fn fmt_as_byte_array(&self) -> String {
-        format!("{:?}", self.0)
+    pub fn new(bytes: [u8; 32]) -> Self {
+        Self(bytes)
     }
 
-    /// Formats the digest as a string in dotted hex format.
+    /// Attempts to create a new instance from a string representation.
     ///
-    /// The format is as follows: `"x0:x1:x2:...:x31"`,
-    /// where `x` is the byte represented as a hexadecimal integer.
+    /// This method parses the string representation of the digest according to the provided
+    /// format (`fmt`) and constructs a new `Sha256Digest` instance if the parsing is successful.
     ///
-    /// # Example
+    /// # Examples
     ///
     /// ```
-    /// use wtransport::tls::Certificate;
+    /// use wtransport::tls::Sha256Digest;
+    /// use wtransport::tls::Sha256DigestFmt;
     ///
-    /// let certificate = Certificate::self_signed(["localhost"]);
-    /// println!("{}", certificate.hashes()[0].fmt_as_dotted_hex());
-    /// // 2e:6e:6f:d2:41:11:...:06:75:0c:7a:af:f6:09
+    /// const HASH_ARRAY: &str = "[234, 204, 110, 153, 82, 177, 87, 232, 180, 125, \
+    ///                           234, 158, 66, 129, 212, 250, 217, 48, 47, 32, 83, \
+    ///                           133, 23, 44, 79, 198, 70, 118, 25, 153, 146, 142]";
+    ///
+    /// let digest_bytes_array = Sha256Digest::from_str_fmt(HASH_ARRAY, Sha256DigestFmt::BytesArray);
+    /// assert!(digest_bytes_array.is_ok());
+    ///
+    /// const HASH_HEX: &str = "e3:4e:c7:de:b8:da:2d:b8:3c:86:a0:11:76:40:75:b3:\
+    ///                         b9:ba:9d:00:e0:04:b3:38:72:cd:a1:af:4e:e3:11:26";
+    ///
+    /// let digest_dotted_hex = Sha256Digest::from_str_fmt(HASH_HEX, Sha256DigestFmt::DottedHex);
+    /// assert!(digest_dotted_hex.is_ok());
+    ///
+    /// let invalid_digest = Sha256Digest::from_str_fmt("invalid_digest", Sha256DigestFmt::BytesArray);
+    /// assert!(invalid_digest.is_err());
     /// ```
-    pub fn fmt_as_dotted_hex(&self) -> String {
-        self.0
-            .iter()
-            .map(|byte| format!("{:02x}", byte))
-            .collect::<Vec<_>>()
-            .join(":")
+    pub fn from_str_fmt<S>(s: S, fmt: Sha256DigestFmt) -> Result<Self, InvalidDigest>
+    where
+        S: AsRef<str>,
+    {
+        let bytes = match fmt {
+            Sha256DigestFmt::BytesArray => s
+                .as_ref()
+                .trim_start_matches('[')
+                .trim_end_matches(']')
+                .split(',')
+                .map(|byte| byte.trim().parse::<u8>().map_err(|_| InvalidDigest))
+                .collect::<Result<Vec<u8>, _>>()?,
+
+            Sha256DigestFmt::DottedHex => s
+                .as_ref()
+                .split(':')
+                .map(|hex| u8::from_str_radix(hex.trim(), 16).map_err(|_| InvalidDigest))
+                .collect::<Result<Vec<u8>, _>>()?,
+        };
+
+        Ok(Self(bytes.try_into().map_err(|_| InvalidDigest)?))
+    }
+
+    /// Formats the digest into a human-readable representation based on the specified format.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use wtransport::tls::Sha256Digest;
+    /// use wtransport::tls::Sha256DigestFmt;
+    ///
+    /// let digest = Sha256Digest::new([
+    ///     97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115,
+    ///     116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 64,
+    /// ]);
+    ///
+    /// // Represent the digest as a byte array string.
+    /// let bytes_array_fmt = digest.fmt(Sha256DigestFmt::BytesArray);
+    /// assert_eq!(
+    ///     bytes_array_fmt,
+    ///     "[97, 98, 99, 100, 101, 102, 103, 104, 105, 106, \
+    ///       107, 108, 109, 110, 111, 112, 113, 114, 115, 116, \
+    ///       117, 118, 119, 120, 121, 122, 123, 124, 125, 126, \
+    ///       127, 64]"
+    /// );
+    ///
+    /// // Represent the digest as a dotted hexadecimal string.
+    /// let dotted_hex_fmt = digest.fmt(Sha256DigestFmt::DottedHex);
+    /// assert_eq!(
+    ///     dotted_hex_fmt,
+    ///     "61:62:63:64:65:66:67:68:69:6a:6b:6c:6d:6e:6f:70:\
+    ///      71:72:73:74:75:76:77:78:79:7a:7b:7c:7d:7e:7f:40"
+    /// );
+    /// ```
+    pub fn fmt(&self, fmt: Sha256DigestFmt) -> String {
+        match fmt {
+            Sha256DigestFmt::BytesArray => {
+                format!("{:?}", self.0)
+            }
+            Sha256DigestFmt::DottedHex => self
+                .0
+                .iter()
+                .map(|byte| format!("{:02x}", byte))
+                .collect::<Vec<_>>()
+                .join(":"),
+        }
     }
 }
 
-#[cfg(feature = "self-signed")]
-#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
-impl AsRef<[u8]> for Sha256Digest {
-    fn as_ref(&self) -> &[u8] {
-        &self.0
+impl From<[u8; 32]> for Sha256Digest {
+    fn from(value: [u8; 32]) -> Self {
+        Self::new(value)
     }
 }
 
-#[cfg(feature = "self-signed")]
-#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
 impl AsRef<[u8; 32]> for Sha256Digest {
     fn as_ref(&self) -> &[u8; 32] {
         &self.0
     }
 }
 
-#[cfg(feature = "self-signed")]
-#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
-impl Debug for Sha256Digest {
+impl Display for Sha256Digest {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(&self.fmt_as_byte_array(), f)
+        Display::fmt(&self.fmt(Sha256DigestFmt::DottedHex), f)
     }
 }
 
-#[cfg(feature = "self-signed")]
-#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
-impl Display for Sha256Digest {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Display::fmt(&self.fmt_as_dotted_hex(), f)
-    }
-}
+/// Represents an error failure to parse a string as a [`Sha256Digest`].
+///
+/// See [`Sha256Digest::from_str_fmt`].
+#[derive(Debug, thiserror::Error)]
+#[error("cannot parse string as sha256 digest")]
+pub struct InvalidDigest;
 
 pub use rustls;
 
@@ -377,5 +450,29 @@ mod tests {
     fn valid_self() {
         let cert = Certificate::self_signed(["localhost"]);
         Certificate::new(cert.certificates, cert.private_key).unwrap();
+    }
+
+    #[test]
+    fn idempotence_digest() {
+        let digest = Sha256Digest::new([
+            97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114,
+            115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 64,
+        ]);
+
+        let d = Sha256Digest::from_str_fmt(
+            digest.fmt(Sha256DigestFmt::BytesArray),
+            Sha256DigestFmt::BytesArray,
+        )
+        .unwrap();
+
+        assert_eq!(d, digest);
+
+        let d = Sha256Digest::from_str_fmt(
+            digest.fmt(Sha256DigestFmt::DottedHex),
+            Sha256DigestFmt::DottedHex,
+        )
+        .unwrap();
+
+        assert_eq!(d, digest);
     }
 }

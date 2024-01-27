@@ -7,6 +7,7 @@ use tracing::info_span;
 use tracing::Instrument;
 use webtransport::WebTransportServer;
 use wtransport::tls::Sha256Digest;
+use wtransport::tls::Sha256DigestFmt;
 use wtransport::Certificate;
 
 #[tokio::main]
@@ -201,7 +202,7 @@ mod http {
         }
 
         fn build_router(cert_digest: &Sha256Digest, webtransport_port: u16) -> Router {
-            let cert_digest = cert_digest.fmt_as_byte_array();
+            let cert_digest = cert_digest.fmt(Sha256DigestFmt::BytesArray);
 
             let root = move || async move {
                 Html(

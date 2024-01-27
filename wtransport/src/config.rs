@@ -712,7 +712,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     pub fn with_no_cert_validation(
         self,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
-        let mut tls_config = Self::build_tls_config(RootCertStore::empty());
+        let mut tls_config = Self::build_tls_config(Arc::new(RootCertStore::empty()));
         tls_config
             .dangerous()
             .set_certificate_verifier(Arc::new(dangerous_configuration::NoServerVerification));
@@ -728,7 +728,55 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         })
     }
 
-    fn native_cert_store() -> RootCertStore {
+    /// Configures the client to skip *some* server certificates validation.
+    ///
+    /// This method configures the client to accept server certificates
+    /// whose digests match the specified *SHA-256* hashes and fulfill
+    /// some additional constraints (*see notes below*).
+    ///
+    /// This is useful for scenarios where clients need to accept known
+    /// self-signed certificates or certificates from non-standard authorities.
+    ///
+    /// This method configuration is similar to the
+    /// [browser W3C WebTransport API](https://www.w3.org/TR/webtransport/#dom-webtransportoptions-servercertificatehashes).
+    ///
+    /// # Notes
+    ///
+    /// - The current time MUST be within the validity period of the certificate.
+    /// - The total length of the validity period MUST NOT exceed *two* weeks.
+    /// - Only certificates for which the public key algorithm is *ECDSA* with the *secp256r1* are accepted.
+    #[cfg(all(feature = "dangerous-configuration", feature = "self-signed"))]
+    #[cfg_attr(
+        docsrs,
+        doc(cfg(all(feature = "dangerous-configuration", feature = "self-signed")))
+    )]
+    pub fn with_server_certificate_hashes<I>(
+        self,
+        hashes: I,
+    ) -> ClientConfigBuilder<states::WantsTransportConfigClient>
+    where
+        I: IntoIterator<Item = crate::tls::Sha256Digest>,
+    {
+        let mut tls_config = Self::build_tls_config(Arc::new(RootCertStore::empty()));
+
+        let root_store = Self::native_cert_store();
+
+        tls_config.dangerous().set_certificate_verifier(Arc::new(
+            dangerous_configuration::ServerHashVerification::new(hashes, root_store),
+        ));
+
+        let transport_config = TransportConfig::default();
+
+        ClientConfigBuilder(states::WantsTransportConfigClient {
+            bind_address: self.0.bind_address,
+            dual_stack_config: self.0.dual_stack_config,
+            tls_config,
+            transport_config,
+            dns_resolver: Box::<TokioDnsResolver>::default(),
+        })
+    }
+
+    fn native_cert_store() -> Arc<RootCertStore> {
         let mut root_store = RootCertStore::empty();
 
         let _var_restore_guard = utils::remove_var_tmp("SSL_CERT_FILE");
@@ -742,10 +790,10 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             Err(_error) => {}
         }
 
-        root_store
+        Arc::new(root_store)
     }
 
-    fn build_tls_config(root_store: RootCertStore) -> TlsClientConfig {
+    fn build_tls_config(root_store: Arc<RootCertStore>) -> TlsClientConfig {
         let mut config = TlsClientConfig::builder()
             .with_safe_default_cipher_suites()
             .with_safe_default_kx_groups()
@@ -880,6 +928,12 @@ mod dangerous_configuration {
     use rustls::client::ServerCertVerified;
     use rustls::client::ServerCertVerifier;
 
+    #[cfg(feature = "self-signed")]
+    use std::collections::BTreeSet;
+
+    #[cfg(feature = "self-signed")]
+    use std::sync::Arc;
+
     pub(super) struct NoServerVerification;
 
     impl ServerCertVerifier for NoServerVerification {
@@ -893,6 +947,92 @@ mod dangerous_configuration {
             _now: std::time::SystemTime,
         ) -> Result<ServerCertVerified, rustls::Error> {
             Ok(ServerCertVerified::assertion())
+        }
+    }
+
+    #[cfg(feature = "self-signed")]
+    pub(super) struct ServerHashVerification {
+        hashes: BTreeSet<crate::tls::Sha256Digest>,
+        pki_verifier: rustls::client::WebPkiVerifier,
+    }
+
+    #[cfg(feature = "self-signed")]
+    impl ServerHashVerification {
+        const SELF_MAX_VALIDITY: time::Duration = time::Duration::days(14);
+
+        pub(super) fn new<H>(hashes: H, root_store: Arc<super::RootCertStore>) -> Self
+        where
+            H: IntoIterator<Item = crate::tls::Sha256Digest>,
+        {
+            Self {
+                hashes: BTreeSet::from_iter(hashes),
+                pki_verifier: rustls::client::WebPkiVerifier::new(root_store, None),
+            }
+        }
+    }
+
+    #[cfg(feature = "self-signed")]
+    impl ServerCertVerifier for ServerHashVerification {
+        fn verify_server_cert(
+            &self,
+            end_entity: &rustls::Certificate,
+            intermediates: &[rustls::Certificate],
+            server_name: &rustls::ServerName,
+            scts: &mut dyn Iterator<Item = &[u8]>,
+            ocsp_response: &[u8],
+            now: std::time::SystemTime,
+        ) -> Result<ServerCertVerified, rustls::Error> {
+            use x509_parser::certificate::X509Certificate;
+            use x509_parser::oid_registry::OID_EC_P256;
+            use x509_parser::oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY;
+            use x509_parser::prelude::FromDer;
+
+            let error = match self.pki_verifier.verify_server_cert(
+                end_entity,
+                intermediates,
+                server_name,
+                scts,
+                ocsp_response,
+                now,
+            ) {
+                Ok(ok) => return Ok(ok),
+                Err(error) => error,
+            };
+
+            let x509 = X509Certificate::from_der(&end_entity.0)
+                .map_err(|_| rustls::CertificateError::BadEncoding)?
+                .1;
+
+            if !x509.validity().is_valid() {
+                return Err(error);
+            }
+
+            let validity_period = x509.validity().not_after - x509.validity.not_before;
+            if !matches!(validity_period, Some(x) if x <= Self::SELF_MAX_VALIDITY) {
+                return Err(error);
+            }
+
+            if x509.public_key().algorithm.algorithm != OID_KEY_TYPE_EC_PUBLIC_KEY {
+                return Err(error);
+            }
+
+            if !matches!(x509.public_key().algorithm.parameters.as_ref().map(|any| any.as_oid()),
+                         Some(Ok(oid)) if oid == OID_EC_P256)
+            {
+                return Err(error);
+            }
+
+            let end_entity_hash = crate::Certificate::new([end_entity.0.as_slice()], Vec::new())
+                .map_err(|_| rustls::CertificateError::BadEncoding)?
+                .hashes()
+                .pop()
+                .expect("one hash");
+
+            if self.hashes.contains(&end_entity_hash) {
+                Ok(ServerCertVerified::assertion())
+            } else {
+                Err(error)
+            }
         }
     }
 }
