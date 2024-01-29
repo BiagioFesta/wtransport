@@ -14,7 +14,7 @@ rust-version = "1.70"
 
 [dependencies]
 httlib-huffman = "0.3.4"
-octets = "0.2.0"
+octets = "0.3.0"
 thiserror = "1.0.50"
 url = "2.4.0"
 
