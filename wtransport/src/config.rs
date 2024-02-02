@@ -759,10 +759,8 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     {
         let mut tls_config = Self::build_tls_config(Arc::new(RootCertStore::empty()));
 
-        let root_store = Self::native_cert_store();
-
         tls_config.dangerous().set_certificate_verifier(Arc::new(
-            dangerous_configuration::ServerHashVerification::new(hashes, root_store),
+            dangerous_configuration::ServerHashVerification::new(hashes),
         ));
 
         let transport_config = TransportConfig::default();
@@ -931,9 +929,6 @@ mod dangerous_configuration {
     #[cfg(feature = "self-signed")]
     use std::collections::BTreeSet;
 
-    #[cfg(feature = "self-signed")]
-    use std::sync::Arc;
-
     pub(super) struct NoServerVerification;
 
     impl ServerCertVerifier for NoServerVerification {
@@ -953,20 +948,18 @@ mod dangerous_configuration {
     #[cfg(feature = "self-signed")]
     pub(super) struct ServerHashVerification {
         hashes: BTreeSet<crate::tls::Sha256Digest>,
-        pki_verifier: rustls::client::WebPkiVerifier,
     }
 
     #[cfg(feature = "self-signed")]
     impl ServerHashVerification {
         const SELF_MAX_VALIDITY: time::Duration = time::Duration::days(14);
 
-        pub(super) fn new<H>(hashes: H, root_store: Arc<super::RootCertStore>) -> Self
+        pub(super) fn new<H>(hashes: H) -> Self
         where
             H: IntoIterator<Item = crate::tls::Sha256Digest>,
         {
             Self {
                 hashes: BTreeSet::from_iter(hashes),
-                pki_verifier: rustls::client::WebPkiVerifier::new(root_store, None),
             }
         }
     }
@@ -976,50 +969,48 @@ mod dangerous_configuration {
         fn verify_server_cert(
             &self,
             end_entity: &rustls::Certificate,
-            intermediates: &[rustls::Certificate],
-            server_name: &rustls::ServerName,
-            scts: &mut dyn Iterator<Item = &[u8]>,
-            ocsp_response: &[u8],
+            _intermediates: &[rustls::Certificate],
+            _server_name: &rustls::ServerName,
+            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _ocsp_response: &[u8],
             now: std::time::SystemTime,
         ) -> Result<ServerCertVerified, rustls::Error> {
+            use time::OffsetDateTime;
             use x509_parser::certificate::X509Certificate;
             use x509_parser::oid_registry::OID_EC_P256;
             use x509_parser::oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY;
             use x509_parser::prelude::FromDer;
+            use x509_parser::time::ASN1Time;
 
-            let error = match self.pki_verifier.verify_server_cert(
-                end_entity,
-                intermediates,
-                server_name,
-                scts,
-                ocsp_response,
-                now,
-            ) {
-                Ok(ok) => return Ok(ok),
-                Err(error) => error,
-            };
+            let now = ASN1Time::new(OffsetDateTime::from(now));
 
             let x509 = X509Certificate::from_der(&end_entity.0)
                 .map_err(|_| rustls::CertificateError::BadEncoding)?
                 .1;
 
-            if !x509.validity().is_valid() {
-                return Err(error);
+            match x509.validity() {
+                x if now < x.not_before => {
+                    return Err(rustls::CertificateError::NotValidYet.into());
+                }
+                x if now > x.not_after => {
+                    return Err(rustls::CertificateError::Expired.into());
+                }
+                _ => {}
             }
 
             let validity_period = x509.validity().not_after - x509.validity.not_before;
             if !matches!(validity_period, Some(x) if x <= Self::SELF_MAX_VALIDITY) {
-                return Err(error);
+                return Err(rustls::CertificateError::UnknownIssuer.into());
             }
 
             if x509.public_key().algorithm.algorithm != OID_KEY_TYPE_EC_PUBLIC_KEY {
-                return Err(error);
+                return Err(rustls::CertificateError::UnknownIssuer.into());
             }
 
             if !matches!(x509.public_key().algorithm.parameters.as_ref().map(|any| any.as_oid()),
                          Some(Ok(oid)) if oid == OID_EC_P256)
             {
-                return Err(error);
+                return Err(rustls::CertificateError::UnknownIssuer.into());
             }
 
             let end_entity_hash = crate::Certificate::new([end_entity.0.as_slice()], Vec::new())
@@ -1031,7 +1022,7 @@ mod dangerous_configuration {
             if self.hashes.contains(&end_entity_hash) {
                 Ok(ServerCertVerified::assertion())
             } else {
-                Err(error)
+                Err(rustls::CertificateError::UnknownIssuer.into())
             }
         }
     }
