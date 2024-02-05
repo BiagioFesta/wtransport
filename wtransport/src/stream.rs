@@ -167,6 +167,58 @@ impl RecvStream {
     }
 }
 
+/// A bidirectional stream composed of [`SendStream`] and [`RecvStream`].
+///
+/// `BiStream` is a utility particularly useful in situations where a generic
+/// function or method expects a single object that must implement both
+/// [`AsyncRead`](tokio::io::AsyncRead) and [`AsyncWrite`](tokio::io::AsyncWrite).
+///
+/// # Examples
+///
+/// ```
+/// use tokio::io::AsyncRead;
+/// use tokio::io::AsyncWrite;
+/// use wtransport::stream::BiStream;
+///
+/// async fn do_operation<T>(io: T)
+/// where
+///     T: AsyncRead + AsyncWrite,
+/// {
+///     // ...
+/// }
+///
+/// # use wtransport::Connection;
+/// # async fn run(connection: Connection) {
+/// let bi_stream = BiStream::join(connection.accept_bi().await.unwrap());
+/// do_operation(bi_stream).await;
+/// # }
+/// ```
+pub struct BiStream((SendStream, RecvStream));
+
+impl BiStream {
+    /// Joins a sending stream and a receiving stream into a single `BiStream` object.
+    pub fn join(s: (SendStream, RecvStream)) -> Self {
+        Self(s)
+    }
+
+    /// Splits the bidirectional stream into its sending and receiving stream handles.
+    pub fn split(self) -> (SendStream, RecvStream) {
+        self.0
+    }
+}
+
+impl From<(SendStream, RecvStream)> for BiStream {
+    fn from(value: (SendStream, RecvStream)) -> Self {
+        Self::join(value)
+    }
+}
+
+impl From<BiStream> for (SendStream, RecvStream) {
+    fn from(value: BiStream) -> Self {
+        value.split()
+    }
+}
+
 impl tokio::io::AsyncWrite for SendStream {
     #[inline(always)]
     fn poll_write(
@@ -210,6 +262,40 @@ impl tokio::io::AsyncRead for RecvStream {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<std::io::Result<()>> {
         tokio::io::AsyncRead::poll_read(Pin::new(&mut self.0), cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for BiStream {
+    fn poll_write(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, std::io::Error>> {
+        tokio::io::AsyncWrite::poll_write(Pin::new(&mut self.0 .0), cx, buf)
+    }
+
+    fn poll_flush(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+        tokio::io::AsyncWrite::poll_flush(Pin::new(&mut self.0 .0), cx)
+    }
+
+    fn poll_shutdown(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+    ) -> Poll<Result<(), std::io::Error>> {
+        tokio::io::AsyncWrite::poll_shutdown(Pin::new(&mut self.0 .0), cx)
+    }
+}
+
+impl tokio::io::AsyncRead for BiStream {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        tokio::io::AsyncRead::poll_read(Pin::new(&mut self.0 .1), cx, buf)
     }
 }
 
