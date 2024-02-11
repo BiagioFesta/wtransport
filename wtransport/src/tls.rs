@@ -31,7 +31,7 @@ pub enum CertificateLoadError {
 pub struct InvalidCertificate(usize);
 
 /// A server TLS certificate.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Certificate {
     pub(crate) certificates: Vec<Vec<u8>>,
     pub(crate) private_key: Vec<u8>,
