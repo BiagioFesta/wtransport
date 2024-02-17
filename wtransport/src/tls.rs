@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::path::Path;
 use std::path::PathBuf;
+use std::str::FromStr;
 use x509_parser::certificate::X509Certificate;
 use x509_parser::prelude::FromDer;
 
@@ -424,6 +425,15 @@ impl Display for Sha256Digest {
     }
 }
 
+impl FromStr for Sha256Digest {
+    type Err = InvalidDigest;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Sha256Digest::from_str_fmt(s, Sha256DigestFmt::BytesArray)
+            .or_else(|_| Sha256Digest::from_str_fmt(s, Sha256DigestFmt::DottedHex))
+    }
+}
+
 /// Represents an error failure to parse a string as a [`Sha256Digest`].
 ///
 /// See [`Sha256Digest::from_str_fmt`].
@@ -474,5 +484,35 @@ mod tests {
         .unwrap();
 
         assert_eq!(d, digest);
+    }
+
+    #[test]
+    fn from_str() {
+        assert!(matches!(
+            "invalid".parse::<Sha256Digest>(),
+            Err(InvalidDigest)
+        ));
+
+        assert!(matches!(
+        "[97, 98, 99, 100, 101, 102, 103, 104, 105, 106, \
+         107, 108, 109, 110, 111, 112, 113, 114, 115, 116, \
+         117, 118, 119, 120, 121, 122, 123, 124, 125, 126, \
+         127, 64]"
+            .parse::<Sha256Digest>(),
+
+        Ok(digest) if digest == Sha256Digest::new([
+            97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,
+            114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 64
+        ])));
+
+        assert!(matches!(
+            "61:62:63:64:65:66:67:68:69:6a:6b:6c:6d:6e:6f:70: \
+          71:72:73:74:75:76:77:78:79:7a:7b:7c:7d:7e:7f:40"
+                .parse::<Sha256Digest>(),
+
+        Ok(digest) if digest == Sha256Digest::new([
+            97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113,
+            114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 64
+        ])));
     }
 }
