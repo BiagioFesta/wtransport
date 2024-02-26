@@ -449,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_reseved() {
+    fn insert_reserved() {
         let mut request = SessionRequest::new("https://example.com").unwrap();
 
         assert!(matches!(

@@ -457,7 +457,7 @@ pub mod r#async {
         /// the source advancing the buffer's internal cursor.
         fn put_varint(&mut self, varint: VarInt) -> PutVarint<Self>;
 
-        /// Pushes some bytes into ths source advancing the buffer’s internal cursor.
+        /// Pushes some bytes into the source advancing the buffer’s internal cursor.
         fn put_buffer<'a>(&'a mut self, buffer: &'a [u8]) -> PutBuffer<Self>;
     }
 
