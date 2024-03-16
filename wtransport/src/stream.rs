@@ -7,15 +7,15 @@ use crate::error::StreamOpeningError;
 use crate::error::StreamReadError;
 use crate::error::StreamReadExactError;
 use crate::error::StreamWriteError;
+use crate::SessionId;
+use crate::StreamId;
+use crate::VarInt;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::ReadBuf;
-use wtransport_proto::ids::SessionId;
-use wtransport_proto::ids::StreamId;
 use wtransport_proto::stream_header::StreamHeader;
-use wtransport_proto::varint::VarInt;
 
 /// A stream that can only be used to send data.
 #[derive(Debug)]

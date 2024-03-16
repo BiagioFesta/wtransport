@@ -11,6 +11,7 @@ use crate::driver::utils::varint_w2q;
 use crate::driver::Driver;
 use crate::error::ConnectingError;
 use crate::error::ConnectionError;
+use crate::VarInt;
 use quinn::TokioRuntime;
 use socket2::Domain as SocketDomain;
 use socket2::Protocol as SocketProtocol;
@@ -36,7 +37,6 @@ use wtransport_proto::headers::Headers;
 use wtransport_proto::session::ReservedHeader;
 use wtransport_proto::session::SessionRequest as SessionRequestProto;
 use wtransport_proto::session::SessionResponse as SessionResponseProto;
-use wtransport_proto::varint::VarInt;
 
 /// Helper structure for Endpoint types.
 pub mod endpoint_side {

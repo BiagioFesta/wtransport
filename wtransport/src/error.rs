@@ -1,8 +1,8 @@
 use crate::driver::utils::varint_q2w;
 use crate::driver::DriverError;
+use crate::VarInt;
 use std::fmt::Display;
 use wtransport_proto::error::ErrorCode;
-use wtransport_proto::varint::VarInt;
 
 /// An enumeration representing various errors that can occur during a WebTransport connection.
 #[derive(thiserror::Error, Debug)]

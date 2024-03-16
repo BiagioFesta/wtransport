@@ -5,7 +5,7 @@ use std::fmt;
 #[error("varint value is out of bounds")]
 pub struct VarIntBoundsExceeded;
 
-/// QUIC variable-length integer.
+/// Variable-length integer.
 ///
 /// A non-negative integer value, less than 2^62.
 #[derive(Default, Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]

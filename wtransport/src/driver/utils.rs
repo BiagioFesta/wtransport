@@ -1,9 +1,9 @@
+use crate::StreamId;
+use crate::VarInt;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::watch;
 use tokio::sync::Mutex;
-use wtransport_proto::ids::StreamId;
-use wtransport_proto::varint::VarInt;
 
 #[inline(always)]
 pub fn varint_q2w(varint: quinn::VarInt) -> VarInt {
