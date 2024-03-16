@@ -193,6 +193,7 @@ impl RecvStream {
 /// do_operation(bi_stream).await;
 /// # }
 /// ```
+#[derive(Debug)]
 pub struct BiStream((SendStream, RecvStream));
 
 impl BiStream {
