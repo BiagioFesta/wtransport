@@ -10,14 +10,16 @@
 //! Example for creating a server configuration:
 //!
 //! ```no_run
-//! # async fn run() {
-//! use wtransport::Certificate;
+//! # async fn run() -> anyhow::Result<()> {
+//! use wtransport::Identity;
 //! use wtransport::ServerConfig;
 //!
 //! let server_config = ServerConfig::builder()
 //!     .with_bind_default(443)
-//!     .with_certificate(Certificate::load("cert.pem", "key.pem").await.unwrap())
+//!     .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?)
 //!     .build();
+//!
+//! # Ok(())
 //! # }
 //! ```
 //!
@@ -32,7 +34,7 @@
 //!     .build();
 //! ```
 
-use crate::Certificate;
+use crate::tls::Identity;
 use quinn::ClientConfig as QuicClientConfig;
 use quinn::ServerConfig as QuicServerConfig;
 use quinn::TransportConfig;
@@ -153,25 +155,25 @@ pub struct InvalidIdleTimeout;
 /// ServerConfig::builder().with_bind_default(443);
 /// ```
 ///
-/// ### 2. `WantsCertificate`
+/// ### 2. `WantsIdentity`
 ///
-/// The caller must supply a TLS certificate for the server.
+/// The caller must supply a TLS identity for the server.
 ///
-/// - [`with_certificate`](ServerConfigBuilder::with_certificate): configures
-///   a TLS [`Certificate`] for the server.
+/// - [`with_identity`](ServerConfigBuilder::with_identity): configures
+///   a TLS [`Identity`] for the server.
 /// - [`with_custom_tls`](ServerConfigBuilder::with_custom_tls): sets the TLS
 ///   server configuration manually.
 ///
 /// #### Examples:
 /// ```
 /// # use anyhow::Result;
-/// use wtransport::Certificate;
+/// use wtransport::Identity;
 /// use wtransport::ServerConfig;
 ///
 /// # async fn run() -> Result<()> {
 /// ServerConfig::builder()
 ///     .with_bind_default(443)
-///     .with_certificate(Certificate::load("cert.pem", "key.pem").await?);
+///     .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?);
 /// # Ok(())
 /// # }
 /// ```
@@ -192,13 +194,13 @@ pub struct InvalidIdleTimeout;
 /// ```
 /// # use anyhow::Result;
 /// use wtransport::ServerConfig;
-/// use wtransport::Certificate;
+/// use wtransport::Identity;
 /// use std::time::Duration;
 ///
 /// # async fn run() -> Result<()> {
 /// let server_config = ServerConfig::builder()
 ///     .with_bind_default(443)
-///     .with_certificate(Certificate::load("cert.pem", "key.pem").await?)
+///     .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?)
 ///     .keep_alive_interval(Some(Duration::from_secs(3)))
 ///     .build();
 /// # Ok(())
@@ -238,14 +240,15 @@ impl ServerConfig {
 ///
 /// # Examples:
 /// ```no_run
-/// # async fn run() {
+/// # async fn run() -> anyhow::Result<()> {
 /// # use std::net::Ipv4Addr;
 /// # use std::net::SocketAddr;
-/// # use wtransport::Certificate;
+/// # use wtransport::Identity;
 /// # use wtransport::ServerConfig;
 /// let config = ServerConfig::builder()
 ///     .with_bind_default(4433)
-///     .with_certificate(Certificate::load("cert.pem", "key.pem").await.unwrap());
+///     .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?);
+/// # Ok(())
 /// # }
 /// ```
 #[must_use]
@@ -260,7 +263,7 @@ impl ServerConfigBuilder<states::WantsBindAddress> {
     pub fn with_bind_default(
         self,
         listening_port: u16,
-    ) -> ServerConfigBuilder<states::WantsCertificate> {
+    ) -> ServerConfigBuilder<states::WantsIdentity> {
         self.with_bind_config(IpBindConfig::InAddrAnyDual, listening_port)
     }
 
@@ -271,7 +274,7 @@ impl ServerConfigBuilder<states::WantsBindAddress> {
         self,
         ip_bind_config: IpBindConfig,
         listening_port: u16,
-    ) -> ServerConfigBuilder<states::WantsCertificate> {
+    ) -> ServerConfigBuilder<states::WantsIdentity> {
         let ip_address: IpAddr = ip_bind_config.into_ip();
 
         match ip_address {
@@ -287,8 +290,8 @@ impl ServerConfigBuilder<states::WantsBindAddress> {
     pub fn with_bind_address(
         self,
         address: SocketAddr,
-    ) -> ServerConfigBuilder<states::WantsCertificate> {
-        ServerConfigBuilder(states::WantsCertificate {
+    ) -> ServerConfigBuilder<states::WantsIdentity> {
+        ServerConfigBuilder(states::WantsIdentity {
             bind_address: address,
             dual_stack_config: Ipv6DualStackConfig::OsDefault,
         })
@@ -301,38 +304,38 @@ impl ServerConfigBuilder<states::WantsBindAddress> {
         self,
         address: SocketAddrV6,
         dual_stack_config: Ipv6DualStackConfig,
-    ) -> ServerConfigBuilder<states::WantsCertificate> {
-        ServerConfigBuilder(states::WantsCertificate {
+    ) -> ServerConfigBuilder<states::WantsIdentity> {
+        ServerConfigBuilder(states::WantsIdentity {
             bind_address: address.into(),
             dual_stack_config,
         })
     }
 }
 
-impl ServerConfigBuilder<states::WantsCertificate> {
-    /// Configures TLS with safe defaults and a [`Certificate`].
+impl ServerConfigBuilder<states::WantsIdentity> {
+    /// Configures TLS with safe defaults and a TLS [`Identity`].
     ///
     /// # Example
     /// ```no_run
-    /// use wtransport::Certificate;
+    /// use wtransport::Identity;
     /// use wtransport::ServerConfig;
     /// # use anyhow::Result;
     ///
     /// # async fn run() -> Result<()> {
-    /// let certificate = Certificate::load("cert.pem", "key.pem").await?;
+    /// let identity = Identity::load_pemfiles("cert.pem", "key.pem").await?;
     ///
     /// let server_config = ServerConfig::builder()
     ///     .with_bind_default(4433)
-    ///     .with_certificate(certificate)
+    ///     .with_identity(&identity)
     ///     .build();
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_certificate(
+    pub fn with_identity(
         self,
-        certificate: Certificate,
+        identity: &Identity,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
-        self.with_custom_tls(Self::build_tls_config(certificate))
+        self.with_custom_tls(Self::build_tls_config(identity))
     }
 
     /// Allows for manual configuration of a custom TLS setup using a provided
@@ -342,8 +345,8 @@ impl ServerConfigBuilder<states::WantsCertificate> {
     /// TLS configuration. It allows you to pass a preconfigured [`rustls::ServerConfig`]
     /// instance to customize the TLS settings according to your specific requirements.
     ///
-    /// Generally, it is recommended to use the [`with_certificate`](Self::with_certificate) method
-    /// to configure TLS with safe defaults and a [`Certificate`].
+    /// Generally, it is recommended to use the [`with_identity`](Self::with_identity) method
+    /// to configure TLS with safe defaults and an TLS [`Identity`].
     ///
     /// # Example
     ///
@@ -380,14 +383,14 @@ impl ServerConfigBuilder<states::WantsCertificate> {
         })
     }
 
-    fn build_tls_config(certificate: Certificate) -> TlsServerConfig {
-        let certificates = certificate
-            .certificates
-            .into_iter()
-            .map(|cert| rustls::Certificate(cert.to_vec()))
+    fn build_tls_config(identity: &Identity) -> TlsServerConfig {
+        let certificates = identity
+            .certificate_chain()
+            .iter()
+            .map(|cert| rustls::Certificate(cert.der().to_vec()))
             .collect();
 
-        let private_key = rustls::PrivateKey(certificate.private_key.to_vec());
+        let private_key = rustls::PrivateKey(identity.private_key().secret_der().to_vec());
 
         let mut tls_config = TlsServerConfig::builder()
             .with_safe_defaults()
@@ -891,7 +894,7 @@ pub mod states {
     pub struct WantsBindAddress {}
 
     /// Config builder state where the caller must supply TLS certificate.
-    pub struct WantsCertificate {
+    pub struct WantsIdentity {
         pub(super) bind_address: SocketAddr,
         pub(super) dual_stack_config: Ipv6DualStackConfig,
     }
@@ -1013,11 +1016,9 @@ mod dangerous_configuration {
                 return Err(rustls::CertificateError::UnknownIssuer.into());
             }
 
-            let end_entity_hash = crate::Certificate::new([end_entity.0.as_slice()], Vec::new())
+            let end_entity_hash = crate::tls::Certificate::from_der(end_entity.0.to_vec())
                 .map_err(|_| rustls::CertificateError::BadEncoding)?
-                .hashes()
-                .pop()
-                .expect("one hash");
+                .hash();
 
             if self.hashes.contains(&end_entity_hash) {
                 Ok(ServerCertVerified::assertion())

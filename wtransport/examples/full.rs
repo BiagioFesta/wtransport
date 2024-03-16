@@ -8,16 +8,16 @@ use tracing::Instrument;
 use webtransport::WebTransportServer;
 use wtransport::tls::Sha256Digest;
 use wtransport::tls::Sha256DigestFmt;
-use wtransport::Certificate;
+use wtransport::Identity;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     utils::init_logging();
 
-    let certificate = Certificate::self_signed(["localhost", "127.0.0.1", "::1"]);
-    let cert_digest = certificate.hashes().pop().unwrap();
+    let identity = Identity::self_signed(["localhost", "127.0.0.1", "::1"]);
+    let cert_digest = identity.certificate_chain()[0].hash();
 
-    let webtransport_server = WebTransportServer::new(certificate)?;
+    let webtransport_server = WebTransportServer::new(&identity)?;
     let http_server = HttpServer::new(&cert_digest, webtransport_server.local_port()).await?;
 
     info!(
@@ -50,10 +50,10 @@ mod webtransport {
     }
 
     impl WebTransportServer {
-        pub fn new(certificate: Certificate) -> Result<Self> {
+        pub fn new(identity: &Identity) -> Result<Self> {
             let config = ServerConfig::builder()
                 .with_bind_default(0)
-                .with_certificate(certificate)
+                .with_identity(identity)
                 .keep_alive_interval(Some(Duration::from_secs(3)))
                 .build();
 

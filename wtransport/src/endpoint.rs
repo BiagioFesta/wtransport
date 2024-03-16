@@ -69,13 +69,13 @@ pub mod endpoint_side {
 /// ```no_run
 /// # use anyhow::Result;
 /// # use wtransport::ServerConfig;
-/// # use wtransport::Certificate;
+/// # use wtransport::Identity;
 /// use wtransport::Endpoint;
 ///
 /// # async fn run() -> Result<()> {
 /// # let config = ServerConfig::builder()
 /// #       .with_bind_default(4433)
-/// #       .with_certificate(Certificate::load("cert.pem", "key.pem").await?)
+/// #       .with_identity(&Identity::self_signed(["doc"]))
 /// #       .build();
 /// let server = Endpoint::server(config)?;
 /// loop {
@@ -92,7 +92,6 @@ pub mod endpoint_side {
 ///
 /// ```no_run
 /// # use anyhow::Result;
-/// # use wtransport::Certificate;
 /// use wtransport::ClientConfig;
 /// use wtransport::Endpoint;
 ///

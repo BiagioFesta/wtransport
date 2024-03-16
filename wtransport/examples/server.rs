@@ -7,8 +7,8 @@ use tracing::Instrument;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::EnvFilter;
 use wtransport::endpoint::IncomingSession;
-use wtransport::Certificate;
 use wtransport::Endpoint;
+use wtransport::Identity;
 use wtransport::ServerConfig;
 
 #[tokio::main]
@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     let config = ServerConfig::builder()
         .with_bind_default(4433)
-        .with_certificate(Certificate::self_signed(["localhost"]))
+        .with_identity(&Identity::self_signed(["localhost"]))
         .keep_alive_interval(Some(Duration::from_secs(3)))
         .build();
 

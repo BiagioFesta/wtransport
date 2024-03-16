@@ -46,7 +46,7 @@ It should be used with caution and may undergo changes as the WebTransport speci
 async fn main() -> Result<()> {
     let config = ServerConfig::builder()
         .with_bind_default(4433)
-        .with_certificate(certificate)
+        .with_identity(&identity)
         .build();
 
     let connection = Endpoint::server(config)?
