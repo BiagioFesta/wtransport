@@ -44,15 +44,15 @@
 //! ## Server
 //! ```no_run
 //! # use anyhow::Result;
-//! use wtransport::Certificate;
 //! use wtransport::Endpoint;
+//! use wtransport::Identity;
 //! use wtransport::ServerConfig;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<()> {
 //!     let config = ServerConfig::builder()
 //!         .with_bind_default(4433)
-//!         .with_certificate(Certificate::load("cert.pem", "key.pem").await?)
+//!         .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?)
 //!         .build();
 //!
 //!     let server = Endpoint::server(config)?;
@@ -116,7 +116,7 @@ pub use config::ClientConfig;
 pub use config::ServerConfig;
 
 #[doc(inline)]
-pub use tls::Certificate;
+pub use tls::Identity;
 
 #[doc(inline)]
 pub use endpoint::Endpoint;

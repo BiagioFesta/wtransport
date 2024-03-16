@@ -1,4 +1,6 @@
-use std::error::Error;
+use rustls_pki_types::CertificateDer;
+use rustls_pki_types::PrivateKeyDer;
+use rustls_pki_types::PrivatePkcs8KeyDer;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::path::Path;
@@ -7,80 +9,177 @@ use std::str::FromStr;
 use x509_parser::certificate::X509Certificate;
 use x509_parser::prelude::FromDer;
 
-/// Error during load operation of certificate.
-pub enum CertificateLoadError {
-    /// The certificate file does not contain a valid certificate.
-    InvalidCertificate,
-
-    /// The key file does not contain a valid private key.
-    InvalidPrivateKey,
-
-    /// Load operation failed because I/O operation on file.
-    FileError {
-        /// Filename of the operation.
-        file: PathBuf,
-
-        /// IO error details.
-        error: std::io::Error,
-    },
-}
-
-/// An error type representing an invalid certificate.
-///
-/// This error type is used to signal that a certificate in a chain is invalid,
-/// and it provides additional information about the index in the chain.
-pub struct InvalidCertificate(usize);
-
-/// A server TLS certificate.
+/// Represents an X.509 certificate.
 #[derive(Clone)]
-pub struct Certificate {
-    pub(crate) certificates: Vec<Vec<u8>>,
-    pub(crate) private_key: Vec<u8>,
-}
+pub struct Certificate(CertificateDer<'static>);
 
 impl Certificate {
-    /// Creates a new `Certificate` instance from encoded certificate data and a private key.
-    ///
-    /// This method takes a chain of certificate data and a private key in encoded form as input,
-    /// and constructs a `Certificate` object for configuring TLS settings.
-    ///
-    /// # Arguments
-    ///
-    /// * `certificates`: A vector of vectors of bytes (`Vec<Vec<u8>>`) representing the certificate chain.
-    ///   Each certificate data must be *DER-encoded* *X.509* format.
-    ///
-    /// * `private_key`: A vector of bytes (`Vec<u8>`) containing the private key. The private key must be
-    ///   *DER-encoded* in one of the following formats: *PKCS#8*, *PKCS#1*, or *Sec1*.
-    pub fn new<CertChain, Key, Cert>(
-        certificates: CertChain,
-        private_key: Key,
-    ) -> Result<Self, InvalidCertificate>
-    where
-        CertChain: Into<Vec<Cert>>,
-        Key: Into<Vec<u8>>,
-        Cert: Into<Vec<u8>>,
-    {
-        let certificates = certificates
-            .into()
-            .into_iter()
-            .map(|c| c.into())
-            .collect::<Vec<_>>();
-
-        let private_key = private_key.into();
-
-        for (index, cert) in certificates.iter().enumerate() {
-            if X509Certificate::from_der(cert).is_err() {
-                return Err(InvalidCertificate(index));
-            }
-        }
-
-        Ok(Self {
-            certificates,
-            private_key,
-        })
+    /// Constructs a new `Certificate` from DER-encoded binary data.
+    pub fn from_der(der: Vec<u8>) -> Result<Self, InvalidCertificate> {
+        X509Certificate::from_der(&der).map_err(|error| InvalidCertificate(error.to_string()))?;
+        Ok(Self(CertificateDer::from(der)))
     }
 
-    /// Generates a self-signed certificate.
+    /// Returns a reference to the DER-encoded binary data of the certificate.
+    pub fn der(&self) -> &[u8] {
+        &self.0
+    }
+
+    /// Retrieves the serial number of the certificate as a string.
+    pub fn serial(&self) -> String {
+        X509Certificate::from_der(&self.0)
+            .expect("valid der")
+            .1
+            .raw_serial_as_string()
+    }
+
+    /// Computes certificate's *hash*.
+    ///
+    /// The hash is the *SHA-256* of the DER encoding of the certificate.
+    ///
+    /// This function can be used to make a *web* client accept a self-signed
+    /// certificate by using the [`WebTransportOptions.serverCertificateHashes`] W3C API.
+    ///
+    /// [`WebTransportOptions.serverCertificateHashes`]: https://www.w3.org/TR/webtransport/#dom-webtransportoptions-servercertificatehashes
+    #[cfg(feature = "self-signed")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+    pub fn hash(&self) -> Sha256Digest {
+        use ring::digest::digest;
+        use ring::digest::SHA256;
+
+        Sha256Digest(
+            digest(&SHA256, &self.0)
+                .as_ref()
+                .try_into()
+                .expect("SHA256 digest is 32 bytes len"),
+        )
+    }
+}
+
+impl Debug for Certificate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Certificate")
+            .field("serial", &self.serial())
+            .finish()
+    }
+}
+
+/// Represents a private key.
+#[derive(Debug)]
+pub struct PrivateKey(PrivateKeyDer<'static>);
+
+impl PrivateKey {
+    /// Constructs a new `PrivateKey` from DER-encoded PKCS#8 binary data.
+    pub fn from_der_pkcs8(der: Vec<u8>) -> Self {
+        PrivateKey(PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(der)))
+    }
+
+    /// Loads the first private key found in a PEM-encoded file.
+    ///
+    /// Returns a [`PemLoadError::PrivateKeyNotFound`] if no private key is found in the file.
+    pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
+        let file_data = tokio::fs::read(filepath.as_ref())
+            .await
+            .map_err(|io_error| PemLoadError::FileError {
+                file: filepath.as_ref().to_path_buf(),
+                error: io_error,
+            })?;
+
+        let private_key = rustls_pemfile::private_key(&mut &*file_data)
+            .map_err(|io_error| PemLoadError::FileError {
+                file: filepath.as_ref().to_path_buf(),
+                error: io_error,
+            })?
+            .map(Self);
+
+        private_key.ok_or(PemLoadError::PrivateKeyNotFound)
+    }
+
+    /// Returns a reference to the DER-encoded binary data of the private key.
+    pub fn secret_der(&self) -> &[u8] {
+        self.0.secret_der()
+    }
+}
+
+/// A collection of [`Certificate`].
+#[derive(Clone, Debug)]
+pub struct CertificateChain(Vec<Certificate>);
+
+impl CertificateChain {
+    /// Constructs a new `CertificateChain` from a vector of certificates.
+    pub fn new(certificates: Vec<Certificate>) -> Self {
+        Self(certificates)
+    }
+
+    /// Constructs a new `CertificateChain` with a single certificate.
+    pub fn single(certificate: Certificate) -> Self {
+        Self::new(vec![certificate])
+    }
+
+    /// Loads a certificate chain from a PEM-encoded file.
+    pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
+        let file_data = tokio::fs::read(filepath.as_ref())
+            .await
+            .map_err(|io_error| PemLoadError::FileError {
+                file: filepath.as_ref().to_path_buf(),
+                error: io_error,
+            })?;
+
+        let certificates = rustls_pemfile::certs(&mut &*file_data)
+            .enumerate()
+            .map(|(index, maybe_cert)| match maybe_cert {
+                Ok(cert) => Certificate::from_der(cert.to_vec())
+                    .map_err(|error| PemLoadError::InvalidCertificateChain { index, error }),
+                Err(io_error) => Err(PemLoadError::FileError {
+                    file: filepath.as_ref().to_path_buf(),
+                    error: io_error,
+                }),
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        Ok(Self(certificates))
+    }
+
+    /// Returns a slice containing references to the certificates in the chain.
+    pub fn as_slice(&self) -> &[Certificate] {
+        &self.0
+    }
+}
+
+impl AsRef<[Certificate]> for CertificateChain {
+    fn as_ref(&self) -> &[Certificate] {
+        self.as_slice()
+    }
+}
+
+/// Represents an TLS identity consisting of a certificate chain and a private key.
+#[derive(Debug)]
+pub struct Identity {
+    certificate_chain: CertificateChain,
+    private_key: PrivateKey,
+}
+
+impl Identity {
+    /// Constructs a new `Identity` with the given certificate chain and private key.
+    pub fn new(certificate_chain: CertificateChain, private_key: PrivateKey) -> Self {
+        Self {
+            certificate_chain,
+            private_key,
+        }
+    }
+
+    /// Loads an identity from PEM-encoded certificate and private key files.
+    pub async fn load_pemfiles(
+        cert_pemfile: impl AsRef<Path>,
+        private_key_pemfile: impl AsRef<Path>,
+    ) -> Result<Self, PemLoadError> {
+        let certificate_chain = CertificateChain::load_pemfile(cert_pemfile).await?;
+        let private_key = PrivateKey::load_pemfile(private_key_pemfile).await?;
+
+        Ok(Self::new(certificate_chain, private_key))
+    }
+
+    /// Generates a self-signed certificate and private key for new identity.
     ///
     /// The certificate conforms to the W3C WebTransport specifications as follows:
     ///
@@ -99,9 +198,9 @@ impl Certificate {
     /// # Examples
     ///
     /// ```
-    /// use wtransport::Certificate;
+    /// use wtransport::Identity;
     ///
-    /// let certificate = Certificate::self_signed(&["localhost", "127.0.0.1", "::1"]);
+    /// let identity = Identity::self_signed(&["localhost", "127.0.0.1", "::1"]);
     /// ```
     #[cfg(feature = "self-signed")]
     #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
@@ -136,143 +235,22 @@ impl Certificate {
         let cert = rcgen::Certificate::from_params(cert_params).expect("inner params are valid");
 
         Self::new(
-            vec![cert.serialize_der().expect("valid certificate")],
-            cert.serialize_private_key_der(),
+            CertificateChain::single(
+                Certificate::from_der(cert.serialize_der().expect("valid certificate"))
+                    .expect("valid der"),
+            ),
+            PrivateKey::from_der_pkcs8(cert.serialize_private_key_der()),
         )
-        .expect("valid certificate")
     }
 
-    /// For each certificate in this chain, computes its corresponding *hash*.
-    ///
-    /// The hash is the *SHA-256* of the DER encoding of the certificate.
-    ///
-    /// This function can be used to make a *web* client accept a self-signed
-    /// certificate by using the [`WebTransportOptions.serverCertificateHashes`] W3C API.
-    ///
-    /// [`WebTransportOptions.serverCertificateHashes`]: https://www.w3.org/TR/webtransport/#dom-webtransportoptions-servercertificatehashes
-    #[cfg(feature = "self-signed")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
-    pub fn hashes(&self) -> Vec<Sha256Digest> {
-        use ring::digest::digest;
-        use ring::digest::SHA256;
-
-        self.certificates
-            .iter()
-            .map(|cert| {
-                Sha256Digest(
-                    digest(&SHA256, cert)
-                        .as_ref()
-                        .try_into()
-                        .expect("SHA256 digest is 32 bytes len"),
-                )
-            })
-            .collect()
+    /// Returns a reference to the certificate chain associated with the identity.
+    pub fn certificate_chain(&self) -> &[Certificate] {
+        self.certificate_chain.as_slice()
     }
 
-    /// Loads a PEM certificates and private key from the filesystem.
-    pub async fn load(
-        cert_path: impl AsRef<Path>,
-        key_path: impl AsRef<Path>,
-    ) -> Result<Self, CertificateLoadError> {
-        let certificates =
-            rustls_pemfile::certs(&mut &*tokio::fs::read(cert_path.as_ref()).await.map_err(
-                |io_error| CertificateLoadError::FileError {
-                    file: cert_path.as_ref().to_path_buf(),
-                    error: io_error,
-                },
-            )?)
-            .map_err(|io_error| CertificateLoadError::FileError {
-                file: cert_path.as_ref().to_path_buf(),
-                error: io_error,
-            })?;
-
-        if certificates.is_empty() {
-            return Err(CertificateLoadError::InvalidCertificate);
-        }
-
-        let private_key =
-            rustls_pemfile::read_one(&mut &*tokio::fs::read(key_path.as_ref()).await.map_err(
-                |io_error| CertificateLoadError::FileError {
-                    file: key_path.as_ref().to_path_buf(),
-                    error: io_error,
-                },
-            )?)
-            .map_err(|io_error| CertificateLoadError::FileError {
-                file: key_path.as_ref().to_path_buf(),
-                error: io_error,
-            })?
-            .and_then(|item| match item {
-                rustls_pemfile::Item::RSAKey(d) => Some(d),
-                rustls_pemfile::Item::PKCS8Key(d) => Some(d),
-                rustls_pemfile::Item::ECKey(d) => Some(d),
-                _ => None,
-            })
-            .ok_or(CertificateLoadError::InvalidPrivateKey)?;
-
-        let private_key = rustls::PrivateKey(private_key);
-
-        if rustls::sign::any_supported_type(&private_key).is_err() {
-            return Err(CertificateLoadError::InvalidPrivateKey);
-        }
-
-        Ok(Self::new(certificates, private_key.0).expect("validated certificate"))
-    }
-
-    /// Gets a reference to the certificate data chain associated with this `Certificate`.
-    ///
-    /// Each certificate is *DER-encoded*.
-    pub fn certificates(&self) -> &[Vec<u8>] {
-        &self.certificates
-    }
-
-    /// Gets a reference to the private key associated with this `Certificate`.
-    ///
-    /// Each certificate is *DER-encoded*.
-    pub fn private_key(&self) -> &[u8] {
+    /// Returns a reference to the private key associated with the identity.
+    pub fn private_key(&self) -> &PrivateKey {
         &self.private_key
-    }
-}
-
-impl Error for CertificateLoadError {}
-
-impl Debug for CertificateLoadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::InvalidCertificate => write!(f, "no valid certificate to load found"),
-            Self::InvalidPrivateKey => write!(f, "no valid private key to load found"),
-            Self::FileError { file, error } => {
-                write!(f, "file ('{}') error: {:?}", file.display(), error)
-            }
-        }
-    }
-}
-
-impl Display for CertificateLoadError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CertificateLoadError::InvalidCertificate => Debug::fmt(&self, f),
-            CertificateLoadError::InvalidPrivateKey => Debug::fmt(&self, f),
-            CertificateLoadError::FileError { file, error } => {
-                write!(f, "file ('{}') error: {}", file.display(), error)
-            }
-        }
-    }
-}
-
-impl Error for InvalidCertificate {}
-
-impl Debug for InvalidCertificate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "invalid certificate (chain index: {})",
-            self.0
-        ))
-    }
-}
-
-impl Display for InvalidCertificate {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        Debug::fmt(self, f)
     }
 }
 
@@ -293,6 +271,8 @@ pub enum Sha256DigestFmt {
 }
 
 /// Represents a *SHA-256* digest, which is a fixed-size array of 32 bytes.
+///
+/// For example, you can obtain the certificate digest with [`Certificate::hash`].
 #[derive(Debug, Clone, Eq, Hash, PartialEq, PartialOrd, Ord)]
 pub struct Sha256Digest([u8; 32]);
 
@@ -434,12 +414,44 @@ impl FromStr for Sha256Digest {
     }
 }
 
+/// Represents an error indicating an invalid certificate parsing.
+#[derive(Debug, thiserror::Error)]
+#[error("invalid certificate: {0}")]
+pub struct InvalidCertificate(String);
+
 /// Represents an error failure to parse a string as a [`Sha256Digest`].
 ///
 /// See [`Sha256Digest::from_str_fmt`].
 #[derive(Debug, thiserror::Error)]
 #[error("cannot parse string as sha256 digest")]
 pub struct InvalidDigest;
+
+/// Error during PEM load operation.
+#[derive(Debug, thiserror::Error)]
+pub enum PemLoadError {
+    /// Invalid certificate during chain load.
+    #[error("invalid certificate in the PEM chain (index: {}): {}", .index, .error)]
+    InvalidCertificateChain {
+        /// The index of the certificate in the PEM file.
+        index: usize,
+        /// Additional error information.
+        error: InvalidCertificate,
+    },
+
+    /// No private key found in PEM file.
+    #[error("no private key found")]
+    PrivateKeyNotFound,
+
+    /// Load operation failed because I/O operation on file.
+    #[error("error on file '{}': {}", .file.display(), error)]
+    FileError {
+        /// Filename of the operation.
+        file: PathBuf,
+
+        /// io error details.
+        error: std::io::Error,
+    },
+}
 
 pub use rustls;
 
@@ -448,18 +460,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn invalid() {
+    fn invalid_certificate() {
         assert!(matches!(
-            Certificate::new([b"wtransport".to_vec()], b"wtransport".to_vec()),
-            Err(InvalidCertificate(0))
+            Certificate::from_der(b"invalid-certificate".to_vec()),
+            Err(InvalidCertificate(_))
         ));
-    }
-
-    #[cfg(feature = "self-signed")]
-    #[test]
-    fn valid_self() {
-        let cert = Certificate::self_signed(["localhost"]);
-        Certificate::new(cert.certificates, cert.private_key).unwrap();
     }
 
     #[test]
@@ -487,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    fn from_str() {
+    fn digest_from_str() {
         assert!(matches!(
             "invalid".parse::<Sha256Digest>(),
             Err(InvalidDigest)
