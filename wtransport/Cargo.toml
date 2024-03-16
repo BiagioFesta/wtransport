@@ -74,5 +74,8 @@ allowed_external_types = [
     "rustls::server::server_conn::ServerConfig",
     "tokio::io::async_read::AsyncRead",
     "tokio::io::async_write::AsyncWrite",
-    "wtransport_proto::*",
+    "wtransport_proto::varint::VarInt",
+    "wtransport_proto::ids::StreamId",
+    "wtransport_proto::ids::SessionId",
+    "wtransport_proto",
 ]

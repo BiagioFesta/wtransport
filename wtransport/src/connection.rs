@@ -101,10 +101,10 @@ use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
 use crate::stream::RecvStream;
 use crate::stream::SendStream;
+use crate::SessionId;
+use crate::VarInt;
 use std::net::SocketAddr;
 use std::time::Duration;
-use wtransport_proto::ids::SessionId;
-use wtransport_proto::varint::VarInt;
 
 /// A WebTransport session connection.
 ///

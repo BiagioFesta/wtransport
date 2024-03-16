@@ -4,6 +4,7 @@ use crate::driver::streams::ProtoReadError;
 use crate::driver::streams::ProtoWriteError;
 use crate::driver::DriverError;
 use crate::error::StreamWriteError;
+use crate::VarInt;
 use std::future::pending;
 use tokio::sync::watch;
 use wtransport_proto::bytes;
@@ -12,7 +13,6 @@ use wtransport_proto::frame::Frame;
 use wtransport_proto::frame::FrameKind;
 use wtransport_proto::settings::Settings;
 use wtransport_proto::stream_header::StreamKind;
-use wtransport_proto::varint::VarInt;
 
 pub struct LocalSettingsStream {
     stream: Option<StreamUniLocalH3>,

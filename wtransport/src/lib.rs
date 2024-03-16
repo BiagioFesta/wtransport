@@ -131,6 +131,16 @@ pub use stream::RecvStream;
 pub use stream::SendStream;
 
 #[doc(inline)]
+pub use wtransport_proto::varint::VarInt;
+
+#[doc(inline)]
+pub use wtransport_proto::ids::StreamId;
+
+#[doc(inline)]
+pub use wtransport_proto::ids::SessionId;
+
+pub use wtransport_proto as proto;
+
 #[cfg(feature = "quinn")]
 #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
 pub use quinn;

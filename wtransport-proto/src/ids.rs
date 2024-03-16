@@ -2,7 +2,7 @@ use crate::varint::VarInt;
 use std::fmt;
 use std::str::FromStr;
 
-/// QUIC stream id.
+/// Stream id.
 #[derive(Copy, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct StreamId(VarInt);
 

@@ -1,9 +1,9 @@
+use crate::SessionId;
 use bytes::Bytes;
 use std::ops::Deref;
 use wtransport_proto::datagram::Datagram as H3Datagram;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::ids::QStreamId;
-use wtransport_proto::ids::SessionId;
 
 /// An application Datagram.
 #[derive(Debug)]

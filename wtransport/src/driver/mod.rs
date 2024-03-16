@@ -12,6 +12,7 @@ use crate::driver::utils::SharedResultSet;
 use crate::error::SendDatagramError;
 use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
+use crate::SessionId;
 use tokio::sync::mpsc;
 use tokio::sync::Mutex;
 use tracing::debug;
@@ -22,7 +23,6 @@ use tracing::Instrument;
 use utils::BiChannelEndpoint;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::Frame;
-use wtransport_proto::ids::SessionId;
 use wtransport_proto::session::SessionRequest;
 use wtransport_proto::settings::Settings;
 
