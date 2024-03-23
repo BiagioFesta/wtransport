@@ -1,6 +1,7 @@
 use crate::driver::utils::varint_q2w;
 use crate::driver::DriverError;
 use crate::VarInt;
+use std::borrow::Cow;
 use std::fmt::Display;
 use wtransport_proto::error::ErrorCode;
 
@@ -214,12 +215,12 @@ impl From<quinn::ConnectionError> for ConnectionError {
         match error {
             quinn::ConnectionError::VersionMismatch => ConnectionError::QuicProto(QuicProtoError {
                 code: None,
-                reason: "QUIC protocol version mismatched".to_string(),
+                reason: Cow::Borrowed("QUIC protocol version mismatched"),
             }),
             quinn::ConnectionError::TransportError(e) => {
                 ConnectionError::QuicProto(QuicProtoError {
                     code: VarInt::try_from_u64(e.code.into()).ok(),
-                    reason: e.reason,
+                    reason: Cow::Owned(e.reason),
                 })
             }
             quinn::ConnectionError::ConnectionClosed(close) => {
@@ -233,7 +234,7 @@ impl From<quinn::ConnectionError> for ConnectionError {
             }
             quinn::ConnectionError::Reset => ConnectionError::QuicProto(QuicProtoError {
                 code: None,
-                reason: "connection has been reset".to_string(),
+                reason: Cow::Borrowed("connection has been reset"),
             }),
             quinn::ConnectionError::TimedOut => ConnectionError::TimedOut,
             quinn::ConnectionError::LocallyClosed => ConnectionError::LocallyClosed,
@@ -245,7 +246,7 @@ impl From<quinn::ConnectionError> for ConnectionError {
 #[derive(Debug)]
 pub struct QuicProtoError {
     code: Option<VarInt>,
-    reason: String,
+    reason: Cow<'static, str>,
 }
 
 impl Display for QuicProtoError {
