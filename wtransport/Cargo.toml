@@ -69,6 +69,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 allowed_external_types = [
     "bytes::bytes::Bytes",
     "quinn",
+    "quinn::connection::Connection",
     "quinn::recv_stream::ReadError",
     "quinn::recv_stream::RecvStream",
     "quinn::send_stream::SendStream",
