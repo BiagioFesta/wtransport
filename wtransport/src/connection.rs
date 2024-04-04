@@ -350,4 +350,20 @@ impl Connection {
     pub fn rtt(&self) -> Duration {
         self.quic_connection.rtt()
     }
+
+    /// Returns a reference to the inner QUIC connection.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    #[inline(always)]
+    pub fn quic_connection(&self) -> &quinn::Connection {
+        &self.quic_connection
+    }
+
+    /// Returns a mutable reference to the inner QUIC connection.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    #[inline(always)]
+    pub fn quic_connection_mut(&mut self) -> &mut quinn::Connection {
+        &mut self.quic_connection
+    }
 }
