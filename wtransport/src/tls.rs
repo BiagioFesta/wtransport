@@ -76,7 +76,7 @@ impl PrivateKey {
 
     /// Loads the first private key found in a PEM-encoded file.
     ///
-    /// Returns a [`PemLoadError::PrivateKeyNotFound`] if no private key is found in the file.
+    /// Returns a [`PemLoadError::InvalidPrivateKey`] if no private key is found in the file.
     pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
         let file_data = tokio::fs::read(filepath.as_ref())
             .await
@@ -92,7 +92,7 @@ impl PrivateKey {
             })?
             .map(Self);
 
-        private_key.ok_or(PemLoadError::PrivateKeyNotFound)
+        private_key.ok_or(PemLoadError::InvalidPrivateKey)
     }
 
     /// Returns a reference to the DER-encoded binary data of the private key.
@@ -443,9 +443,9 @@ pub enum PemLoadError {
         error: InvalidCertificate,
     },
 
-    /// No private key found in PEM file.
-    #[error("no private key found")]
-    PrivateKeyNotFound,
+    /// No valid private key found in the PEM file.
+    #[error("no valid private key found in the PEM file")]
+    InvalidPrivateKey,
 
     /// Load operation failed because I/O operation on file.
     #[error("error on file '{}': {}", .file.display(), error)]
