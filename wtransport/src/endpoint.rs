@@ -75,7 +75,7 @@ pub mod endpoint_side {
 /// # async fn run() -> Result<()> {
 /// # let config = ServerConfig::builder()
 /// #       .with_bind_default(4433)
-/// #       .with_identity(&Identity::self_signed(["doc"]))
+/// #       .with_identity(&Identity::self_signed(["doc"]).unwrap())
 /// #       .build();
 /// let server = Endpoint::server(config)?;
 /// loop {

@@ -193,25 +193,33 @@ impl Identity {
     /// # Arguments
     ///
     /// * `subject_alt_names` - An iterator of strings representing subject alternative names (SANs).
-    ///                         They can be both hostnames or IP addresses.
+    ///                         They can be both hostnames or IP addresses. An error is returned
+    ///                         if DNS are not valid ASN.1 strings.
     ///
     /// # Examples
     ///
     /// ```
     /// use wtransport::Identity;
     ///
-    /// let identity = Identity::self_signed(&["localhost", "127.0.0.1", "::1"]);
+    /// let identity = Identity::self_signed(&["localhost", "127.0.0.1", "::1"]).unwrap();
+    /// ```
+    ///
+    /// The following example will return an error as *subject alternative name* is an invalid
+    /// string.
+    /// ```should_panic
+    /// use wtransport::Identity;
+    ///
+    /// Identity::self_signed(&["❤️"]).unwrap();
     /// ```
     #[cfg(feature = "self-signed")]
     #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
-    pub fn self_signed<I, S>(subject_alt_names: I) -> Self
+    pub fn self_signed<I, S>(subject_alt_names: I) -> Result<Self, InvalidSan>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
         use rcgen::CertificateParams;
-        use rcgen::DistinguishedName;
-        use rcgen::DnType;
+        use rcgen::KeyPair;
         use rcgen::PKCS_ECDSA_P256_SHA256;
         use time::Duration;
         use time::OffsetDateTime;
@@ -221,26 +229,23 @@ impl Identity {
             .map(|s| s.as_ref().to_string())
             .collect::<Vec<_>>();
 
-        let mut dname = DistinguishedName::new();
-        dname.push(DnType::CommonName, "wtransport self-signed");
+        let key_pair = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
+            .expect("algorithm for key pair is supported");
 
-        let mut cert_params = CertificateParams::new(subject_alt_names);
-        cert_params.alg = &PKCS_ECDSA_P256_SHA256;
-        cert_params.distinguished_name = dname;
+        let mut cert_params = CertificateParams::new(subject_alt_names).map_err(|_| InvalidSan)?;
         cert_params.not_before = OffsetDateTime::now_utc();
         cert_params.not_after = OffsetDateTime::now_utc()
             .checked_add(Duration::days(14))
             .expect("addition does not overflow");
 
-        let cert = rcgen::Certificate::from_params(cert_params).expect("inner params are valid");
+        let cert = cert_params
+            .self_signed(&key_pair)
+            .expect("inner params are valid");
 
-        Self::new(
-            CertificateChain::single(
-                Certificate::from_der(cert.serialize_der().expect("valid certificate"))
-                    .expect("valid der"),
-            ),
-            PrivateKey::from_der_pkcs8(cert.serialize_private_key_der()),
-        )
+        Ok(Self::new(
+            CertificateChain::single(Certificate(cert.der().clone())),
+            PrivateKey::from_der_pkcs8(key_pair.serialize_der()),
+        ))
     }
 
     /// Returns a reference to the certificate chain associated with the identity.
@@ -452,6 +457,23 @@ pub enum PemLoadError {
         error: std::io::Error,
     },
 }
+
+/// Certificate SANs are not valid DNS.
+///
+/// This error might happen during self signed certificate generation
+/// [`Identity::self_signed`].
+/// In particular, *Subject Alternative Names* passed for the generation of the
+/// certificate are not valid DNS *IA5* strings.
+///
+/// DNS strings support the [International Alphabet No. 5 (IA5)] character encoding, i.e.
+/// the 128 characters of the ASCII alphabet.
+///
+/// [International Alphabet No. 5 (IA5)]: https://en.wikipedia.org/wiki/T.50_(standard)
+#[cfg(feature = "self-signed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+#[derive(Debug, thiserror::Error)]
+#[error("invalid SANs for the self certificate")]
+pub struct InvalidSan;
 
 pub use rustls;
 

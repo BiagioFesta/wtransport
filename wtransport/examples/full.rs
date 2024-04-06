@@ -14,7 +14,7 @@ use wtransport::Identity;
 async fn main() -> Result<()> {
     utils::init_logging();
 
-    let identity = Identity::self_signed(["localhost", "127.0.0.1", "::1"]);
+    let identity = Identity::self_signed(["localhost", "127.0.0.1", "::1"]).unwrap();
     let cert_digest = identity.certificate_chain()[0].hash();
 
     let webtransport_server = WebTransportServer::new(&identity)?;
