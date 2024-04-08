@@ -99,6 +99,16 @@ impl PrivateKey {
     pub fn secret_der(&self) -> &[u8] {
         self.0.secret_der()
     }
+
+    /// Clones this private key.
+    ///
+    /// # Note
+    /// `PrivateKey` does not implement `Clone` directly to ensure that sensitive information
+    /// is not cloned inadvertently.
+    /// Implementing `Clone` directly could potentially lead to unintended cloning of sensitive data.
+    pub fn clone_key(&self) -> Self {
+        Self(self.0.clone_key())
+    }
 }
 
 /// A collection of [`Certificate`].
@@ -256,6 +266,16 @@ impl Identity {
     /// Returns a reference to the private key associated with the identity.
     pub fn private_key(&self) -> &PrivateKey {
         &self.private_key
+    }
+
+    /// Clones this identity.
+    ///
+    /// # Note
+    /// `Identity` does not implement `Clone` directly to ensure that sensitive information,
+    /// specifically the inner *private key*, is not cloned inadvertently.
+    /// Implementing `Clone` directly could potentially lead to unintended cloning of sensitive data.
+    pub fn clone_identity(&self) -> Self {
+        Self::new(self.certificate_chain.clone(), self.private_key.clone_key())
     }
 }
 
