@@ -152,6 +152,12 @@ impl AsRef<[Certificate]> for CertificateChain {
     }
 }
 
+impl FromIterator<Certificate> for CertificateChain {
+    fn from_iter<T: IntoIterator<Item = Certificate>>(iter: T) -> Self {
+        Self(iter.into_iter().collect())
+    }
+}
+
 /// Represents an TLS identity consisting of a certificate chain and a private key.
 #[derive(Debug)]
 pub struct Identity {

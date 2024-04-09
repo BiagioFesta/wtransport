@@ -102,6 +102,8 @@ use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
 use crate::stream::RecvStream;
 use crate::stream::SendStream;
+use crate::tls::Certificate;
+use crate::tls::CertificateChain;
 use crate::SessionId;
 use crate::VarInt;
 use std::net::SocketAddr;
@@ -369,5 +371,20 @@ impl Connection {
         self.quic_connection
             .export_keying_material(output, label, context)
             .map_err(|_: quinn::crypto::ExportKeyingMaterialError| ExportKeyingMaterialError)
+    }
+
+    /// Returns the peer's identity as a certificate chain if available.
+    ///
+    /// This function returns an `Option` containing a [`CertificateChain`]. If the peer's identity
+    /// is available, it is converted into a `CertificateChain` and returned. If the peer's identity
+    /// is not available, `None` is returned.
+    pub fn peer_identity(&self) -> Option<CertificateChain> {
+        self.quic_connection.peer_identity().map(|any| {
+            any.downcast::<Vec<rustls::Certificate>>()
+                .expect("rustls certificate vector")
+                .into_iter()
+                .map(|c| Certificate::from_der(c.0).expect("valid certificate"))
+                .collect()
+        })
     }
 }
