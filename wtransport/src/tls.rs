@@ -416,6 +416,25 @@ impl Display for Sha256Digest {
     }
 }
 
+/// Represents data related to a TLS handshake process.
+#[derive(Clone, Debug)]
+pub struct HandshakeData {
+    pub(crate) alpn: Option<Vec<u8>>,
+    pub(crate) server_name: Option<String>,
+}
+
+impl HandshakeData {
+    /// Application-Layer Protocol Negotiation (ALPN) data.
+    pub fn alpn(&self) -> Option<&[u8]> {
+        self.alpn.as_deref()
+    }
+
+    /// The server name associated with the handshake data.
+    pub fn server_name(&self) -> Option<&str> {
+        self.server_name.as_deref()
+    }
+}
+
 impl FromStr for Sha256Digest {
     type Err = InvalidDigest;
 

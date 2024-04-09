@@ -104,6 +104,7 @@ use crate::stream::RecvStream;
 use crate::stream::SendStream;
 use crate::tls::Certificate;
 use crate::tls::CertificateChain;
+use crate::tls::HandshakeData;
 use crate::SessionId;
 use crate::VarInt;
 use std::net::SocketAddr;
@@ -386,5 +387,20 @@ impl Connection {
                 .map(|c| Certificate::from_der(c.0).expect("valid certificate"))
                 .collect()
         })
+    }
+
+    /// Retrieves handshake data associated with the connection.
+    pub fn handshake_data(&self) -> HandshakeData {
+        let hd = self
+            .quic_connection
+            .handshake_data()
+            .expect("fully established connection")
+            .downcast::<quinn::crypto::rustls::HandshakeData>()
+            .expect("valid downcast");
+
+        HandshakeData {
+            alpn: hd.protocol,
+            server_name: hd.server_name,
+        }
     }
 }
