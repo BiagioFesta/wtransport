@@ -259,3 +259,10 @@ impl Display for QuicProtoError {
         f.write_fmt(format_args!("{}{}", self.reason, code))
     }
 }
+
+/// Error returned by [`Connection::export_keying_material`](crate::Connection::export_keying_material).
+///
+/// This error occurs if the requested output length is too large.
+#[derive(Debug, thiserror::Error)]
+#[error("cannot derive keying material as requested output length is too large")]
+pub struct ExportKeyingMaterialError;
