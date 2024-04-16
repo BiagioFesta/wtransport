@@ -624,6 +624,15 @@ impl SessionRequest {
         }
     }
 
+    /// Returns the peer's UDP address.
+    ///
+    /// **Note**: as QUIC supports migration, remote address may change
+    /// during connection.
+    #[inline(always)]
+    pub fn remote_address(&self) -> SocketAddr {
+        self.quic_connection.remote_address()
+    }
+
     /// Returns the `:authority` field of the request.
     pub fn authority(&self) -> &str {
         self.stream_session.request().authority()
