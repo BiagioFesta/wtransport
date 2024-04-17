@@ -336,7 +336,7 @@ impl Endpoint<endpoint_side::Client> {
         let quic_connection = self
             .endpoint
             .connect(socket_address, &server_name)
-            .expect("QUIC connection parameters must be validated")
+            .map_err(ConnectingError::with_connect_error)?
             .await
             .map_err(|connection_error| {
                 ConnectingError::ConnectionError(connection_error.into())

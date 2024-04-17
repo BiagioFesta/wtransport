@@ -3,6 +3,7 @@ use crate::driver::DriverError;
 use crate::VarInt;
 use std::borrow::Cow;
 use std::fmt::Display;
+use std::net::SocketAddr;
 use wtransport_proto::error::ErrorCode;
 
 /// An enumeration representing various errors that can occur during a WebTransport connection.
@@ -82,6 +83,28 @@ pub enum ConnectingError {
     /// Cannot use reserved key for additional headers.
     #[error("additional header '{0}' is reserved")]
     ReservedHeader(String),
+
+    /// The endpoint can no longer create new connections
+    ///
+    /// Indicates that a necessary component of the endpoint has been dropped or otherwise disabled.
+    #[error("endpoint stopping")]
+    EndpointStopping,
+
+    /// The number of active connections on the local endpoint is at the limit
+    ///
+    /// Try using longer connection IDs.
+    #[error("too many connections")]
+    TooManyConnections,
+
+    /// The domain name supplied was malformed
+    #[error("invalid DNS name: {0}")]
+    InvalidDnsName(String),
+
+    /// The remote [`SocketAddr`] supplied was malformed.
+    ///
+    /// Examples include attempting to connect to port 0, or using an inappropriate address family.
+    #[error("invalid remote address: {0}")]
+    InvalidRemoteAddress(SocketAddr),
 }
 
 impl ConnectingError {
@@ -92,6 +115,23 @@ impl ConnectingError {
                 .expect("QUIC connection is still alive on close-cast")
                 .into(),
         )
+    }
+
+    pub(crate) fn with_connect_error(error: quinn::ConnectError) -> Self {
+        match error {
+            quinn::ConnectError::EndpointStopping => ConnectingError::EndpointStopping,
+            quinn::ConnectError::TooManyConnections => ConnectingError::TooManyConnections,
+            quinn::ConnectError::InvalidDnsName(name) => ConnectingError::InvalidDnsName(name),
+            quinn::ConnectError::InvalidRemoteAddress(socket_addr) => {
+                ConnectingError::InvalidRemoteAddress(socket_addr)
+            }
+            quinn::ConnectError::NoDefaultClientConfig => {
+                unreachable!("quic client config is internally provided")
+            }
+            quinn::ConnectError::UnsupportedVersion => {
+                unreachable!("quic version is internally configured")
+            }
+        }
     }
 }
 
