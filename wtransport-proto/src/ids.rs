@@ -265,6 +265,9 @@ impl StatusCode {
     /// HTTP 404 Not Found status code.
     pub const NOT_FOUND: Self = Self(404);
 
+    /// HTTP 429 Too Many Requests status code.
+    pub const TOO_MANY_REQUESTS: Self = Self(429);
+
     /// Tries to construct from `u32`.
     #[inline(always)]
     pub fn try_from_u32(value: u32) -> Result<Self, InvalidStatusCode> {
