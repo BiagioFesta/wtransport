@@ -697,6 +697,11 @@ impl SessionRequest {
         self.reject(SessionResponseProto::not_found()).await;
     }
 
+    /// Rejects the client request by replying with `429` status code.
+    pub async fn too_many_requests(self) {
+        self.reject(SessionResponseProto::too_many_requests()).await;
+    }
+
     async fn reject(mut self, mut response: SessionResponseProto) {
         let user_agent = self.user_agent().unwrap_or_default();
 

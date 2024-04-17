@@ -302,6 +302,11 @@ impl SessionResponse {
         Self::with_status_code(StatusCode::NOT_FOUND)
     }
 
+    /// Constructs with [`StatusCode::TOO_MANY_REQUESTS`].
+    pub fn too_many_requests() -> Self {
+        Self::with_status_code(StatusCode::TOO_MANY_REQUESTS)
+    }
+
     /// Returns the status code.
     pub fn code(&self) -> StatusCode {
         self.0
