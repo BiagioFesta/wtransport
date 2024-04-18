@@ -235,6 +235,8 @@ impl Identity {
         S: AsRef<str>,
     {
         use rcgen::CertificateParams;
+        use rcgen::DistinguishedName;
+        use rcgen::DnType;
         use rcgen::KeyPair;
         use rcgen::PKCS_ECDSA_P256_SHA256;
         use time::Duration;
@@ -245,10 +247,14 @@ impl Identity {
             .map(|s| s.as_ref().to_string())
             .collect::<Vec<_>>();
 
+        let mut dname = DistinguishedName::new();
+        dname.push(DnType::CommonName, "wtransport self-signed");
+
         let key_pair = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
             .expect("algorithm for key pair is supported");
 
         let mut cert_params = CertificateParams::new(subject_alt_names).map_err(|_| InvalidSan)?;
+        cert_params.distinguished_name = dname;
         cert_params.not_before = OffsetDateTime::now_utc();
         cert_params.not_after = OffsetDateTime::now_utc()
             .checked_add(Duration::days(14))
