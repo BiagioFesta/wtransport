@@ -317,7 +317,8 @@ impl Connection {
     /// Returns the peer's UDP address.
     ///
     /// **Note**: as QUIC supports migration, remote address may change
-    /// during connection.
+    /// during connection. Furthermore, when IPv6 support is enabled, IPv4
+    /// addresses may be mapped to IPv6.
     #[inline(always)]
     pub fn remote_address(&self) -> SocketAddr {
         self.quic_connection.remote_address()
