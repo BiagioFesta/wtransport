@@ -743,11 +743,8 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     /// - The current time MUST be within the validity period of the certificate.
     /// - The total length of the validity period MUST NOT exceed *two* weeks.
     /// - Only certificates for which the public key algorithm is *ECDSA* with the *secp256r1* are accepted.
-    #[cfg(all(feature = "dangerous-configuration", feature = "self-signed"))]
-    #[cfg_attr(
-        docsrs,
-        doc(cfg(all(feature = "dangerous-configuration", feature = "self-signed")))
-    )]
+    #[cfg(feature = "dangerous-configuration")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
     pub fn with_server_certificate_hashes<I>(
         self,
         hashes: I,

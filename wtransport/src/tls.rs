@@ -3,6 +3,8 @@ use error::InvalidDigest;
 use error::PemLoadError;
 use pem::encode as pem_encode;
 use pem::Pem;
+use ring::digest::digest;
+use ring::digest::SHA256;
 use rustls::RootCertStore;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::PrivateKeyDer;
@@ -57,12 +59,7 @@ impl Certificate {
     /// certificate by using the [`WebTransportOptions.serverCertificateHashes`] W3C API.
     ///
     /// [`WebTransportOptions.serverCertificateHashes`]: https://www.w3.org/TR/webtransport/#dom-webtransportoptions-servercertificatehashes
-    #[cfg(feature = "self-signed")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
     pub fn hash(&self) -> Sha256Digest {
-        use ring::digest::digest;
-        use ring::digest::SHA256;
-
         Sha256Digest(
             digest(&SHA256, &self.0)
                 .as_ref()
@@ -664,13 +661,10 @@ pub mod client {
     /// - The current time MUST be within the validity period of the certificate.
     /// - The total length of the validity period MUST NOT exceed *two* weeks.
     /// - Only certificates for which the public key algorithm is *ECDSA* with the *secp256r1* are accepted.
-    #[cfg(feature = "self-signed")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
     pub struct ServerHashVerification {
         hashes: std::collections::BTreeSet<Sha256Digest>,
     }
 
-    #[cfg(feature = "self-signed")]
     impl ServerHashVerification {
         const SELF_MAX_VALIDITY: time::Duration = time::Duration::days(14);
 
@@ -692,7 +686,6 @@ pub mod client {
         }
     }
 
-    #[cfg(feature = "self-signed")]
     impl ServerCertVerifier for ServerHashVerification {
         fn verify_server_cert(
             &self,
