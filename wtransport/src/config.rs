@@ -492,6 +492,8 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 ///   configuration as it uses root store installed on the current machine.
 /// - [`with_custom_tls`](ClientConfigBuilder::with_custom_tls): sets the TLS client
 ///   configuration manually.
+/// - [`with_server_certificate_hashes`](ClientConfigBuilder::with_server_certificate_hashes): configures
+///   the client to accept *some* certificates mapped to hashes.
 /// - (**unsafe**) [`with_no_cert_validation`](ClientConfigBuilder::with_no_cert_validation):
 ///   configure to skip server certificate validation. This might be handy for testing purpose
 ///   to accept *self-signed* certificate.
