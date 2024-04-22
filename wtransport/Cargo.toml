@@ -29,7 +29,7 @@ bytes = "1.4.0"
 quinn = "0.10.1"
 rcgen = { version = "0.13.1", optional = true }
 ring = { version = "0.17.7", optional = true }
-rustls = "0.21.1"
+rustls = "0.23.5"
 rustls-native-certs = "0.6.2"
 rustls-pemfile = "2.1.1"
 rustls-pki-types = "1.3.1"
