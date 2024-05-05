@@ -24,6 +24,10 @@ required-features = ["self-signed"]
 name = "server"
 required-features = ["self-signed"]
 
+[[example]]
+name = "gencert"
+required-features = ["self-signed"]
+
 [dependencies]
 bytes = "1.4.0"
 pem = "3.0.4"
