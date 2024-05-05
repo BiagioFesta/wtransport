@@ -156,6 +156,9 @@ impl CertificateChain {
     ///
     /// Filters out any PEM sections that are not certificates and yields error
     /// if a problem occurs while trying to parse any certificate.
+    ///
+    /// *Note*: if the PEM file does not contain any certificate section this
+    /// will return an empty chain.
     pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
         let file_data = tokio::fs::read(filepath.as_ref())
             .await
