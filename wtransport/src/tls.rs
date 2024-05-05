@@ -1,3 +1,7 @@
+use error::InvalidCertificate;
+use error::InvalidDigest;
+use error::InvalidSan;
+use error::PemLoadError;
 use pem::encode as pem_encode;
 use pem::Pem;
 use rustls_pki_types::CertificateDer;
@@ -6,7 +10,6 @@ use rustls_pki_types::PrivatePkcs8KeyDer;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::path::Path;
-use std::path::PathBuf;
 use std::str::FromStr;
 use x509_parser::certificate::X509Certificate;
 use x509_parser::prelude::FromDer;
@@ -509,61 +512,66 @@ impl FromStr for Sha256Digest {
     }
 }
 
-/// Represents an error indicating an invalid certificate parsing.
-#[derive(Debug, thiserror::Error)]
-#[error("invalid certificate: {0}")]
-pub struct InvalidCertificate(String);
+/// TLS errors definitions module.
+pub mod error {
+    use std::path::PathBuf;
 
-/// Represents an error failure to parse a string as a [`Sha256Digest`].
-///
-/// See [`Sha256Digest::from_str_fmt`].
-#[derive(Debug, thiserror::Error)]
-#[error("cannot parse string as sha256 digest")]
-pub struct InvalidDigest;
+    /// Represents an error indicating an invalid certificate parsing.
+    #[derive(Debug, thiserror::Error)]
+    #[error("invalid certificate: {0}")]
+    pub struct InvalidCertificate(pub(super) String);
 
-/// Error during PEM load operation.
-#[derive(Debug, thiserror::Error)]
-pub enum PemLoadError {
-    /// Invalid certificate during chain load.
-    #[error("invalid certificate in the PEM chain (index: {}): {}", .index, .error)]
-    InvalidCertificateChain {
-        /// The index of the certificate in the PEM file.
-        index: usize,
-        /// Additional error information.
-        error: InvalidCertificate,
-    },
+    /// Represents an error failure to parse a string as a [`Sha256Digest`].
+    ///
+    /// See [`Sha256Digest::from_str_fmt`].
+    #[derive(Debug, thiserror::Error)]
+    #[error("cannot parse string as sha256 digest")]
+    pub struct InvalidDigest;
 
-    /// No valid private key found in the PEM file.
-    #[error("no valid private key found in the PEM file")]
-    InvalidPrivateKey,
+    /// Error during PEM load operation.
+    #[derive(Debug, thiserror::Error)]
+    pub enum PemLoadError {
+        /// Invalid certificate during chain load.
+        #[error("invalid certificate in the PEM chain (index: {}): {}", .index, .error)]
+        InvalidCertificateChain {
+            /// The index of the certificate in the PEM file.
+            index: usize,
+            /// Additional error information.
+            error: InvalidCertificate,
+        },
 
-    /// Load operation failed because I/O operation on file.
-    #[error("error on file '{}': {}", .file.display(), error)]
-    FileError {
-        /// Filename of the operation.
-        file: PathBuf,
+        /// No valid private key found in the PEM file.
+        #[error("no valid private key found in the PEM file")]
+        InvalidPrivateKey,
 
-        /// io error details.
-        error: std::io::Error,
-    },
+        /// Load operation failed because I/O operation on file.
+        #[error("error on file '{}': {}", .file.display(), error)]
+        FileError {
+            /// Filename of the operation.
+            file: PathBuf,
+
+            /// io error details.
+            error: std::io::Error,
+        },
+    }
+
+    /// Certificate SANs are not valid DNS.
+    ///
+    /// This error might happen during self signed certificate generation
+    /// [`Identity::self_signed`].
+    /// In particular, *Subject Alternative Names* passed for the generation of the
+    /// certificate are not valid DNS *IA5* strings.
+    ///
+    /// DNS strings support the [International Alphabet No. 5 (IA5)] character encoding, i.e.
+    /// the 128 characters of the ASCII alphabet.
+    ///
+    /// [International Alphabet No. 5 (IA5)]: https://en.wikipedia.org/wiki/T.50_(standard)
+    #[cfg(feature = "self-signed")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+    #[derive(Debug, thiserror::Error)]
+    #[error("invalid SANs for the self certificate")]
+    pub struct InvalidSan;
 }
-
-/// Certificate SANs are not valid DNS.
-///
-/// This error might happen during self signed certificate generation
-/// [`Identity::self_signed`].
-/// In particular, *Subject Alternative Names* passed for the generation of the
-/// certificate are not valid DNS *IA5* strings.
-///
-/// DNS strings support the [International Alphabet No. 5 (IA5)] character encoding, i.e.
-/// the 128 characters of the ASCII alphabet.
-///
-/// [International Alphabet No. 5 (IA5)]: https://en.wikipedia.org/wiki/T.50_(standard)
-#[cfg(feature = "self-signed")]
-#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
-#[derive(Debug, thiserror::Error)]
-#[error("invalid SANs for the self certificate")]
-pub struct InvalidSan;
 
 pub use rustls;
 
