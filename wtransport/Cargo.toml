@@ -34,7 +34,7 @@ pem = "3.0.4"
 quinn = "0.10.1"
 rcgen = { version = "0.13.1", optional = true }
 ring = { version = "0.17.7", optional = true }
-rustls = "0.21.1"
+rustls = { version = "0.21.1", features = ["dangerous_configuration"] }
 rustls-native-certs = "0.6.2"
 rustls-pemfile = "2.1.1"
 rustls-pki-types = "1.3.1"
@@ -56,7 +56,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 [features]
 default = ["self-signed"]
-dangerous-configuration = ["rustls/dangerous_configuration"]
+dangerous-configuration = []
 quinn = []
 self-signed = ["dep:rcgen", "dep:time", "dep:ring"]
 
@@ -76,12 +76,15 @@ allowed_external_types = [
     "quinn_proto::config::ServerConfig",
     "quinn_proto::connection::ConnectionError",
     "rustls",
+    "rustls::anchors::RootCertStore",
     "rustls::client::client_conn::ClientConfig",
     "rustls::server::server_conn::ServerConfig",
+    "rustls::verify::ServerCertVerifier",
     "tokio::io::async_read::AsyncRead",
     "tokio::io::async_write::AsyncWrite",
-    "wtransport_proto::varint::VarInt",
-    "wtransport_proto::ids::StreamId",
-    "wtransport_proto::ids::SessionId",
     "wtransport_proto",
+    "wtransport_proto::WEBTRANSPORT_ALPN",
+    "wtransport_proto::ids::SessionId",
+    "wtransport_proto::ids::StreamId",
+    "wtransport_proto::varint::VarInt",
 ]

@@ -34,13 +34,11 @@
 //!     .build();
 //! ```
 
+use crate::tls::build_native_cert_store;
 use crate::tls::Identity;
 use quinn::ClientConfig as QuicClientConfig;
 use quinn::ServerConfig as QuicServerConfig;
 use quinn::TransportConfig;
-use rustls::ClientConfig as TlsClientConfig;
-use rustls::RootCertStore;
-use rustls::ServerConfig as TlsServerConfig;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::future::Future;
@@ -54,7 +52,12 @@ use std::sync::Arc;
 use std::task::Context;
 use std::task::Poll;
 use std::time::Duration;
-use wtransport_proto::WEBTRANSPORT_ALPN;
+
+/// Alias of [`crate::tls::rustls::ServerConfig`].
+pub type TlsServerConfig = crate::tls::rustls::ServerConfig;
+
+/// Alias of [`crate::tls::rustls::ClientConfig`].
+pub type TlsClientConfig = crate::tls::rustls::ClientConfig;
 
 /// Configuration for IP address socket bind.
 #[derive(Debug, Copy, Clone)]
@@ -335,7 +338,9 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         self,
         identity: &Identity,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
-        self.with_custom_tls(Self::build_tls_config(identity))
+        use crate::tls::server::build_default_tls_config;
+
+        self.with_custom_tls(build_default_tls_config(identity))
     }
 
     /// Allows for manual configuration of a custom TLS setup using a provided
@@ -370,7 +375,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     /// ```
     pub fn with_custom_tls(
         self,
-        tls_config: rustls::ServerConfig,
+        tls_config: TlsServerConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         let transport_config = TransportConfig::default();
 
@@ -381,27 +386,6 @@ impl ServerConfigBuilder<states::WantsIdentity> {
             transport_config,
             migration: true,
         })
-    }
-
-    fn build_tls_config(identity: &Identity) -> TlsServerConfig {
-        let certificates = identity
-            .certificate_chain()
-            .as_slice()
-            .iter()
-            .map(|cert| rustls::Certificate(cert.der().to_vec()))
-            .collect();
-
-        let private_key = rustls::PrivateKey(identity.private_key().secret_der().to_vec());
-
-        let mut tls_config = TlsServerConfig::builder()
-            .with_safe_defaults()
-            .with_no_client_auth()
-            .with_single_cert(certificates, private_key)
-            .expect("Certificate and private key should be already validated");
-
-        tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
-
-        tls_config
     }
 }
 
@@ -663,7 +647,11 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     ///
     /// It configures safe default TLS configuration.
     pub fn with_native_certs(self) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
-        self.with_custom_tls(Self::build_tls_config(Self::native_cert_store()))
+        use crate::tls::client::build_default_tls_config;
+
+        self.with_custom_tls(build_default_tls_config(
+            Arc::new(build_native_cert_store()),
+        ))
     }
 
     /// Allows for manual configuration of a custom TLS setup using a provided
@@ -677,7 +665,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     /// method to configure TLS with safe defaults.
     pub fn with_custom_tls(
         self,
-        tls_config: rustls::ClientConfig,
+        tls_config: TlsClientConfig,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         let transport_config = TransportConfig::default();
 
@@ -716,10 +704,14 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     pub fn with_no_cert_validation(
         self,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
-        let mut tls_config = Self::build_tls_config(Arc::new(RootCertStore::empty()));
+        use crate::tls::client::build_default_tls_config;
+        use crate::tls::client::NoServerVerification;
+        use rustls::RootCertStore;
+
+        let mut tls_config = build_default_tls_config(Arc::new(RootCertStore::empty()));
         tls_config
             .dangerous()
-            .set_certificate_verifier(Arc::new(dangerous_configuration::NoServerVerification));
+            .set_certificate_verifier(Arc::new(NoServerVerification::new()));
 
         let transport_config = TransportConfig::default();
 
@@ -761,11 +753,15 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     where
         I: IntoIterator<Item = crate::tls::Sha256Digest>,
     {
-        let mut tls_config = Self::build_tls_config(Arc::new(RootCertStore::empty()));
+        use crate::tls::client::build_default_tls_config;
+        use crate::tls::client::ServerHashVerification;
+        use rustls::RootCertStore;
 
-        tls_config.dangerous().set_certificate_verifier(Arc::new(
-            dangerous_configuration::ServerHashVerification::new(hashes),
-        ));
+        let mut tls_config = build_default_tls_config(Arc::new(RootCertStore::empty()));
+
+        tls_config
+            .dangerous()
+            .set_certificate_verifier(Arc::new(ServerHashVerification::new(hashes)));
 
         let transport_config = TransportConfig::default();
 
@@ -776,36 +772,6 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             transport_config,
             dns_resolver: Box::<TokioDnsResolver>::default(),
         })
-    }
-
-    fn native_cert_store() -> Arc<RootCertStore> {
-        let mut root_store = RootCertStore::empty();
-
-        let _var_restore_guard = utils::remove_var_tmp("SSL_CERT_FILE");
-
-        match rustls_native_certs::load_native_certs() {
-            Ok(certs) => {
-                for c in certs {
-                    let _ = root_store.add(&rustls::Certificate(c.0));
-                }
-            }
-            Err(_error) => {}
-        }
-
-        Arc::new(root_store)
-    }
-
-    fn build_tls_config(root_store: Arc<RootCertStore>) -> TlsClientConfig {
-        let mut config = TlsClientConfig::builder()
-            .with_safe_default_cipher_suites()
-            .with_safe_default_kx_groups()
-            .with_safe_default_protocol_versions()
-            .expect("Safe protocols should not error")
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-
-        config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
-        config
     }
 }
 
@@ -925,111 +891,6 @@ pub mod states {
     }
 }
 
-#[cfg(feature = "dangerous-configuration")]
-mod dangerous_configuration {
-    use rustls::client::ServerCertVerified;
-    use rustls::client::ServerCertVerifier;
-
-    #[cfg(feature = "self-signed")]
-    use std::collections::BTreeSet;
-
-    pub(super) struct NoServerVerification;
-
-    impl ServerCertVerifier for NoServerVerification {
-        fn verify_server_cert(
-            &self,
-            _end_entity: &rustls::Certificate,
-            _intermediates: &[rustls::Certificate],
-            _server_name: &rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
-            _ocsp_response: &[u8],
-            _now: std::time::SystemTime,
-        ) -> Result<ServerCertVerified, rustls::Error> {
-            Ok(ServerCertVerified::assertion())
-        }
-    }
-
-    #[cfg(feature = "self-signed")]
-    pub(super) struct ServerHashVerification {
-        hashes: BTreeSet<crate::tls::Sha256Digest>,
-    }
-
-    #[cfg(feature = "self-signed")]
-    impl ServerHashVerification {
-        const SELF_MAX_VALIDITY: time::Duration = time::Duration::days(14);
-
-        pub(super) fn new<H>(hashes: H) -> Self
-        where
-            H: IntoIterator<Item = crate::tls::Sha256Digest>,
-        {
-            Self {
-                hashes: BTreeSet::from_iter(hashes),
-            }
-        }
-    }
-
-    #[cfg(feature = "self-signed")]
-    impl ServerCertVerifier for ServerHashVerification {
-        fn verify_server_cert(
-            &self,
-            end_entity: &rustls::Certificate,
-            _intermediates: &[rustls::Certificate],
-            _server_name: &rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
-            _ocsp_response: &[u8],
-            now: std::time::SystemTime,
-        ) -> Result<ServerCertVerified, rustls::Error> {
-            use time::OffsetDateTime;
-            use x509_parser::certificate::X509Certificate;
-            use x509_parser::oid_registry::OID_EC_P256;
-            use x509_parser::oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY;
-            use x509_parser::prelude::FromDer;
-            use x509_parser::time::ASN1Time;
-
-            let now = ASN1Time::new(OffsetDateTime::from(now));
-
-            let x509 = X509Certificate::from_der(&end_entity.0)
-                .map_err(|_| rustls::CertificateError::BadEncoding)?
-                .1;
-
-            match x509.validity() {
-                x if now < x.not_before => {
-                    return Err(rustls::CertificateError::NotValidYet.into());
-                }
-                x if now > x.not_after => {
-                    return Err(rustls::CertificateError::Expired.into());
-                }
-                _ => {}
-            }
-
-            let validity_period = x509.validity().not_after - x509.validity.not_before;
-            if !matches!(validity_period, Some(x) if x <= Self::SELF_MAX_VALIDITY) {
-                return Err(rustls::CertificateError::UnknownIssuer.into());
-            }
-
-            if x509.public_key().algorithm.algorithm != OID_KEY_TYPE_EC_PUBLIC_KEY {
-                return Err(rustls::CertificateError::UnknownIssuer.into());
-            }
-
-            if !matches!(x509.public_key().algorithm.parameters.as_ref().map(|any| any.as_oid()),
-                         Some(Ok(oid)) if oid == OID_EC_P256)
-            {
-                return Err(rustls::CertificateError::UnknownIssuer.into());
-            }
-
-            let end_entity_hash = crate::tls::Certificate::from_der(end_entity.0.to_vec())
-                .map_err(|_| rustls::CertificateError::BadEncoding)?
-                .hash();
-
-            if self.hashes.contains(&end_entity_hash) {
-                Ok(ServerCertVerified::assertion())
-            } else {
-                Err(rustls::CertificateError::UnknownIssuer.into())
-            }
-        }
-    }
-}
-
 /// A trait for asynchronously resolving domain names to IP addresses using DNS.
 ///
 /// Utilities for working with `DnsResolver` values are provided by [`DnsResolverExt`].
@@ -1119,35 +980,5 @@ impl Debug for InvalidIdleTimeout {
 impl Display for InvalidIdleTimeout {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         Debug::fmt(self, f)
-    }
-}
-
-mod utils {
-    use std::env;
-    use std::ffi::OsStr;
-    use std::ffi::OsString;
-
-    pub struct VarRestoreGuard {
-        key: OsString,
-        value: Option<OsString>,
-    }
-
-    impl Drop for VarRestoreGuard {
-        fn drop(&mut self) {
-            if let Some(value) = self.value.take() {
-                env::set_var(self.key.clone(), value);
-            }
-        }
-    }
-
-    pub fn remove_var_tmp<K: AsRef<OsStr>>(key: K) -> VarRestoreGuard {
-        let value = env::var_os(key.as_ref());
-
-        env::remove_var(key.as_ref());
-
-        VarRestoreGuard {
-            key: key.as_ref().to_os_string(),
-            value,
-        }
     }
 }

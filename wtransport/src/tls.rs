@@ -1,9 +1,9 @@
 use error::InvalidCertificate;
 use error::InvalidDigest;
-use error::InvalidSan;
 use error::PemLoadError;
 use pem::encode as pem_encode;
 use pem::Pem;
+use rustls::RootCertStore;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::PrivateKeyDer;
 use rustls_pki_types::PrivatePkcs8KeyDer;
@@ -11,8 +11,11 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::path::Path;
 use std::str::FromStr;
+use std::sync::Arc;
 use x509_parser::certificate::X509Certificate;
 use x509_parser::prelude::FromDer;
+
+pub use wtransport_proto::WEBTRANSPORT_ALPN;
 
 /// Represents an X.509 certificate.
 #[derive(Clone)]
@@ -271,11 +274,12 @@ impl Identity {
     /// ```
     #[cfg(feature = "self-signed")]
     #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
-    pub fn self_signed<I, S>(subject_alt_names: I) -> Result<Self, InvalidSan>
+    pub fn self_signed<I, S>(subject_alt_names: I) -> Result<Self, error::InvalidSan>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
+        use error::InvalidSan;
         use rcgen::CertificateParams;
         use rcgen::DistinguishedName;
         use rcgen::DnType;
@@ -512,6 +516,237 @@ impl FromStr for Sha256Digest {
     }
 }
 
+/// Builds [`rustls::RootCertStore`] by using platform’s native certificate store.
+///
+/// This function works on a *best-effort* basis, attempting to load every possible
+/// root certificate found on the platform. It skips anchors that produce errors during loading.
+/// Therefore, it might produce an *empty* root store.
+///
+///
+/// It's important to note that this function can be expensive, as it might involve loading
+/// all root certificates from the filesystem platform. Therefore, it's advisable to use it
+/// sporadically and judiciously.
+pub fn build_native_cert_store() -> RootCertStore {
+    let mut root_store = RootCertStore::empty();
+
+    let _var_restore_guard = utils::remove_var_tmp("SSL_CERT_FILE");
+
+    match rustls_native_certs::load_native_certs() {
+        Ok(certs) => {
+            for c in certs {
+                let _ = root_store.add(&rustls::Certificate(c.0));
+            }
+        }
+        Err(_error) => {}
+    }
+
+    root_store
+}
+
+/// TLS configurations and utilities server-side.
+pub mod server {
+    use super::*;
+    use rustls::ServerConfig as TlsServerConfig;
+
+    /// Builds a default TLS server configuration with safe defaults.
+    ///
+    /// This function constructs a TLS server configuration with safe defaults.
+    /// The configuration utilizes the identity (certificate and private key) specified
+    /// in the input argument of the function.
+    ///
+    /// Client authentication is not required in this configuration.
+    ///
+    /// # Arguments
+    ///
+    /// - `identity`: A reference to the identity containing the certificate chain and private key.
+    pub fn build_default_tls_config(identity: &Identity) -> TlsServerConfig {
+        let certificates = identity
+            .certificate_chain()
+            .as_slice()
+            .iter()
+            .map(|cert| rustls::Certificate(cert.der().to_vec()))
+            .collect();
+
+        let private_key = rustls::PrivateKey(identity.private_key().secret_der().to_vec());
+
+        let mut tls_config = TlsServerConfig::builder()
+            .with_safe_defaults()
+            .with_no_client_auth()
+            .with_single_cert(certificates, private_key)
+            .expect("Certificate and private key should be already validated");
+
+        tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
+
+        tls_config
+    }
+}
+
+/// TLS configurations and utilities client-side.
+pub mod client {
+    use super::*;
+    use rustls::client::ServerCertVerified;
+    use rustls::client::ServerCertVerifier;
+    use rustls::ClientConfig as TlsClientConfig;
+
+    /// Builds a default TLS client configuration with safe defaults.
+    ///
+    /// This function constructs a TLS client configuration with safe defaults.
+    /// It utilizes the provided `RootCertStore` to validate server certificates during the TLS handshake.
+    ///
+    /// Client authentication is not required in this configuration.
+    ///
+    /// # Arguments
+    ///
+    /// - `root_store`: An `Arc` containing the [`RootCertStore`] with trusted root certificates.
+    ///                 To obtain a `RootCertStore`, one can use the [`build_native_cert_store`]
+    ///                 function, which loads the platform's certificate authorities (CAs).
+    pub fn build_default_tls_config(root_store: Arc<RootCertStore>) -> TlsClientConfig {
+        let mut config = TlsClientConfig::builder()
+            .with_safe_default_cipher_suites()
+            .with_safe_default_kx_groups()
+            .with_safe_default_protocol_versions()
+            .expect("Safe protocols should not error")
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
+        config
+    }
+
+    /// A custom **unsafe** [`ServerCertVerifier`] implementation.
+    ///
+    /// This verifier is configured to skip all server's certificate validation.
+    ///
+    /// Therefore, it's advisable to use it judiciously, and avoid using it in
+    /// production environments.
+    #[derive(Default)]
+    pub struct NoServerVerification {}
+
+    impl NoServerVerification {
+        /// Creates a new instance of `NoServerVerification`.
+        pub fn new() -> NoServerVerification {
+            NoServerVerification {}
+        }
+    }
+
+    impl ServerCertVerifier for NoServerVerification {
+        fn verify_server_cert(
+            &self,
+            _end_entity: &rustls::Certificate,
+            _intermediates: &[rustls::Certificate],
+            _server_name: &rustls::ServerName,
+            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _ocsp_response: &[u8],
+            _now: std::time::SystemTime,
+        ) -> Result<ServerCertVerified, rustls::Error> {
+            Ok(ServerCertVerified::assertion())
+        }
+    }
+
+    /// A custom [`ServerCertVerifier`] implementation.
+    ///
+    /// Configures the client to skip *some* server certificates validation.
+    ///
+    /// This verifier is configured to accept server certificates
+    /// whose digests match the specified *SHA-256* hashes and fulfill
+    /// some additional constraints (*see notes below*).
+    ///
+    /// This is useful for scenarios where clients need to accept known
+    /// self-signed certificates or certificates from non-standard authorities.
+    ///
+    /// # Notes
+    ///
+    /// - The current time MUST be within the validity period of the certificate.
+    /// - The total length of the validity period MUST NOT exceed *two* weeks.
+    /// - Only certificates for which the public key algorithm is *ECDSA* with the *secp256r1* are accepted.
+    #[cfg(feature = "self-signed")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+    pub struct ServerHashVerification {
+        hashes: std::collections::BTreeSet<Sha256Digest>,
+    }
+
+    #[cfg(feature = "self-signed")]
+    impl ServerHashVerification {
+        const SELF_MAX_VALIDITY: time::Duration = time::Duration::days(14);
+
+        /// Creates a new instance of `ServerHashVerification`.
+        ///
+        /// # Arguments
+        ///
+        /// - `hashes`: An iterator yielding `Sha256Digest` instances representing the
+        ///             accepted certificate hashes.
+        pub fn new<H>(hashes: H) -> Self
+        where
+            H: IntoIterator<Item = Sha256Digest>,
+        {
+            use std::collections::BTreeSet;
+
+            Self {
+                hashes: BTreeSet::from_iter(hashes),
+            }
+        }
+    }
+
+    #[cfg(feature = "self-signed")]
+    impl ServerCertVerifier for ServerHashVerification {
+        fn verify_server_cert(
+            &self,
+            end_entity: &rustls::Certificate,
+            _intermediates: &[rustls::Certificate],
+            _server_name: &rustls::ServerName,
+            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _ocsp_response: &[u8],
+            now: std::time::SystemTime,
+        ) -> Result<ServerCertVerified, rustls::Error> {
+            use time::OffsetDateTime;
+            use x509_parser::oid_registry::OID_EC_P256;
+            use x509_parser::oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY;
+            use x509_parser::time::ASN1Time;
+
+            let now = ASN1Time::new(OffsetDateTime::from(now));
+
+            let x509 = X509Certificate::from_der(&end_entity.0)
+                .map_err(|_| rustls::CertificateError::BadEncoding)?
+                .1;
+
+            match x509.validity() {
+                x if now < x.not_before => {
+                    return Err(rustls::CertificateError::NotValidYet.into());
+                }
+                x if now > x.not_after => {
+                    return Err(rustls::CertificateError::Expired.into());
+                }
+                _ => {}
+            }
+
+            let validity_period = x509.validity().not_after - x509.validity.not_before;
+            if !matches!(validity_period, Some(x) if x <= Self::SELF_MAX_VALIDITY) {
+                return Err(rustls::CertificateError::UnknownIssuer.into());
+            }
+
+            if x509.public_key().algorithm.algorithm != OID_KEY_TYPE_EC_PUBLIC_KEY {
+                return Err(rustls::CertificateError::UnknownIssuer.into());
+            }
+
+            if !matches!(x509.public_key().algorithm.parameters.as_ref().map(|any| any.as_oid()),
+                         Some(Ok(oid)) if oid == OID_EC_P256)
+            {
+                return Err(rustls::CertificateError::UnknownIssuer.into());
+            }
+
+            let end_entity_hash = crate::tls::Certificate::from_der(end_entity.0.to_vec())
+                .map_err(|_| rustls::CertificateError::BadEncoding)?
+                .hash();
+
+            if self.hashes.contains(&end_entity_hash) {
+                Ok(ServerCertVerified::assertion())
+            } else {
+                Err(rustls::CertificateError::UnknownIssuer.into())
+            }
+        }
+    }
+}
+
 /// TLS errors definitions module.
 pub mod error {
     use std::path::PathBuf;
@@ -574,6 +809,36 @@ pub mod error {
 }
 
 pub use rustls;
+
+mod utils {
+    use std::env;
+    use std::ffi::OsStr;
+    use std::ffi::OsString;
+
+    pub struct VarRestoreGuard {
+        key: OsString,
+        value: Option<OsString>,
+    }
+
+    impl Drop for VarRestoreGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.value.take() {
+                env::set_var(self.key.clone(), value);
+            }
+        }
+    }
+
+    pub fn remove_var_tmp<K: AsRef<OsStr>>(key: K) -> VarRestoreGuard {
+        let value = env::var_os(key.as_ref());
+
+        env::remove_var(key.as_ref());
+
+        VarRestoreGuard {
+            key: key.as_ref().to_os_string(),
+            value,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
