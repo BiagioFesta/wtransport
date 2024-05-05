@@ -89,7 +89,7 @@ impl PrivateKey {
     ///
     /// Filters out any PEM sections that are not private key.
     ///
-    /// Returns a [`PemLoadError::InvalidPrivateKey`] if no private key is found in the file.
+    /// Returns a [`PemLoadError::NoPrivateKeySection`] if no private key is found in the file.
     pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
         let file_data = tokio::fs::read(filepath.as_ref())
             .await
@@ -105,7 +105,7 @@ impl PrivateKey {
             })?
             .map(Self);
 
-        private_key.ok_or(PemLoadError::InvalidPrivateKey)
+        private_key.ok_or(PemLoadError::NoPrivateKeySection)
     }
 
     /// Stores the private key in PEM format into a file asynchronously.
@@ -771,9 +771,9 @@ pub mod error {
             error: InvalidCertificate,
         },
 
-        /// No valid private key found in the PEM file.
-        #[error("no valid private key found in the PEM file")]
-        InvalidPrivateKey,
+        /// Cannot load the private key as the PEM file does not contain it.
+        #[error("no private key section found in PEM file")]
+        NoPrivateKeySection,
 
         /// Load operation failed because I/O operation on file.
         #[error("error on file '{}': {}", .file.display(), error)]
