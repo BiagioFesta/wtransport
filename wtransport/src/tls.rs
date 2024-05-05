@@ -1,3 +1,5 @@
+use pem::encode as pem_encode;
+use pem::Pem;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::PrivateKeyDer;
 use rustls_pki_types::PrivatePkcs8KeyDer;
@@ -31,6 +33,14 @@ impl Certificate {
             .expect("valid der")
             .1
             .raw_serial_as_string()
+    }
+
+    /// Converts the X.509 certificate to the PEM (Privacy-Enhanced Mail) format.
+    ///
+    /// # Returns
+    /// A `String` containing the PEM-encoded representation of the certificate.
+    pub fn to_pem(&self) -> String {
+        pem_encode(&Pem::new("CERTIFICATE", self.der()))
     }
 
     /// Computes certificate's *hash*.
@@ -95,9 +105,22 @@ impl PrivateKey {
         private_key.ok_or(PemLoadError::InvalidPrivateKey)
     }
 
+    /// Stores the private key in PEM format into a file asynchronously.
+    ///
+    /// If the file does not exist, it will be created. If the file exists,
+    /// its contents will be truncated before writing.
+    pub async fn store_secret_pemfile(&self, filepath: impl AsRef<Path>) -> std::io::Result<()> {
+        tokio::fs::write(filepath, self.to_secret_pem()).await
+    }
+
     /// Returns a reference to the DER-encoded binary data of the private key.
     pub fn secret_der(&self) -> &[u8] {
         self.0.secret_der()
+    }
+
+    /// Converts the private key to PEM format.
+    pub fn to_secret_pem(&self) -> String {
+        pem_encode(&Pem::new("PRIVATE KEY", self.secret_der()))
     }
 
     /// Clones this private key.
@@ -148,6 +171,22 @@ impl CertificateChain {
             .collect::<Result<Vec<_>, _>>()?;
 
         Ok(Self(certificates))
+    }
+
+    /// Stores the certificate chain in PEM format into a file asynchronously.
+    ///
+    /// If the file does not exist, it will be created. If the file exists, its contents
+    /// will be truncated before writing.
+    pub async fn store_pemfile(&self, filepath: impl AsRef<Path>) -> std::io::Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        let mut file = tokio::fs::File::create(filepath).await?;
+
+        for cert in self.0.iter() {
+            file.write_all(cert.to_pem().as_bytes()).await?;
+        }
+
+        Ok(())
     }
 
     /// Returns a slice containing references to the certificates in the chain.
@@ -271,8 +310,8 @@ impl Identity {
     }
 
     /// Returns a reference to the certificate chain associated with the identity.
-    pub fn certificate_chain(&self) -> &[Certificate] {
-        self.certificate_chain.as_slice()
+    pub fn certificate_chain(&self) -> &CertificateChain {
+        &self.certificate_chain
     }
 
     /// Returns a reference to the private key associated with the identity.

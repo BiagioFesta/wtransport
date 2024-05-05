@@ -386,6 +386,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     fn build_tls_config(identity: &Identity) -> TlsServerConfig {
         let certificates = identity
             .certificate_chain()
+            .as_slice()
             .iter()
             .map(|cert| rustls::Certificate(cert.der().to_vec()))
             .collect();
