@@ -450,6 +450,8 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
     /// Writes key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
     ///
     /// Disabled by default.
+    #[cfg(feature = "dangerous-configuration")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
     pub fn enable_key_log(mut self) -> Self {
         self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
         self
@@ -846,6 +848,8 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     /// Writes key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
     ///
     /// Disabled by default.
+    #[cfg(feature = "dangerous-configuration")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
     pub fn enable_key_log(mut self) -> Self {
         self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
         self
