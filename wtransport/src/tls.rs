@@ -761,9 +761,9 @@ pub mod error {
     #[error("invalid certificate: {0}")]
     pub struct InvalidCertificate(pub(super) String);
 
-    /// Represents an error failure to parse a string as a [`Sha256Digest`].
+    /// Represents an error failure to parse a string as a [`Sha256Digest`](super::Sha256Digest).
     ///
-    /// See [`Sha256Digest::from_str_fmt`].
+    /// See [`Sha256Digest::from_str_fmt`](super::Sha256Digest::from_str_fmt).
     #[derive(Debug, thiserror::Error)]
     #[error("cannot parse string as sha256 digest")]
     pub struct InvalidDigest;
@@ -798,7 +798,7 @@ pub mod error {
     /// Certificate SANs are not valid DNS.
     ///
     /// This error might happen during self signed certificate generation
-    /// [`Identity::self_signed`].
+    /// [`Identity::self_signed`](super::Identity::self_signed).
     /// In particular, *Subject Alternative Names* passed for the generation of the
     /// certificate are not valid DNS *IA5* strings.
     ///
