@@ -158,6 +158,9 @@ impl CertificateChain {
     }
 
     /// Loads a certificate chain from a PEM-encoded file.
+    ///
+    /// Filters out any PEM sections that are not certificates and yields error
+    /// if a problem occurs while trying to parse any certificate.
     pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
         let file_data = tokio::fs::read(filepath.as_ref())
             .await
