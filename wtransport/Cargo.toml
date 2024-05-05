@@ -1,6 +1,6 @@
 [package]
 name = "wtransport"
-version = "0.1.12"
+version = "0.1.13"
 license = "MIT OR Apache-2.0"
 authors = ["Biagio Festa"]
 description = "Implementation of the WebTransport (over HTTP3) protocol"
@@ -44,7 +44,7 @@ time = { version = "0.3.21", optional = true }
 tokio = { version = "1.28.1", default-features = false, features = ["macros", "fs", "io-util"] }
 tracing = "0.1.37"
 url = "2.4.0"
-wtransport-proto = { version = "0.1.12", path = "../wtransport-proto", features = ["async"] }
+wtransport-proto = { version = "0.1.13", path = "../wtransport-proto", features = ["async"] }
 x509-parser = "0.16.0"
 
 [dev-dependencies]
