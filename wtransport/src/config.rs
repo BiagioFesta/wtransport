@@ -192,6 +192,7 @@ pub struct InvalidIdleTimeout;
 /// - [`max_idle_timeout`](ServerConfigBuilder::max_idle_timeout)
 /// - [`keep_alive_interval`](ServerConfigBuilder::keep_alive_interval)
 /// - [`allow_migration`](ServerConfigBuilder::allow_migration)
+/// - [`enable_key_log`](ServerConfigBuilder::enable_key_log)
 ///
 /// #### Examples:
 /// ```
@@ -445,6 +446,14 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
         self.0.migration = value;
         self
     }
+
+    /// Writes key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
+    ///
+    /// Disabled by default.
+    pub fn enable_key_log(mut self) -> Self {
+        self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
+        self
+    }
 }
 
 /// Client configuration.
@@ -520,6 +529,7 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 /// - [`max_idle_timeout`](ClientConfigBuilder::max_idle_timeout)
 /// - [`keep_alive_interval`](ClientConfigBuilder::keep_alive_interval)
 /// - [`dns_resolver`](ClientConfigBuilder::dns_resolver)
+/// - [`enable_key_log`](ClientConfigBuilder::enable_key_log)
 ///
 /// #### Examples:
 /// ```
@@ -834,6 +844,8 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     }
 
     /// Writes key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
+    ///
+    /// Disabled by default.
     pub fn enable_key_log(mut self) -> Self {
         self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
         self
