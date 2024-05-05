@@ -3,12 +3,12 @@ use error::InvalidDigest;
 use error::PemLoadError;
 use pem::encode as pem_encode;
 use pem::Pem;
-use ring::digest::digest;
-use ring::digest::SHA256;
 use rustls::RootCertStore;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::PrivateKeyDer;
 use rustls_pki_types::PrivatePkcs8KeyDer;
+use sha2::Digest;
+use sha2::Sha256;
 use std::fmt::Debug;
 use std::fmt::Display;
 use std::path::Path;
@@ -60,12 +60,10 @@ impl Certificate {
     ///
     /// [`WebTransportOptions.serverCertificateHashes`]: https://www.w3.org/TR/webtransport/#dom-webtransportoptions-servercertificatehashes
     pub fn hash(&self) -> Sha256Digest {
-        Sha256Digest(
-            digest(&SHA256, &self.0)
-                .as_ref()
-                .try_into()
-                .expect("SHA256 digest is 32 bytes len"),
-        )
+        // TODO(biagio): you might consider use crypto provider from new rustls version
+        let mut sha256 = Sha256::new();
+        sha256.update(self.der());
+        Sha256Digest(sha256.finalize().into())
     }
 }
 
