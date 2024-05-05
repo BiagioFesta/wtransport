@@ -30,6 +30,43 @@ impl Certificate {
         Ok(Self(CertificateDer::from(der)))
     }
 
+    /// Loads the *first* certificate found in a PEM-encoded file.
+    ///
+    /// Filters out any PEM sections that are not certificate.
+    ///
+    /// Returns a [`PemLoadError::NoCertificateSection`] if no certificate is found in the file.
+    pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
+        let file_data = tokio::fs::read(filepath.as_ref())
+            .await
+            .map_err(|io_error| PemLoadError::FileError {
+                file: filepath.as_ref().to_path_buf(),
+                error: io_error,
+            })?;
+
+        let cert = rustls_pemfile::certs(&mut &*file_data)
+            .next()
+            .ok_or(PemLoadError::NoCertificateSection)?
+            .map_err(|io_error| PemLoadError::FileError {
+                file: filepath.as_ref().to_path_buf(),
+                error: io_error,
+            })?;
+
+        Ok(Self(cert))
+    }
+
+    /// Stores the certificate in PEM format into a file asynchronously.
+    ///
+    /// If the file does not exist, it will be created. If the file exists, its contents
+    /// will be truncated before writing.
+    pub async fn store_pemfile(&self, filepath: impl AsRef<Path>) -> std::io::Result<()> {
+        use tokio::io::AsyncWriteExt;
+
+        let mut file = tokio::fs::File::create(filepath).await?;
+        file.write_all(self.to_pem().as_bytes()).await?;
+
+        Ok(())
+    }
+
     /// Returns a reference to the DER-encoded binary data of the certificate.
     pub fn der(&self) -> &[u8] {
         &self.0
@@ -777,6 +814,10 @@ pub mod error {
         /// Cannot load the private key as the PEM file does not contain it.
         #[error("no private key section found in PEM file")]
         NoPrivateKeySection,
+
+        /// Cannot load the certificate as the PEM file does not contain it.
+        #[error("no certificate section found in PEM file")]
+        NoCertificateSection,
 
         /// I/O operation encoding/decoding PEM file failed.
         #[error("error on file '{}': {}", .file.display(), error)]
