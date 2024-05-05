@@ -19,25 +19,25 @@ enum ParseError {
 /// Settings IDs for an HTTP3 connection.
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
 pub enum SettingId {
-    /// SETTINGS_QPACK_MAX_TABLE_CAPACITY.
+    /// `SETTINGS_QPACK_MAX_TABLE_CAPACITY`.
     QPackMaxTableCapacity,
 
-    /// SETTINGS_MAX_FIELD_SECTION_SIZE.
+    /// `SETTINGS_MAX_FIELD_SECTION_SIZE`.
     MaxFieldSectionSize,
 
-    /// SETTINGS_QPACK_BLOCKED_STREAMS.
+    /// `SETTINGS_QPACK_BLOCKED_STREAMS`.
     QPackBlockedStreams,
 
-    /// SETTINGS_ENABLE_CONNECT_PROTOCOL.
+    /// `SETTINGS_ENABLE_CONNECT_PROTOCOL`.
     EnableConnectProtocol,
 
-    /// SETTINGS_H3_DATAGRAM.
+    /// `SETTINGS_H3_DATAGRAM`.
     H3Datagram,
 
-    /// SETTINGS_ENABLE_WEBTRANSPORT.
+    /// `SETTINGS_ENABLE_WEBTRANSPORT`.
     EnableWebTransport,
 
-    /// WEBTRANSPORT_MAX_SESSIONS.
+    /// `WEBTRANSPORT_MAX_SESSIONS`.
     WebTransportMaxSessions,
 
     /// Exercise setting.

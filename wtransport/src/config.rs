@@ -68,13 +68,13 @@ pub enum IpBindConfig {
     /// Bind to LOCALHOST both IPv4 and IPv6 address (dual stack, if supported).
     LocalDual,
 
-    /// Bind to INADDR_ANY IPv4 address (no IPv6).
+    /// Bind to `INADDR_ANY` IPv4 address (no IPv6).
     InAddrAnyV4,
 
-    /// Bind to INADDR_ANY IPv6 address (no IPv4).
+    /// Bind to `INADDR_ANY` IPv6 address (no IPv4).
     InAddrAnyV6,
 
-    /// Bind to INADDR_ANY both IPv4 and IPv6 address (dual stack, if supported).
+    /// Bind to `INADDR_ANY` both IPv4 and IPv6 address (dual stack, if supported).
     InAddrAnyDual,
 }
 

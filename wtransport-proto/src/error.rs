@@ -6,49 +6,49 @@ use std::fmt::Formatter;
 /// HTTP3 protocol errors.
 #[derive(Clone, Copy)]
 pub enum ErrorCode {
-    /// H3_DATAGRAM_ERROR.
+    /// `H3_DATAGRAM_ERROR`.
     Datagram,
 
-    /// H3_NO_ERROR.
+    /// `H3_NO_ERROR`.
     NoError,
 
-    /// H3_STREAM_CREATION_ERROR.
+    /// `H3_STREAM_CREATION_ERROR`.
     StreamCreation,
 
-    /// H3_CLOSED_CRITICAL_STREAM.
+    /// `H3_CLOSED_CRITICAL_STREAM`.
     ClosedCriticalStream,
 
-    /// H3_FRAME_UNEXPECTED.
+    /// `H3_FRAME_UNEXPECTED`.
     FrameUnexpected,
 
-    /// H3_FRAME_ERROR.
+    /// `H3_FRAME_ERROR`.
     Frame,
 
-    /// H3_EXCESSIVE_LOAD.
+    /// `H3_EXCESSIVE_LOAD`.
     ExcessiveLoad,
 
-    /// H3_ID_ERROR.
+    /// `H3_ID_ERROR`.
     Id,
 
-    /// H3_SETTINGS_ERROR.
+    /// `H3_SETTINGS_ERROR`.
     Settings,
 
-    /// H3_MISSING_SETTINGS.
+    /// `H3_MISSING_SETTINGS`.
     MissingSettings,
 
-    /// H3_REQUEST_REJECTED.
+    /// `H3_REQUEST_REJECTED`.
     RequestRejected,
 
-    /// H3_MESSAGE_ERROR.
+    /// `H3_MESSAGE_ERROR`.
     Message,
 
-    /// QPACK_DECOMPRESSION_FAILED.
+    /// `QPACK_DECOMPRESSION_FAILED`.
     Decompression,
 
-    /// WEBTRANSPORT_BUFFERED_STREAM_REJECTED.
+    /// `WEBTRANSPORT_BUFFERED_STREAM_REJECTED`.
     BufferedStreamRejected,
 
-    /// WEBTRANSPORT_SESSION_GONE.
+    /// `WEBTRANSPORT_SESSION_GONE`.
     SessionGone,
 }
 
