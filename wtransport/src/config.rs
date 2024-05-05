@@ -665,6 +665,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
 
         self.with_custom_tls(build_default_tls_config(
             Arc::new(build_native_cert_store()),
+            None,
         ))
     }
 
@@ -722,10 +723,10 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         use crate::tls::client::NoServerVerification;
         use rustls::RootCertStore;
 
-        let mut tls_config = build_default_tls_config(Arc::new(RootCertStore::empty()));
-        tls_config
-            .dangerous()
-            .set_certificate_verifier(Arc::new(NoServerVerification::new()));
+        let tls_config = build_default_tls_config(
+            Arc::new(RootCertStore::empty()),
+            Some(Arc::new(NoServerVerification::new())),
+        );
 
         let transport_config = TransportConfig::default();
 
@@ -768,11 +769,10 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         use crate::tls::client::ServerHashVerification;
         use rustls::RootCertStore;
 
-        let mut tls_config = build_default_tls_config(Arc::new(RootCertStore::empty()));
-
-        tls_config
-            .dangerous()
-            .set_certificate_verifier(Arc::new(ServerHashVerification::new(hashes)));
+        let tls_config = build_default_tls_config(
+            Arc::new(RootCertStore::empty()),
+            Some(Arc::new(ServerHashVerification::new(hashes))),
+        );
 
         let transport_config = TransportConfig::default();
 

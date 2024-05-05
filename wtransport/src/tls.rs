@@ -633,6 +633,9 @@ pub mod client {
     /// This function constructs a TLS client configuration with safe defaults.
     /// It utilizes the provided `RootCertStore` to validate server certificates during the TLS handshake.
     ///
+    /// If a custom [`ServerCertVerifier`] is provided, it will be used for certificate validation; otherwise,
+    /// it will use the standard safe default mechanism (using the Web PKI mechanism).
+    ///
     /// Client authentication is not required in this configuration.
     ///
     /// # Arguments
@@ -640,7 +643,18 @@ pub mod client {
     /// - `root_store`: An `Arc` containing the [`RootCertStore`] with trusted root certificates.
     ///                 To obtain a `RootCertStore`, one can use the [`build_native_cert_store`]
     ///                 function, which loads the platform's certificate authorities (CAs).
-    pub fn build_default_tls_config(root_store: Arc<RootCertStore>) -> TlsClientConfig {
+    /// - `custom_verifier`: An optional `Arc` containing a custom implementation of the [`ServerCertVerifier`]
+    ///                      trait for custom certificate verification. If `None` is provided, the default
+    ///                      Web PKI mechanism will be used.
+    ///
+    /// # Note
+    ///
+    /// If a custom `ServerCertVerifier` is provided, exercise caution as it could potentially compromise the
+    /// certificate validation process if not implemented correctly.
+    pub fn build_default_tls_config(
+        root_store: Arc<RootCertStore>,
+        custom_verifier: Option<Arc<dyn ServerCertVerifier>>,
+    ) -> TlsClientConfig {
         let mut config = TlsClientConfig::builder()
             .with_safe_default_cipher_suites()
             .with_safe_default_kx_groups()
@@ -648,6 +662,10 @@ pub mod client {
             .expect("Safe protocols should not error")
             .with_root_certificates(root_store)
             .with_no_client_auth();
+
+        if let Some(custom_verifier) = custom_verifier {
+            config.dangerous().set_certificate_verifier(custom_verifier);
+        }
 
         config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
         config
