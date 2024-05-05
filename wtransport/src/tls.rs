@@ -85,7 +85,7 @@ impl PrivateKey {
         PrivateKey(PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(der)))
     }
 
-    /// Loads the first private key found in a PEM-encoded file.
+    /// Loads the *first* private key found in a PEM-encoded file.
     ///
     /// Filters out any PEM sections that are not private key.
     ///
