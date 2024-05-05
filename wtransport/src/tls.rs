@@ -775,7 +775,7 @@ pub mod error {
         #[error("no private key section found in PEM file")]
         NoPrivateKeySection,
 
-        /// Load operation failed because I/O operation on file.
+        /// I/O operation encoding/decoding PEM file failed.
         #[error("error on file '{}': {}", .file.display(), error)]
         FileError {
             /// Filename of the operation.
