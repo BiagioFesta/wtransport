@@ -92,6 +92,8 @@ impl PrivateKey {
 
     /// Loads the first private key found in a PEM-encoded file.
     ///
+    /// Filters out any PEM sections that are not private key.
+    ///
     /// Returns a [`PemLoadError::InvalidPrivateKey`] if no private key is found in the file.
     pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
         let file_data = tokio::fs::read(filepath.as_ref())
