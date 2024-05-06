@@ -98,9 +98,7 @@ impl Certificate {
     /// [`WebTransportOptions.serverCertificateHashes`]: https://www.w3.org/TR/webtransport/#dom-webtransportoptions-servercertificatehashes
     pub fn hash(&self) -> Sha256Digest {
         // TODO(biagio): you might consider use crypto provider from new rustls version
-        let mut sha256 = Sha256::new();
-        sha256.update(self.der());
-        Sha256Digest(sha256.finalize().into())
+        Sha256Digest(Sha256::digest(self.der()).into())
     }
 }
 
