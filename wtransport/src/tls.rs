@@ -1,12 +1,13 @@
 use error::InvalidCertificate;
 use error::InvalidDigest;
+use error::InvalidPrivateKey;
 use error::PemLoadError;
 use pem::encode as pem_encode;
 use pem::Pem;
+use rustls::pki_types::CertificateDer;
+use rustls::pki_types::PrivateKeyDer;
+use rustls::pki_types::PrivatePkcs8KeyDer;
 use rustls::RootCertStore;
-use rustls_pki_types::CertificateDer;
-use rustls_pki_types::PrivateKeyDer;
-use rustls_pki_types::PrivatePkcs8KeyDer;
 use sha2::Digest;
 use sha2::Sha256;
 use std::fmt::Debug;
@@ -38,18 +39,12 @@ impl Certificate {
     pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
         let file_data = tokio::fs::read(filepath.as_ref())
             .await
-            .map_err(|io_error| PemLoadError::FileError {
-                file: filepath.as_ref().to_path_buf(),
-                error: io_error,
-            })?;
+            .map_err(PemLoadError::ParseFileError)?;
 
         let cert = rustls_pemfile::certs(&mut &*file_data)
             .next()
             .ok_or(PemLoadError::NoCertificateSection)?
-            .map_err(|io_error| PemLoadError::FileError {
-                file: filepath.as_ref().to_path_buf(),
-                error: io_error,
-            })?;
+            .map_err(PemLoadError::ParseFileError)?;
 
         Ok(Self(cert))
     }
@@ -97,8 +92,7 @@ impl Certificate {
     ///
     /// [`WebTransportOptions.serverCertificateHashes`]: https://www.w3.org/TR/webtransport/#dom-webtransportoptions-servercertificatehashes
     pub fn hash(&self) -> Sha256Digest {
-        // TODO(biagio): you might consider use crypto provider from new rustls version
-        Sha256Digest(Sha256::digest(self.der()).into())
+        compute_sha256sum(self.der())
     }
 }
 
@@ -115,9 +109,11 @@ impl Debug for Certificate {
 pub struct PrivateKey(PrivateKeyDer<'static>);
 
 impl PrivateKey {
-    /// Constructs a new `PrivateKey` from DER-encoded PKCS#8 binary data.
-    pub fn from_der_pkcs8(der: Vec<u8>) -> Self {
-        PrivateKey(PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(der)))
+    /// Constructs a new `PrivateKey` from DER-encoded binary data.
+    pub fn from_der(der: Vec<u8>) -> Result<Self, InvalidPrivateKey> {
+        Ok(PrivateKey(
+            PrivateKeyDer::try_from(der).map_err(|error| InvalidPrivateKey(error.to_string()))?,
+        ))
     }
 
     /// Loads the *first* private key found in a PEM-encoded file.
@@ -128,19 +124,12 @@ impl PrivateKey {
     pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
         let file_data = tokio::fs::read(filepath.as_ref())
             .await
-            .map_err(|io_error| PemLoadError::FileError {
-                file: filepath.as_ref().to_path_buf(),
-                error: io_error,
-            })?;
+            .map_err(PemLoadError::ParseFileError)?;
 
-        let private_key = rustls_pemfile::private_key(&mut &*file_data)
-            .map_err(|io_error| PemLoadError::FileError {
-                file: filepath.as_ref().to_path_buf(),
-                error: io_error,
-            })?
-            .map(Self);
-
-        private_key.ok_or(PemLoadError::NoPrivateKeySection)
+        rustls_pemfile::private_key(&mut &*file_data)
+            .map_err(PemLoadError::ParseFileError)?
+            .ok_or(PemLoadError::NoPrivateKeySection)
+            .map(Self)
     }
 
     /// Stores the private key in PEM format into a file asynchronously.
@@ -197,20 +186,12 @@ impl CertificateChain {
     pub async fn load_pemfile(filepath: impl AsRef<Path>) -> Result<Self, PemLoadError> {
         let file_data = tokio::fs::read(filepath.as_ref())
             .await
-            .map_err(|io_error| PemLoadError::FileError {
-                file: filepath.as_ref().to_path_buf(),
-                error: io_error,
-            })?;
+            .map_err(PemLoadError::ParseFileError)?;
 
         let certificates = rustls_pemfile::certs(&mut &*file_data)
-            .enumerate()
-            .map(|(index, maybe_cert)| match maybe_cert {
-                Ok(cert) => Certificate::from_der(cert.to_vec())
-                    .map_err(|error| PemLoadError::InvalidCertificateChain { index, error }),
-                Err(io_error) => Err(PemLoadError::FileError {
-                    file: filepath.as_ref().to_path_buf(),
-                    error: io_error,
-                }),
+            .map(|maybe_cert| match maybe_cert {
+                Ok(cert) => Ok(Certificate(cert)),
+                Err(io_error) => Err(PemLoadError::ParseFileError(io_error)),
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -349,8 +330,10 @@ impl Identity {
             .expect("inner params are valid");
 
         Ok(Self::new(
-            CertificateChain::single(Certificate(cert.der().clone())),
-            PrivateKey::from_der_pkcs8(key_pair.serialize_der()),
+            CertificateChain::single(Certificate(cert.into())),
+            PrivateKey(PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+                key_pair.serialize_der(),
+            ))),
         ))
     }
 
@@ -572,13 +555,17 @@ pub fn build_native_cert_store() -> RootCertStore {
     match rustls_native_certs::load_native_certs() {
         Ok(certs) => {
             for c in certs {
-                let _ = root_store.add(&rustls::Certificate(c.0));
+                let _ = root_store.add(c);
             }
         }
         Err(_error) => {}
     }
 
     root_store
+}
+
+fn compute_sha256sum(data: impl AsRef<[u8]>) -> Sha256Digest {
+    Sha256Digest(Sha256::digest(data).into())
 }
 
 /// TLS configurations and utilities server-side.
@@ -597,20 +584,19 @@ pub mod server {
     /// # Arguments
     ///
     /// - `identity`: A reference to the identity containing the certificate chain and private key.
-    pub fn build_default_tls_config(identity: &Identity) -> TlsServerConfig {
-        let certificates = identity
-            .certificate_chain()
-            .as_slice()
-            .iter()
-            .map(|cert| rustls::Certificate(cert.der().to_vec()))
+    pub fn build_default_tls_config(identity: Identity) -> TlsServerConfig {
+        let cert_chain = identity
+            .certificate_chain
+            .0
+            .into_iter()
+            .map(|cert| cert.0)
             .collect();
 
-        let private_key = rustls::PrivateKey(identity.private_key().secret_der().to_vec());
+        let private_key = identity.private_key.0;
 
         let mut tls_config = TlsServerConfig::builder()
-            .with_safe_defaults()
             .with_no_client_auth()
-            .with_single_cert(certificates, private_key)
+            .with_single_cert(cert_chain, private_key)
             .expect("Certificate and private key should be already validated");
 
         tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
@@ -622,9 +608,22 @@ pub mod server {
 /// TLS configurations and utilities client-side.
 pub mod client {
     use super::*;
-    use rustls::client::ServerCertVerified;
-    use rustls::client::ServerCertVerifier;
+    use rustls::client::danger::HandshakeSignatureValid;
+    use rustls::client::danger::ServerCertVerified;
+    use rustls::client::danger::ServerCertVerifier;
+    use rustls::crypto::verify_tls12_signature;
+    use rustls::crypto::verify_tls13_signature;
+    use rustls::crypto::CryptoProvider;
+    use rustls::pki_types::ServerName;
+    use rustls::pki_types::UnixTime;
     use rustls::ClientConfig as TlsClientConfig;
+    use rustls::DigitallySignedStruct;
+    use rustls::SignatureScheme;
+    use std::collections::BTreeSet;
+    use time::Duration;
+    use x509_parser::oid_registry::OID_EC_P256;
+    use x509_parser::oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY;
+    use x509_parser::time::ASN1Time;
 
     /// Builds a default TLS client configuration with safe defaults.
     ///
@@ -654,10 +653,6 @@ pub mod client {
         custom_verifier: Option<Arc<dyn ServerCertVerifier>>,
     ) -> TlsClientConfig {
         let mut config = TlsClientConfig::builder()
-            .with_safe_default_cipher_suites()
-            .with_safe_default_kx_groups()
-            .with_safe_default_protocol_versions()
-            .expect("Safe protocols should not error")
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
@@ -675,7 +670,7 @@ pub mod client {
     ///
     /// Therefore, it's advisable to use it judiciously, and avoid using it in
     /// production environments.
-    #[derive(Default)]
+    #[derive(Debug, Default)]
     pub struct NoServerVerification {}
 
     impl NoServerVerification {
@@ -688,14 +683,38 @@ pub mod client {
     impl ServerCertVerifier for NoServerVerification {
         fn verify_server_cert(
             &self,
-            _end_entity: &rustls::Certificate,
-            _intermediates: &[rustls::Certificate],
-            _server_name: &rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _end_entity: &CertificateDer<'_>,
+            _intermediates: &[CertificateDer<'_>],
+            _server_name: &ServerName<'_>,
             _ocsp_response: &[u8],
-            _now: std::time::SystemTime,
+            _now: UnixTime,
         ) -> Result<ServerCertVerified, rustls::Error> {
             Ok(ServerCertVerified::assertion())
+        }
+
+        fn verify_tls12_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, rustls::Error> {
+            Ok(HandshakeSignatureValid::assertion())
+        }
+
+        fn verify_tls13_signature(
+            &self,
+            _message: &[u8],
+            _cert: &CertificateDer<'_>,
+            _dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, rustls::Error> {
+            Ok(HandshakeSignatureValid::assertion())
+        }
+
+        fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+            CryptoProvider::get_default()
+                .expect("default crypto provider has been initialized")
+                .signature_verification_algorithms
+                .supported_schemes()
         }
     }
 
@@ -715,12 +734,13 @@ pub mod client {
     /// - The current time MUST be within the validity period of the certificate.
     /// - The total length of the validity period MUST NOT exceed *two* weeks.
     /// - Only certificates for which the public key algorithm is *ECDSA* with the *secp256r1* are accepted.
+    #[derive(Debug)]
     pub struct ServerHashVerification {
-        hashes: std::collections::BTreeSet<Sha256Digest>,
+        hashes: BTreeSet<Sha256Digest>,
     }
 
     impl ServerHashVerification {
-        const SELF_MAX_VALIDITY: time::Duration = time::Duration::days(14);
+        const SELF_MAX_VALIDITY: Duration = Duration::days(14);
 
         /// Creates a new instance of `ServerHashVerification`.
         ///
@@ -732,8 +752,6 @@ pub mod client {
         where
             H: IntoIterator<Item = Sha256Digest>,
         {
-            use std::collections::BTreeSet;
-
             Self {
                 hashes: BTreeSet::from_iter(hashes),
             }
@@ -743,21 +761,15 @@ pub mod client {
     impl ServerCertVerifier for ServerHashVerification {
         fn verify_server_cert(
             &self,
-            end_entity: &rustls::Certificate,
-            _intermediates: &[rustls::Certificate],
-            _server_name: &rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
+            end_entity: &CertificateDer<'_>,
+            _intermediates: &[CertificateDer<'_>],
+            _server_name: &ServerName<'_>,
             _ocsp_response: &[u8],
-            now: std::time::SystemTime,
+            now: UnixTime,
         ) -> Result<ServerCertVerified, rustls::Error> {
-            use time::OffsetDateTime;
-            use x509_parser::oid_registry::OID_EC_P256;
-            use x509_parser::oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY;
-            use x509_parser::time::ASN1Time;
+            let now = ASN1Time::from_timestamp(now.as_secs() as i64).expect("valid timestamp");
 
-            let now = ASN1Time::new(OffsetDateTime::from(now));
-
-            let x509 = X509Certificate::from_der(&end_entity.0)
+            let x509 = X509Certificate::from_der(&end_entity)
                 .map_err(|_| rustls::CertificateError::BadEncoding)?
                 .1;
 
@@ -786,9 +798,7 @@ pub mod client {
                 return Err(rustls::CertificateError::UnknownIssuer.into());
             }
 
-            let end_entity_hash = crate::tls::Certificate::from_der(end_entity.0.to_vec())
-                .map_err(|_| rustls::CertificateError::BadEncoding)?
-                .hash();
+            let end_entity_hash = compute_sha256sum(end_entity);
 
             if self.hashes.contains(&end_entity_hash) {
                 Ok(ServerCertVerified::assertion())
@@ -796,17 +806,53 @@ pub mod client {
                 Err(rustls::CertificateError::UnknownIssuer.into())
             }
         }
+
+        fn verify_tls12_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, rustls::Error> {
+            let supported_schemes = &CryptoProvider::get_default()
+                .expect("default crypto provider has been initialized")
+                .signature_verification_algorithms;
+
+            verify_tls12_signature(message, cert, dss, supported_schemes)
+        }
+
+        fn verify_tls13_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &DigitallySignedStruct,
+        ) -> Result<HandshakeSignatureValid, rustls::Error> {
+            let supported_schemes = &CryptoProvider::get_default()
+                .expect("default crypto provider has been initialized")
+                .signature_verification_algorithms;
+
+            verify_tls13_signature(message, cert, dss, supported_schemes)
+        }
+
+        fn supported_verify_schemes(&self) -> Vec<SignatureScheme> {
+            CryptoProvider::get_default()
+                .expect("default crypto provider has been initialized")
+                .signature_verification_algorithms
+                .supported_schemes()
+        }
     }
 }
 
 /// TLS errors definitions module.
 pub mod error {
-    use std::path::PathBuf;
-
     /// Represents an error indicating an invalid certificate parsing.
     #[derive(Debug, thiserror::Error)]
     #[error("invalid certificate: {0}")]
     pub struct InvalidCertificate(pub(super) String);
+
+    /// Represents an error indicating an invalid private key parsing.
+    #[derive(Debug, thiserror::Error)]
+    #[error("invalid private key: {0}")]
+    pub struct InvalidPrivateKey(pub(super) String);
 
     /// Represents an error failure to parse a string as a [`Sha256Digest`](super::Sha256Digest).
     ///
@@ -818,15 +864,6 @@ pub mod error {
     /// Error during PEM load operation.
     #[derive(Debug, thiserror::Error)]
     pub enum PemLoadError {
-        /// Invalid certificate during chain load.
-        #[error("invalid certificate in the PEM chain (index: {}): {}", .index, .error)]
-        InvalidCertificateChain {
-            /// The index of the certificate in the PEM file.
-            index: usize,
-            /// Additional error information.
-            error: InvalidCertificate,
-        },
-
         /// Cannot load the private key as the PEM file does not contain it.
         #[error("no private key section found in PEM file")]
         NoPrivateKeySection,
@@ -836,14 +873,8 @@ pub mod error {
         NoCertificateSection,
 
         /// I/O operation encoding/decoding PEM file failed.
-        #[error("error on file '{}': {}", .file.display(), error)]
-        FileError {
-            /// Filename of the operation.
-            file: PathBuf,
-
-            /// io error details.
-            error: std::io::Error,
-        },
+        #[error("error parsing PEM file: {0}")]
+        ParseFileError(std::io::Error),
     }
 
     /// Certificate SANs are not valid DNS.
