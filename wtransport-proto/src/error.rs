@@ -4,7 +4,7 @@ use std::fmt::Display;
 use std::fmt::Formatter;
 
 /// HTTP3 protocol errors.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum ErrorCode {
     /// `H3_DATAGRAM_ERROR`.
     Datagram,
