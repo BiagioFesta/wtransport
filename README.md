@@ -5,7 +5,7 @@
 [![Documentation](https://docs.rs/wtransport/badge.svg)](https://docs.rs/wtransport/)
 [![Crates.io](https://img.shields.io/crates/v/wtransport.svg)](https://crates.io/crates/wtransport)
 [![CI](https://github.com/BiagioFesta/wtransport/actions/workflows/ci.yml/badge.svg)](https://github.com/BiagioFesta/wtransport/actions/workflows/ci.yml)
-[![Chat](https://img.shields.io/discord/1129404651234676858?logo=discord)](https://discord.gg/XYnwCtfzGp)
+[![Chat](https://img.shields.io/discord/1129404651234676858?logo=discord)](https://discord.gg/KPrrbWe5zg)
 [![Zulip chat](https://img.shields.io/badge/zulip-join_chat-brightgreen.svg)](https://wtransport.zulipchat.com/)
 
 # WTransport
