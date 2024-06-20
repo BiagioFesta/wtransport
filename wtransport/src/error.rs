@@ -7,7 +7,7 @@ use std::net::SocketAddr;
 use wtransport_proto::error::ErrorCode;
 
 /// An enumeration representing various errors that can occur during a WebTransport connection.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone, Eq, PartialEq)]
 pub enum ConnectionError {
     /// The connection was aborted by the peer (protocol level).
     #[error("connection aborted by peer: {0}")]
@@ -136,7 +136,7 @@ impl ConnectingError {
 }
 
 /// An error that arise from writing to a stream.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone, Eq, PartialEq)]
 pub enum StreamWriteError {
     /// Connection has been dropped.
     #[error("not connected")]
@@ -152,7 +152,7 @@ pub enum StreamWriteError {
 }
 
 /// An error that arise from reading from a stream.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone, Eq, PartialEq)]
 pub enum StreamReadError {
     /// Connection has been dropped.
     #[error("not connected")]
@@ -168,7 +168,7 @@ pub enum StreamReadError {
 }
 
 /// An error that arise from reading from a stream.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone)]
 pub enum StreamReadExactError {
     /// The stream finished before all bytes were read.
     #[error("stream finished too early")]
@@ -180,7 +180,7 @@ pub enum StreamReadExactError {
 }
 
 /// An error that arise from sending a datagram.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone, Eq, PartialEq)]
 pub enum SendDatagramError {
     /// Connection has been dropped.
     #[error("not connected")]
@@ -196,7 +196,7 @@ pub enum SendDatagramError {
 }
 
 /// An error that arise when opening a new stream.
-#[derive(thiserror::Error, Debug)]
+#[derive(thiserror::Error, Debug, Clone, Eq, PartialEq)]
 pub enum StreamOpeningError {
     /// Connection has been dropped.
     #[error("not connected")]
@@ -208,7 +208,7 @@ pub enum StreamOpeningError {
 }
 
 /// Reason given by an application for closing the connection
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct ApplicationClose {
     code: VarInt,
     reason: Box<[u8]>,
@@ -229,7 +229,7 @@ impl Display for ApplicationClose {
 }
 
 /// Reason given by the transport for closing the connection.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionClose(quinn::ConnectionClose);
 
 impl Display for ConnectionClose {
@@ -239,7 +239,7 @@ impl Display for ConnectionClose {
 }
 
 /// A struct representing an error in the HTTP3 layer.
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct H3Error {
     code: ErrorCode,
 }
@@ -283,7 +283,7 @@ impl From<quinn::ConnectionError> for ConnectionError {
 }
 
 /// A complete specification of an error over QUIC protocol.
-#[derive(Debug)]
+#[derive(Debug, Clone, Eq, PartialEq)]
 pub struct QuicProtoError {
     code: Option<VarInt>,
     reason: Cow<'static, str>,
@@ -303,6 +303,6 @@ impl Display for QuicProtoError {
 /// Error returned by [`Connection::export_keying_material`](crate::Connection::export_keying_material).
 ///
 /// This error occurs if the requested output length is too large.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, Clone, Eq, PartialEq)]
 #[error("cannot derive keying material as requested output length is too large")]
 pub struct ExportKeyingMaterialError;
