@@ -503,13 +503,18 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 ///   configuration as it uses root store installed on the current machine.
 /// - [`with_custom_tls`](ClientConfigBuilder::with_custom_tls): sets the TLS client
 ///   configuration manually.
-/// - [`with_server_certificate_hashes`](ClientConfigBuilder::with_server_certificate_hashes): configures
-///   the client to accept *some* certificates mapped to hashes.
-/// - (**unsafe**) [`with_no_cert_validation`](ClientConfigBuilder::with_no_cert_validation):
+/// - [`with_server_certificate_hashes`][cert_hashes]: configures the client to accept
+///   *some* certificates mapped to hashes. This can be used to connect to self signed
+///   certificates securely, where the hash of the certificate is shared in advance
+///   through some other mechanism (such as an invite link).
+/// - (**insecure**) [`with_no_cert_validation`](ClientConfigBuilder::with_no_cert_validation):
 ///   configure to skip server certificate validation. This might be handy for testing purpose
-///   to accept *self-signed* certificate.
+///   to accept *self-signed* certificate, but you should almost always prefer
+///   [`with_server_certificate_hashes`][cert_hashes] for that use case.
 ///
 /// Only one of these options can be selected during the client configuration process.
+///
+/// [cert_hashes]: ClientConfigBuilder::with_server_certificate_hashes
 ///
 /// #### Examples:
 /// ```
@@ -756,8 +761,6 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     /// - The current time MUST be within the validity period of the certificate.
     /// - The total length of the validity period MUST NOT exceed *two* weeks.
     /// - Only certificates for which the public key algorithm is *ECDSA* with the *secp256r1* are accepted.
-    #[cfg(feature = "dangerous-configuration")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
     pub fn with_server_certificate_hashes<I>(
         self,
         hashes: I,
