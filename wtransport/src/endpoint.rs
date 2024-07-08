@@ -661,14 +661,7 @@ impl SessionRequest {
 
     /// Accepts the client request and it establishes the WebTransport session.
     pub async fn accept(mut self) -> Result<Connection, ConnectionError> {
-        let user_agent = self.user_agent().unwrap_or_default();
-
-        let mut response = SessionResponseProto::ok();
-
-        // Chrome support
-        if !user_agent.contains("firefox") {
-            response.add("sec-webtransport-http3-draft", "draft02");
-        }
+        let response = SessionResponseProto::ok();
 
         self.send_response(response).await?;
 
@@ -703,14 +696,7 @@ impl SessionRequest {
         self.reject(SessionResponseProto::too_many_requests()).await;
     }
 
-    async fn reject(mut self, mut response: SessionResponseProto) {
-        let user_agent = self.user_agent().unwrap_or_default();
-
-        // Chrome support
-        if !user_agent.contains("firefox") {
-            response.add("sec-webtransport-http3-draft", "draft02");
-        }
-
+    async fn reject(mut self, response: SessionResponseProto) {
         let _ = self.send_response(response).await;
         self.stream_session.finish().await;
     }
