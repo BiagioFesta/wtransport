@@ -565,17 +565,14 @@ impl FromStr for Sha256Digest {
 /// all root certificates from the filesystem platform. Therefore, it's advisable to use it
 /// sporadically and judiciously.
 pub fn build_native_cert_store() -> RootCertStore {
+    let _vars_restore_guard = utils::remove_vars_tmp(["SSL_CERT_FILE", "SSL_CERT_DIR"]);
+
     let mut root_store = RootCertStore::empty();
 
-    let _var_restore_guard = utils::remove_var_tmp("SSL_CERT_FILE");
-
-    match rustls_native_certs::load_native_certs() {
-        Ok(certs) => {
-            for c in certs {
-                let _ = root_store.add(&rustls::Certificate(c.0));
-            }
+    if let Ok(certs) = rustls_native_certs::load_native_certs() {
+        for c in certs {
+            let _ = root_store.add(&rustls::Certificate(c.to_vec()));
         }
-        Err(_error) => {}
     }
 
     root_store
@@ -871,28 +868,34 @@ mod utils {
     use std::ffi::OsStr;
     use std::ffi::OsString;
 
-    pub struct VarRestoreGuard {
-        key: OsString,
-        value: Option<OsString>,
-    }
+    pub struct VarsRestoreGuard(Vec<(OsString, Option<OsString>)>);
 
-    impl Drop for VarRestoreGuard {
+    impl Drop for VarsRestoreGuard {
         fn drop(&mut self) {
-            if let Some(value) = self.value.take() {
-                env::set_var(self.key.clone(), value);
+            for (k, v) in std::mem::take(&mut self.0) {
+                if let Some(v) = v {
+                    env::set_var(k, v);
+                }
             }
         }
     }
 
-    pub fn remove_var_tmp<K: AsRef<OsStr>>(key: K) -> VarRestoreGuard {
-        let value = env::var_os(key.as_ref());
+    pub fn remove_vars_tmp<I, K>(keys: I) -> VarsRestoreGuard
+    where
+        I: IntoIterator<Item = K>,
+        K: AsRef<OsStr>,
+    {
+        let table = keys
+            .into_iter()
+            .map(|k| {
+                let k = k.as_ref().to_os_string();
+                let v = env::var_os(&k);
+                env::remove_var(&k);
+                (k, v)
+            })
+            .collect();
 
-        env::remove_var(key.as_ref());
-
-        VarRestoreGuard {
-            key: key.as_ref().to_os_string(),
-            value,
-        }
+        VarsRestoreGuard(table)
     }
 }
 
