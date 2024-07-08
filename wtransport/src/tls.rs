@@ -669,7 +669,7 @@ pub mod client {
         config
     }
 
-    /// A custom **unsafe** [`ServerCertVerifier`] implementation.
+    /// A custom **insecure** [`ServerCertVerifier`] implementation.
     ///
     /// This verifier is configured to skip all server's certificate validation.
     ///
