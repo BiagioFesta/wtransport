@@ -120,7 +120,7 @@ cd wtransport/
 
 The [`examples/full.rs`](wtransport/examples/full.rs) is a minimal but complete server example that demonstrates the usage of WebTransport.
 
-You can run this example using *Cargo*, Rust's package manager, with the following command:
+You can run this example using [*Cargo*](https://rustup.rs/), Rust's package manager, with the following command:
 ```bash
 cargo run --example full
 ```
