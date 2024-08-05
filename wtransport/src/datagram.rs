@@ -1,6 +1,7 @@
 use crate::SessionId;
 use bytes::Bytes;
 use std::ops::Deref;
+use tracing::info;
 use wtransport_proto::datagram::Datagram as H3Datagram;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::ids::QStreamId;
@@ -24,6 +25,8 @@ impl Datagram {
         let h3dgram = H3Datagram::read(&quic_dgram)?;
         let payload_offset = quic_dgram.len() - h3dgram.payload().len();
         let session_id = h3dgram.qstream_id().into_session_id();
+
+        info!("howdy");
 
         Ok(Self {
             quic_dgram,
