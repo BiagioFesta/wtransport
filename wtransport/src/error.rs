@@ -228,6 +228,18 @@ impl Display for ApplicationClose {
     }
 }
 
+impl ApplicationClose {
+    /// Application-specific code for close operation.
+    pub fn code(&self) -> VarInt {
+        self.code
+    }
+
+    /// Data containing the reason for closing operation.
+    pub fn reason(&self) -> &[u8] {
+        &self.reason
+    }
+}
+
 /// Reason given by the transport for closing the connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConnectionClose(quinn::ConnectionClose);
