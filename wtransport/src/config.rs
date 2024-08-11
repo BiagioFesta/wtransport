@@ -59,6 +59,11 @@ pub type TlsServerConfig = crate::tls::rustls::ServerConfig;
 /// Alias of [`crate::tls::rustls::ClientConfig`].
 pub type TlsClientConfig = crate::tls::rustls::ClientConfig;
 
+/// Alias of [`crate::quinn::TransportConfig`].
+#[cfg(feature = "quinn")]
+#[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+pub type QuicTransportConfig = crate::quinn::TransportConfig;
+
 /// Configuration for IP address socket bind.
 #[derive(Debug, Copy, Clone)]
 pub enum IpBindConfig {
@@ -380,6 +385,111 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         let transport_config = TransportConfig::default();
 
+        ServerConfigBuilder(states::WantsTransportConfigServer {
+            bind_address: self.0.bind_address,
+            dual_stack_config: self.0.dual_stack_config,
+            tls_config,
+            transport_config,
+            migration: true,
+        })
+    }
+
+    /// Configures the server with a custom transport configuration and a default TLS setup
+    /// using the provided [`Identity`].
+    ///
+    /// This method is useful for scenarios where you need to customize the transport settings
+    /// while relying on a default TLS configuration built from an [`Identity`]. It gives you
+    /// control over the transport layer while maintaining safe and standard TLS settings.
+    ///
+    /// **See**: [`with_identity`] for a simpler configuration option that does not require custom transport settings.
+    ///
+    /// # Parameters
+    ///
+    /// - `identity`: A reference to an [`Identity`] that contains the server's certificate and
+    ///   private key. This will be used to generate the default TLS configuration.
+    /// - `transport_config`: A custom [`TransportConfig`] instance that allows you to specify
+    ///   various transport-layer settings according to your requirements.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use wtransport::{Identity, ServerConfig, quinn::TransportConfig};
+    ///
+    /// // Load the server identity (certificate and private key)
+    /// let identity = Identity::self_signed(["localhost", "127.0.0.1", "::1"]).unwrap();
+    ///
+    /// // Create a custom TransportConfig with specific settings
+    /// let mut custom_transport_config = TransportConfig::default();
+    /// custom_transport_config.datagram_send_buffer_size(1024);
+    ///
+    /// // Create a ServerConfigBuilder with the custom transport configuration and default TLS settings
+    /// let server_config = ServerConfig::builder()
+    ///     .with_bind_default(4433)
+    ///     .with_custom_transport(&identity, custom_transport_config)
+    ///     .build();
+    /// ```
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn with_custom_transport(
+        self,
+        identity: &Identity,
+        transport_config: QuicTransportConfig,
+    ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
+        use crate::tls::server::build_default_tls_config;
+
+        ServerConfigBuilder(states::WantsTransportConfigServer {
+            bind_address: self.0.bind_address,
+            dual_stack_config: self.0.dual_stack_config,
+            tls_config: build_default_tls_config(identity),
+            transport_config,
+            migration: true,
+        })
+    }
+
+    /// Configures the server with both a custom TLS configuration and a custom transport
+    /// configuration.
+    ///
+    /// This method is designed for advanced users who require full control over both the TLS
+    /// and transport settings. It allows you to pass a preconfigured [`TlsServerConfig`] and
+    /// a custom [`TransportConfig`] to fine-tune both layers of the server configuration.
+    ///
+    /// **See**: [`with_identity`] for a simpler configuration option that does not require custom transport settings.
+    ///
+    /// # Parameters
+    ///
+    /// - `tls_config`: A custom [`TlsServerConfig`] instance that allows you to specify
+    ///   detailed TLS settings, such as ciphersuites, certificate verification, and more.
+    /// - `transport_config`: A custom [`TransportConfig`] instance that allows you to specify
+    ///   various transport-layer settings according to your requirements.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use wtransport::{ServerConfig, quinn::TransportConfig, tls::rustls};
+    ///
+    /// // Create a custom TLS configuration with specific settings
+    /// let custom_tls_config = rustls::ServerConfig::builder()
+    ///     .with_safe_defaults()
+    ///     .with_no_client_auth()
+    ///     .with_single_cert(todo!(), todo!()).unwrap();
+    ///
+    /// // Create a custom TransportConfig with specific settings
+    /// let mut custom_transport_config = TransportConfig::default();
+    /// custom_transport_config.datagram_send_buffer_size(1024);
+    ///
+    /// // Create a ServerConfigBuilder with the custom TLS and transport configurations
+    /// let server_config = ServerConfig::builder()
+    ///     .with_bind_default(4433)
+    ///     .with_custom_tls_and_transport(custom_tls_config, custom_transport_config)
+    ///     .build();
+    /// ```
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn with_custom_tls_and_transport(
+        self,
+        tls_config: TlsServerConfig,
+        transport_config: QuicTransportConfig,
+    ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         ServerConfigBuilder(states::WantsTransportConfigServer {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
