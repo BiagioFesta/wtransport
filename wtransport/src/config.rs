@@ -401,14 +401,15 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     /// while relying on a default TLS configuration built from an [`Identity`]. It gives you
     /// control over the transport layer while maintaining safe and standard TLS settings.
     ///
-    /// **See**: [`with_identity`] for a simpler configuration option that does not require custom transport settings.
+    /// **See**: [`with_identity`](Self::with_identity)
+    /// for a simpler configuration option that does not require custom transport settings.
     ///
     /// # Parameters
     ///
     /// - `identity`: A reference to an [`Identity`] that contains the server's certificate and
     ///   private key. This will be used to generate the default TLS configuration.
-    /// - `transport_config`: A custom [`TransportConfig`] instance that allows you to specify
-    ///   various transport-layer settings according to your requirements.
+    /// - `quic_transport_config`: A custom [`QuicTransportConfig`] instance that allows you to specify
+    ///   various QUIC transport-layer settings according to your requirements.
     ///
     /// # Example
     ///
@@ -433,7 +434,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     pub fn with_custom_transport(
         self,
         identity: &Identity,
-        transport_config: QuicTransportConfig,
+        quic_transport_config: QuicTransportConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         use crate::tls::server::build_default_tls_config;
 
@@ -441,7 +442,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config: build_default_tls_config(identity),
-            transport_config,
+            transport_config: quic_transport_config,
             migration: true,
         })
     }
@@ -451,16 +452,14 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     ///
     /// This method is designed for advanced users who require full control over both the TLS
     /// and transport settings. It allows you to pass a preconfigured [`TlsServerConfig`] and
-    /// a custom [`TransportConfig`] to fine-tune both layers of the server configuration.
-    ///
-    /// **See**: [`with_identity`] for a simpler configuration option that does not require custom transport settings.
+    /// a custom [`QuicTransportConfig`] to fine-tune both layers of the server configuration.
     ///
     /// # Parameters
     ///
     /// - `tls_config`: A custom [`TlsServerConfig`] instance that allows you to specify
     ///   detailed TLS settings, such as ciphersuites, certificate verification, and more.
-    /// - `transport_config`: A custom [`TransportConfig`] instance that allows you to specify
-    ///   various transport-layer settings according to your requirements.
+    /// - `quic_transport_config`: A custom [`QuicTransportConfig`] instance that allows you to specify
+    ///   various QUIC transport-layer settings according to your requirements.
     ///
     /// # Example
     ///
@@ -488,13 +487,13 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     pub fn with_custom_tls_and_transport(
         self,
         tls_config: TlsServerConfig,
-        transport_config: QuicTransportConfig,
+        quic_transport_config: QuicTransportConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         ServerConfigBuilder(states::WantsTransportConfigServer {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
-            transport_config,
+            transport_config: quic_transport_config,
             migration: true,
         })
     }
