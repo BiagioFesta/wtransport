@@ -764,30 +764,6 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         ))
     }
 
-    /// Allows for manual configuration of a custom TLS setup using a provided
-    /// [`rustls::ClientConfig`].
-    ///
-    /// This method is provided for advanced users who need fine-grained control over the
-    /// TLS configuration. It allows you to pass a preconfigured [`rustls::ClientConfig`]
-    /// instance to customize the TLS settings according to your specific requirements.
-    ///
-    /// For most use cases, it is recommended to use the [`with_native_certs`](Self::with_native_certs)
-    /// method to configure TLS with safe defaults.
-    pub fn with_custom_tls(
-        self,
-        tls_config: TlsClientConfig,
-    ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
-        let transport_config = TransportConfig::default();
-
-        ClientConfigBuilder(states::WantsTransportConfigClient {
-            bind_address: self.0.bind_address,
-            dual_stack_config: self.0.dual_stack_config,
-            tls_config,
-            transport_config,
-            dns_resolver: Box::<TokioDnsResolver>::default(),
-        })
-    }
-
     /// Configures the client to skip server certificate validation, potentially
     /// compromising security.
     ///
@@ -867,6 +843,30 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             Some(Arc::new(ServerHashVerification::new(hashes))),
         );
 
+        let transport_config = TransportConfig::default();
+
+        ClientConfigBuilder(states::WantsTransportConfigClient {
+            bind_address: self.0.bind_address,
+            dual_stack_config: self.0.dual_stack_config,
+            tls_config,
+            transport_config,
+            dns_resolver: Box::<TokioDnsResolver>::default(),
+        })
+    }
+
+    /// Allows for manual configuration of a custom TLS setup using a provided
+    /// [`rustls::ClientConfig`].
+    ///
+    /// This method is provided for advanced users who need fine-grained control over the
+    /// TLS configuration. It allows you to pass a preconfigured [`rustls::ClientConfig`]
+    /// instance to customize the TLS settings according to your specific requirements.
+    ///
+    /// For most use cases, it is recommended to use the [`with_native_certs`](Self::with_native_certs)
+    /// method to configure TLS with safe defaults.
+    pub fn with_custom_tls(
+        self,
+        tls_config: TlsClientConfig,
+    ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         let transport_config = TransportConfig::default();
 
         ClientConfigBuilder(states::WantsTransportConfigClient {
