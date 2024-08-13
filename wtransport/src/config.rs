@@ -391,7 +391,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         self.with(tls_config, quic_transport_config)
     }
 
-    /// Configures the server with a custom transport configuration and a default TLS setup
+    /// Configures the server with a custom QUIC transport configuration and a default TLS setup
     /// using the provided [`Identity`].
     ///
     /// This method is useful for scenarios where you need to customize the transport settings
@@ -442,7 +442,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         self.with(tls_config, quic_transport_config)
     }
 
-    /// Configures the server with both a custom TLS configuration and a custom transport
+    /// Configures the server with both a custom TLS configuration and a custom QUIC transport
     /// configuration.
     ///
     /// This method is designed for advanced users who require full control over both the TLS
