@@ -346,7 +346,10 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         use crate::tls::server::build_default_tls_config;
 
-        self.with_custom_tls(build_default_tls_config(identity))
+        let tls_config = build_default_tls_config(identity);
+        let quic_transport_config = TransportConfig::default();
+
+        self.with(tls_config, quic_transport_config)
     }
 
     /// Allows for manual configuration of a custom TLS setup using a provided
@@ -383,15 +386,9 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         self,
         tls_config: TlsServerConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
-        let transport_config = TransportConfig::default();
+        let quic_transport_config = TransportConfig::default();
 
-        ServerConfigBuilder(states::WantsTransportConfigServer {
-            bind_address: self.0.bind_address,
-            dual_stack_config: self.0.dual_stack_config,
-            tls_config,
-            transport_config,
-            migration: true,
-        })
+        self.with(tls_config, quic_transport_config)
     }
 
     /// Configures the server with a custom transport configuration and a default TLS setup
@@ -440,13 +437,9 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         use crate::tls::server::build_default_tls_config;
 
-        ServerConfigBuilder(states::WantsTransportConfigServer {
-            bind_address: self.0.bind_address,
-            dual_stack_config: self.0.dual_stack_config,
-            tls_config: build_default_tls_config(identity),
-            transport_config: quic_transport_config,
-            migration: true,
-        })
+        let tls_config = build_default_tls_config(identity);
+
+        self.with(tls_config, quic_transport_config)
     }
 
     /// Configures the server with both a custom TLS configuration and a custom transport
@@ -469,11 +462,19 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         tls_config: TlsServerConfig,
         quic_transport_config: QuicTransportConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
+        self.with(tls_config, quic_transport_config)
+    }
+
+    fn with(
+        self,
+        tls_config: TlsServerConfig,
+        transport_config: TransportConfig,
+    ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         ServerConfigBuilder(states::WantsTransportConfigServer {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
-            transport_config: quic_transport_config,
+            transport_config,
             migration: true,
         })
     }
