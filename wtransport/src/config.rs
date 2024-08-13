@@ -171,6 +171,10 @@ pub struct InvalidIdleTimeout;
 ///   a TLS [`Identity`] for the server.
 /// - [`with_custom_tls`](ServerConfigBuilder::with_custom_tls): sets the TLS
 ///   server configuration manually.
+/// - [`with_custom_transport`](ServerConfigBuilder::with_custom_transport): sets the QUIC
+///   transport configuration manually (using default TLS).
+/// - [`with_custom_tls_and_transport`](ServerConfigBuilder::with_custom_tls_and_transport): sets both
+///   a custom TLS and QUIC configuration.
 ///
 /// #### Examples:
 /// ```
@@ -591,8 +595,6 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 /// - [`with_native_certs`](ClientConfigBuilder::with_native_certs): configures to use
 ///   root certificates found in the platform's native certificate store. This is the *default*
 ///   configuration as it uses root store installed on the current machine.
-/// - [`with_custom_tls`](ClientConfigBuilder::with_custom_tls): sets the TLS client
-///   configuration manually.
 /// - [`with_server_certificate_hashes`][cert_hashes]: configures the client to accept
 ///   *some* certificates mapped to hashes. This can be used to connect to self signed
 ///   certificates securely, where the hash of the certificate is shared in advance
@@ -601,6 +603,12 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 ///   configure to skip server certificate validation. This might be handy for testing purpose
 ///   to accept *self-signed* certificate, but you should almost always prefer
 ///   [`with_server_certificate_hashes`][cert_hashes] for that use case.
+/// - [`with_custom_tls`](ClientConfigBuilder::with_custom_tls): sets the TLS client
+///   configuration manually.
+/// - [`with_custom_transport`](ClientConfigBuilder::with_custom_transport): sets the QUIC
+///   transport configuration manually (using default TLS).
+/// - [`with_custom_tls_and_transport`](ClientConfigBuilder::with_custom_tls_and_transport): sets both
+///   a custom TLS and QUIC configuration.
 ///
 /// Only one of these options can be selected during the client configuration process.
 ///
