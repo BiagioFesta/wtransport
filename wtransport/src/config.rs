@@ -758,10 +758,10 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     pub fn with_native_certs(self) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         use crate::tls::client::build_default_tls_config;
 
-        self.with_custom_tls(build_default_tls_config(
-            Arc::new(build_native_cert_store()),
-            None,
-        ))
+        let tls_config = build_default_tls_config(Arc::new(build_native_cert_store()), None);
+        let transport_config = TransportConfig::default();
+
+        self.with(tls_config, transport_config)
     }
 
     /// Configures the client to skip server certificate validation, potentially
@@ -801,13 +801,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
 
         let transport_config = TransportConfig::default();
 
-        ClientConfigBuilder(states::WantsTransportConfigClient {
-            bind_address: self.0.bind_address,
-            dual_stack_config: self.0.dual_stack_config,
-            tls_config,
-            transport_config,
-            dns_resolver: Box::<TokioDnsResolver>::default(),
-        })
+        self.with(tls_config, transport_config)
     }
 
     /// Configures the client to skip *some* server certificates validation.
@@ -845,13 +839,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
 
         let transport_config = TransportConfig::default();
 
-        ClientConfigBuilder(states::WantsTransportConfigClient {
-            bind_address: self.0.bind_address,
-            dual_stack_config: self.0.dual_stack_config,
-            tls_config,
-            transport_config,
-            dns_resolver: Box::<TokioDnsResolver>::default(),
-        })
+        self.with(tls_config, transport_config)
     }
 
     /// Allows for manual configuration of a custom TLS setup using a provided
@@ -869,6 +857,14 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         let transport_config = TransportConfig::default();
 
+        self.with(tls_config, transport_config)
+    }
+
+    fn with(
+        self,
+        tls_config: TlsClientConfig,
+        transport_config: TransportConfig,
+    ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         ClientConfigBuilder(states::WantsTransportConfigClient {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
