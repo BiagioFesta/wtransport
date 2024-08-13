@@ -413,14 +413,16 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     ///
     /// # Example
     ///
-    /// ```no_run
-    /// use wtransport::{Identity, ServerConfig, quinn::TransportConfig};
+    /// ```
+    /// use wtransport::config::QuicTransportConfig;
+    /// use wtransport::Identity;
+    /// use wtransport::ServerConfig;
     ///
-    /// // Load the server identity (certificate and private key)
+    /// // Generate a server identity (self signed certificate and private key)
     /// let identity = Identity::self_signed(["localhost", "127.0.0.1", "::1"]).unwrap();
     ///
-    /// // Create a custom TransportConfig with specific settings
-    /// let mut custom_transport_config = TransportConfig::default();
+    /// // Create a custom QuicTransportConfig with specific settings
+    /// let mut custom_transport_config = QuicTransportConfig::default();
     /// custom_transport_config.datagram_send_buffer_size(1024);
     ///
     /// // Create a ServerConfigBuilder with the custom transport configuration and default TLS settings
@@ -460,28 +462,6 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     ///   detailed TLS settings, such as ciphersuites, certificate verification, and more.
     /// - `quic_transport_config`: A custom [`QuicTransportConfig`] instance that allows you to specify
     ///   various QUIC transport-layer settings according to your requirements.
-    ///
-    /// # Example
-    ///
-    /// ```no_run
-    /// use wtransport::{ServerConfig, quinn::TransportConfig, tls::rustls};
-    ///
-    /// // Create a custom TLS configuration with specific settings
-    /// let custom_tls_config = rustls::ServerConfig::builder()
-    ///     .with_safe_defaults()
-    ///     .with_no_client_auth()
-    ///     .with_single_cert(todo!(), todo!()).unwrap();
-    ///
-    /// // Create a custom TransportConfig with specific settings
-    /// let mut custom_transport_config = TransportConfig::default();
-    /// custom_transport_config.datagram_send_buffer_size(1024);
-    ///
-    /// // Create a ServerConfigBuilder with the custom TLS and transport configurations
-    /// let server_config = ServerConfig::builder()
-    ///     .with_bind_default(4433)
-    ///     .with_custom_tls_and_transport(custom_tls_config, custom_transport_config)
-    ///     .build();
-    /// ```
     #[cfg(feature = "quinn")]
     #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
     pub fn with_custom_tls_and_transport(
