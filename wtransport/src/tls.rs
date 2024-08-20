@@ -24,6 +24,10 @@ pub use wtransport_proto::WEBTRANSPORT_ALPN;
 pub struct Certificate(CertificateDer<'static>);
 
 impl Certificate {
+    pub(crate) fn from_rustls_pki(cert: rustls_pki_types::CertificateDer<'static>) -> Self {
+        Self(cert)
+    }
+
     /// Constructs a new `Certificate` from DER-encoded binary data.
     pub fn from_der(der: Vec<u8>) -> Result<Self, InvalidCertificate> {
         X509Certificate::from_der(&der).map_err(|error| InvalidCertificate(error.to_string()))?;
@@ -571,7 +575,7 @@ pub fn build_native_cert_store() -> RootCertStore {
 
     if let Ok(certs) = rustls_native_certs::load_native_certs() {
         for c in certs {
-            let _ = root_store.add(&rustls::Certificate(c.to_vec()));
+            let _ = root_store.add(c);
         }
     }
 
@@ -599,15 +603,15 @@ pub mod server {
             .certificate_chain()
             .as_slice()
             .iter()
-            .map(|cert| rustls::Certificate(cert.der().to_vec()))
+            .map(|cert| rustls_pki_types::CertificateDer::from(cert.der().to_vec()))
             .collect();
 
-        let private_key = rustls::PrivateKey(identity.private_key().secret_der().to_vec());
+        let private_key = identity.private_key();
 
+        // TODO: clone key is inefficient; perpaps the key was borrowed from static data?
         let mut tls_config = TlsServerConfig::builder()
-            .with_safe_defaults()
             .with_no_client_auth()
-            .with_single_cert(certificates, private_key)
+            .with_single_cert(certificates, private_key.0.clone_key())
             .expect("Certificate and private key should be already validated");
 
         tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();
@@ -619,8 +623,9 @@ pub mod server {
 /// TLS configurations and utilities client-side.
 pub mod client {
     use super::*;
-    use rustls::client::ServerCertVerified;
-    use rustls::client::ServerCertVerifier;
+    use rustls::client::danger::ServerCertVerified;
+    use rustls::client::danger::ServerCertVerifier;
+    use rustls::crypto::WebPkiSupportedAlgorithms;
     use rustls::ClientConfig as TlsClientConfig;
 
     /// Builds a default TLS client configuration with safe defaults.
@@ -651,10 +656,6 @@ pub mod client {
         custom_verifier: Option<Arc<dyn ServerCertVerifier>>,
     ) -> TlsClientConfig {
         let mut config = TlsClientConfig::builder()
-            .with_safe_default_cipher_suites()
-            .with_safe_default_kx_groups()
-            .with_safe_default_protocol_versions()
-            .expect("Safe protocols should not error")
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
@@ -672,27 +673,59 @@ pub mod client {
     ///
     /// Therefore, it's advisable to use it judiciously, and avoid using it in
     /// production environments.
-    #[derive(Default)]
-    pub struct NoServerVerification {}
+    #[derive(Debug)]
+    pub struct NoServerVerification {
+        supported_algorithms: WebPkiSupportedAlgorithms,
+    }
+
+    impl Default for NoServerVerification {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
 
     impl NoServerVerification {
         /// Creates a new instance of `NoServerVerification`.
         pub fn new() -> NoServerVerification {
-            NoServerVerification {}
+            NoServerVerification {
+                supported_algorithms: rustls::crypto::ring::default_provider()
+                    .signature_verification_algorithms,
+            }
         }
     }
 
     impl ServerCertVerifier for NoServerVerification {
         fn verify_server_cert(
             &self,
-            _end_entity: &rustls::Certificate,
-            _intermediates: &[rustls::Certificate],
-            _server_name: &rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
+            _end_entity: &rustls_pki_types::CertificateDer,
+            _intermediates: &[rustls_pki_types::CertificateDer],
+            _server_name: &rustls_pki_types::ServerName,
             _ocsp_response: &[u8],
-            _now: std::time::SystemTime,
+            _now: rustls_pki_types::UnixTime,
         ) -> Result<ServerCertVerified, rustls::Error> {
             Ok(ServerCertVerified::assertion())
+        }
+
+        fn verify_tls12_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            rustls::crypto::verify_tls12_signature(message, cert, dss, &self.supported_algorithms)
+        }
+
+        fn verify_tls13_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            rustls::crypto::verify_tls13_signature(message, cert, dss, &self.supported_algorithms)
+        }
+
+        fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+            self.supported_algorithms.supported_schemes()
         }
     }
 
@@ -712,8 +745,10 @@ pub mod client {
     /// - The current time MUST be within the validity period of the certificate.
     /// - The total length of the validity period MUST NOT exceed *two* weeks.
     /// - Only certificates for which the public key algorithm is *ECDSA* with the *secp256r1* are accepted.
+    #[derive(Debug)]
     pub struct ServerHashVerification {
         hashes: std::collections::BTreeSet<Sha256Digest>,
+        supported_algorithms: WebPkiSupportedAlgorithms,
     }
 
     impl ServerHashVerification {
@@ -733,6 +768,8 @@ pub mod client {
 
             Self {
                 hashes: BTreeSet::from_iter(hashes),
+                supported_algorithms: rustls::crypto::ring::default_provider()
+                    .signature_verification_algorithms,
             }
         }
     }
@@ -740,21 +777,26 @@ pub mod client {
     impl ServerCertVerifier for ServerHashVerification {
         fn verify_server_cert(
             &self,
-            end_entity: &rustls::Certificate,
-            _intermediates: &[rustls::Certificate],
-            _server_name: &rustls::ServerName,
-            _scts: &mut dyn Iterator<Item = &[u8]>,
+            end_entity: &rustls_pki_types::CertificateDer,
+            _intermediates: &[rustls_pki_types::CertificateDer],
+            _server_name: &rustls_pki_types::ServerName,
             _ocsp_response: &[u8],
-            now: std::time::SystemTime,
+            now: rustls_pki_types::UnixTime,
         ) -> Result<ServerCertVerified, rustls::Error> {
             use time::OffsetDateTime;
             use x509_parser::oid_registry::OID_EC_P256;
             use x509_parser::oid_registry::OID_KEY_TYPE_EC_PUBLIC_KEY;
             use x509_parser::time::ASN1Time;
 
-            let now = ASN1Time::new(OffsetDateTime::from(now));
+            let now = ASN1Time::new(
+                now.as_secs()
+                    .try_into()
+                    .ok()
+                    .and_then(|time| OffsetDateTime::from_unix_timestamp(time).ok())
+                    .expect("time overflow"),
+            );
 
-            let x509 = X509Certificate::from_der(&end_entity.0)
+            let x509 = X509Certificate::from_der(end_entity.as_ref())
                 .map_err(|_| rustls::CertificateError::BadEncoding)?
                 .1;
 
@@ -783,15 +825,39 @@ pub mod client {
                 return Err(rustls::CertificateError::UnknownIssuer.into());
             }
 
-            let end_entity_hash = crate::tls::Certificate::from_der(end_entity.0.to_vec())
-                .map_err(|_| rustls::CertificateError::BadEncoding)?
-                .hash();
+            // TODO: Duplicates logic in `Certificate::from_der`, to avoid allocating
+            X509Certificate::from_der(end_entity.as_ref())
+                .map_err(|_| rustls::CertificateError::BadEncoding)?;
+            // TODO: Duplicates logic in `Certificate::hash`, to avoid allocating
+            let end_entity_hash = Sha256Digest(Sha256::digest(end_entity.as_ref()).into());
 
             if self.hashes.contains(&end_entity_hash) {
                 Ok(ServerCertVerified::assertion())
             } else {
                 Err(rustls::CertificateError::UnknownIssuer.into())
             }
+        }
+
+        fn verify_tls12_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            rustls::crypto::verify_tls12_signature(message, cert, dss, &self.supported_algorithms)
+        }
+
+        fn verify_tls13_signature(
+            &self,
+            message: &[u8],
+            cert: &CertificateDer<'_>,
+            dss: &rustls::DigitallySignedStruct,
+        ) -> Result<rustls::client::danger::HandshakeSignatureValid, rustls::Error> {
+            rustls::crypto::verify_tls13_signature(message, cert, dss, &self.supported_algorithms)
+        }
+
+        fn supported_verify_schemes(&self) -> Vec<rustls::SignatureScheme> {
+            self.supported_algorithms.supported_schemes()
         }
     }
 }

@@ -382,10 +382,10 @@ impl Connection {
     /// is not available, `None` is returned.
     pub fn peer_identity(&self) -> Option<CertificateChain> {
         self.quic_connection.peer_identity().map(|any| {
-            any.downcast::<Vec<rustls::Certificate>>()
+            any.downcast::<Vec<rustls_pki_types::CertificateDer<'static>>>()
                 .expect("rustls certificate vector")
                 .into_iter()
-                .map(|c| Certificate::from_der(c.0).expect("valid certificate"))
+                .map(Certificate::from_rustls_pki)
                 .collect()
         })
     }

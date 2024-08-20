@@ -43,7 +43,7 @@ impl SendStream {
         self.0.write_all(buf).await
     }
 
-    /// Shut down the stream gracefully.
+    /// Shuts down the send stream gracefully.
     ///
     /// No new data may be written after calling this method. Completes when the peer has
     /// acknowledged all sent data, retransmitting data as needed.
@@ -71,6 +71,10 @@ impl SendStream {
     }
 
     /// Gets the priority of the send stream.
+    ///
+    /// # Panics
+    ///
+    /// If `reset` was called.
     #[inline(always)]
     pub fn priority(&self) -> i32 {
         self.0.priority()
@@ -81,16 +85,20 @@ impl SendStream {
     /// No new data can be written after calling this method. Locally buffered data is dropped, and
     /// previously transmitted data will no longer be retransmitted if lost. If an attempt has
     /// already been made to finish the stream, the peer may still receive all written data.
+    ///
+    /// If called more than once, subsequent calls will result in `StreamWriteError::Closed`.
     #[inline(always)]
-    pub fn reset(self, error_code: VarInt) {
-        self.0.reset(error_code);
+    pub fn reset(&mut self, error_code: VarInt) -> Result<(), StreamWriteError> {
+        self.0.reset(error_code)
     }
 
-    /// Awaits for the stream to be stopped by the peer.
+    /// Passively waits for the send stream to be stopped for any reason.
     ///
-    /// If the stream is stopped the error code will be stored in [`StreamWriteError::Stopped`].
+    /// Returns [`StreamWriteError::Closed`] if the stream was already `finish`ed or `reset`.
+    ///
+    /// Otherwise returns [`StreamWriteError::Stopped`] with an error code from the peer.
     #[inline(always)]
-    pub async fn stopped(mut self) -> StreamWriteError {
+    pub async fn stopped(&mut self) -> StreamWriteError {
         self.0.stopped().await
     }
 
