@@ -77,6 +77,7 @@ allowed_external_types = [
     "quinn_proto::config::ServerConfig",
     "quinn_proto::config::TransportConfig",
     "quinn_proto::connection::ConnectionError",
+    "quinn_proto::crypto::HandshakeTokenKey",
     "rustls",
     "rustls::webpki::anchors::RootCertStore",
     "rustls::client::client_conn::ClientConfig",

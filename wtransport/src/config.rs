@@ -481,6 +481,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
+            token_key: None,
             transport_config,
             migration: true,
         })
@@ -499,7 +500,11 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
             quinn::crypto::rustls::QuicServerConfig::try_from(self.0.tls_config)
                 .expect("CipherSuite::TLS13_AES_128_GCM_SHA256 missing"),
         );
-        let mut quic_config = QuicServerConfig::with_crypto(crypto);
+        let mut quic_config = if let Some(token_key) = self.0.token_key {
+            QuicServerConfig::new(crypto, token_key)
+        } else {
+            QuicServerConfig::with_crypto(crypto)
+        };
 
         quic_config.transport_config(Arc::new(self.0.transport_config));
         quic_config.migration(self.0.migration);
@@ -550,6 +555,15 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
     /// rebinding. Enabled by default.
     pub fn allow_migration(mut self, value: bool) -> Self {
         self.0.migration = value;
+        self
+    }
+
+    /// Use `Some` to use specific handshake token key instead of a random one.
+    ///
+    /// Allows reloading the configuration without invalidating in-flight retry tokens.
+    #[cfg(feature = "quinn")]
+    pub fn token_key(mut self, value: Option<Arc<dyn quinn::crypto::HandshakeTokenKey>>) -> Self {
+        self.0.token_key = value;
         self
     }
 
@@ -1071,6 +1085,7 @@ pub mod states {
         pub(super) bind_address: SocketAddr,
         pub(super) dual_stack_config: Ipv6DualStackConfig,
         pub(super) tls_config: TlsServerConfig,
+        pub(super) token_key: Option<Arc<dyn quinn::crypto::HandshakeTokenKey>>,
         pub(super) transport_config: quinn::TransportConfig,
         pub(super) migration: bool,
     }
