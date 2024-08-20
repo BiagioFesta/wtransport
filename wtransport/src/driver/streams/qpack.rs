@@ -39,7 +39,7 @@ impl RemoteQPackEncStream {
         loop {
             match stream.stream_mut().read_exact(&mut self.buffer).await {
                 Ok(()) => {}
-                Err(StreamReadExactError::FinishedEarly) => {
+                Err(StreamReadExactError::FinishedEarly(_)) => {
                     return DriverError::Proto(ErrorCode::ClosedCriticalStream);
                 }
                 Err(StreamReadExactError::Read(StreamReadError::NotConnected)) => {
@@ -88,7 +88,7 @@ impl RemoteQPackDecStream {
         loop {
             match stream.stream_mut().read_exact(&mut self.buffer).await {
                 Ok(()) => {}
-                Err(StreamReadExactError::FinishedEarly) => {
+                Err(StreamReadExactError::FinishedEarly(_)) => {
                     return DriverError::Proto(ErrorCode::ClosedCriticalStream);
                 }
                 Err(StreamReadExactError::Read(StreamReadError::NotConnected)) => {

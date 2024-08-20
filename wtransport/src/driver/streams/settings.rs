@@ -65,7 +65,9 @@ impl LocalSettingsStream {
         match self.stream.as_mut() {
             Some(stream) => match stream.stopped().await {
                 StreamWriteError::NotConnected => DriverError::NotConnected,
-                StreamWriteError::Stopped(_) => DriverError::Proto(ErrorCode::ClosedCriticalStream),
+                StreamWriteError::Closed | StreamWriteError::Stopped(_) => {
+                    DriverError::Proto(ErrorCode::ClosedCriticalStream)
+                }
                 StreamWriteError::QuicProto => DriverError::Proto(ErrorCode::ClosedCriticalStream),
             },
             None => pending().await,

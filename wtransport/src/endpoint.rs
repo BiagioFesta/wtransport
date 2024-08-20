@@ -19,6 +19,7 @@ use socket2::Socket;
 use socket2::Type as SocketType;
 use std::collections::HashMap;
 use std::future::Future;
+use std::future::IntoFuture;
 use std::marker::PhantomData;
 use std::net::SocketAddr;
 use std::net::SocketAddrV4;
@@ -144,6 +145,11 @@ impl<Side> Endpoint<Side> {
     pub fn local_addr(&self) -> std::io::Result<SocketAddr> {
         self.endpoint.local_addr()
     }
+
+    /// Get the number of connections that are currently open.
+    pub fn open_connections(&self) -> usize {
+        self.endpoint.open_connections()
+    }
 }
 
 impl Endpoint<endpoint_side::Server> {
@@ -171,7 +177,7 @@ impl Endpoint<endpoint_side::Server> {
 
     /// Get the next incoming connection attempt from a client.
     pub async fn accept(&self) -> IncomingSession {
-        let quic_connecting = self
+        let quic_incoming = self
             .endpoint
             .accept()
             .await
@@ -179,7 +185,7 @@ impl Endpoint<endpoint_side::Server> {
 
         debug!("New incoming QUIC connection");
 
-        IncomingSession::new(quic_connecting)
+        IncomingSession(quic_incoming)
     }
 
     /// Reloads the server configuration.
@@ -203,11 +209,6 @@ impl Endpoint<endpoint_side::Server> {
         self.endpoint.set_server_config(Some(quic_config));
 
         Ok(())
-    }
-
-    /// Rejects new incoming connections without affecting existing connections
-    pub fn reject_new_connections(&self) {
-        self.endpoint.reject_new_connections();
     }
 }
 
@@ -564,18 +565,66 @@ where
 type DynFutureIncomingSession =
     dyn Future<Output = Result<SessionRequest, ConnectionError>> + Send + Sync;
 
-/// [`Future`] for an in-progress incoming connection attempt.
+/// [`IntoFuture`] for an in-progress incoming connection attempt.
 ///
 /// Created by [`Endpoint::accept`].
-pub struct IncomingSession(Pin<Box<DynFutureIncomingSession>>);
+pub struct IncomingSession(quinn::Incoming);
 
 impl IncomingSession {
-    fn new(quic_connecting: quinn::Connecting) -> Self {
-        Self(Box::pin(Self::accept(quic_connecting)))
+    /// The peer's UDP address.
+    pub fn remote_address(&self) -> SocketAddr {
+        self.0.remote_address()
     }
 
-    async fn accept(quic_connecting: quinn::Connecting) -> Result<SessionRequest, ConnectionError> {
-        let quic_connection = quic_connecting.await?;
+    /// Whether the socket address that is initiating this connection has been validated.
+    ///
+    /// This means that the sender of the initial packet has proved that they can receive traffic
+    /// sent to `self.remote_address()`.
+    pub fn remote_address_validated(&self) -> bool {
+        self.0.remote_address_validated()
+    }
+
+    /// Respond with a retry packet, requiring the client to retry with address validation
+    ///
+    /// # Panics
+    ///
+    /// If `remote_address_validated()` is true.
+    pub fn retry(self) {
+        self.0.retry().expect("remote address already verified");
+    }
+
+    /// Reject this incoming connection attempt.
+    pub fn refuse(self) {
+        self.0.refuse();
+    }
+
+    /// Ignore this incoming connection attempt, not sending any packet in response.
+    pub fn ignore(self) {
+        self.0.ignore();
+    }
+}
+
+impl IntoFuture for IncomingSession {
+    type IntoFuture = IncomingSessionFuture;
+    type Output = Result<SessionRequest, ConnectionError>;
+
+    fn into_future(self) -> Self::IntoFuture {
+        IncomingSessionFuture::new(self.0)
+    }
+}
+
+/// [`Future`] for an in-progress incoming connection attempt.
+///
+/// Created by awaiting an [`IncomingSession`]
+pub struct IncomingSessionFuture(Pin<Box<DynFutureIncomingSession>>);
+
+impl IncomingSessionFuture {
+    fn new(quic_incoming: quinn::Incoming) -> Self {
+        Self(Box::pin(Self::accept(quic_incoming)))
+    }
+
+    async fn accept(quic_incoming: quinn::Incoming) -> Result<SessionRequest, ConnectionError> {
+        let quic_connection = quic_incoming.await?;
 
         let driver = Driver::init(quic_connection.clone());
 
@@ -593,7 +642,7 @@ impl IncomingSession {
     }
 }
 
-impl Future for IncomingSession {
+impl Future for IncomingSessionFuture {
     type Output = Result<SessionRequest, ConnectionError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
