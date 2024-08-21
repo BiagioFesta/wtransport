@@ -36,8 +36,6 @@
 
 use crate::tls::build_native_cert_store;
 use crate::tls::Identity;
-use quinn::ClientConfig as QuicClientConfig;
-use quinn::ServerConfig as QuicServerConfig;
 use quinn::TransportConfig;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -63,6 +61,16 @@ pub type TlsClientConfig = crate::tls::rustls::ClientConfig;
 #[cfg(feature = "quinn")]
 #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
 pub type QuicTransportConfig = crate::quinn::TransportConfig;
+
+/// Alias of [`crate::quinn::ServerConfig`].
+#[cfg(feature = "quinn")]
+#[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+pub type QuicServerConfig = crate::quinn::ServerConfig;
+
+/// Alias of [`crate::quinn::ClientConfig`].
+#[cfg(feature = "quinn")]
+#[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+pub type QuicClientConfig = crate::quinn::ClientConfig;
 
 /// Configuration for IP address socket bind.
 #[derive(Debug, Copy, Clone)]
@@ -174,7 +182,10 @@ pub struct InvalidIdleTimeout;
 /// - [`with_custom_transport`](ServerConfigBuilder::with_custom_transport): sets the QUIC
 ///   transport configuration manually (using default TLS).
 /// - [`with_custom_tls_and_transport`](ServerConfigBuilder::with_custom_tls_and_transport): sets both
-///   a custom TLS and QUIC configuration.
+///   a custom TLS and QUIC transport configuration.
+/// - [`build_with_quic_config`](ServerConfigBuilder::build_with_quic_config): directly builds
+///   [`ServerConfig`] providing both TLS and QUIC transport configuration given by
+///   [`quic_config`](QuicServerConfig).
 ///
 /// #### Examples:
 /// ```
@@ -201,7 +212,6 @@ pub struct InvalidIdleTimeout;
 /// - [`max_idle_timeout`](ServerConfigBuilder::max_idle_timeout)
 /// - [`keep_alive_interval`](ServerConfigBuilder::keep_alive_interval)
 /// - [`allow_migration`](ServerConfigBuilder::allow_migration)
-/// - [`enable_key_log`](ServerConfigBuilder::enable_key_log)
 ///
 /// #### Examples:
 /// ```
@@ -221,7 +231,7 @@ pub struct InvalidIdleTimeout;
 pub struct ServerConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
-    pub(crate) quic_config: QuicServerConfig,
+    pub(crate) quic_config: quinn::ServerConfig,
 }
 
 impl ServerConfig {
@@ -472,6 +482,19 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         self.with(tls_config, quic_transport_config)
     }
 
+    /// Directly builds [`ServerConfig`] skipping TLS and transport configuration.
+    ///
+    /// Both TLS and transport configuration is given by [`quic_config`](QuicServerConfig).
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn build_with_quic_config(self, quic_config: QuicServerConfig) -> ServerConfig {
+        ServerConfig {
+            bind_address: self.0.bind_address,
+            dual_stack_config: self.0.dual_stack_config,
+            quic_config,
+        }
+    }
+
     fn with(
         self,
         tls_config: TlsServerConfig,
@@ -481,7 +504,6 @@ impl ServerConfigBuilder<states::WantsIdentity> {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
-            token_key: None,
             transport_config,
             migration: true,
         })
@@ -500,11 +522,8 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
             quinn::crypto::rustls::QuicServerConfig::try_from(self.0.tls_config)
                 .expect("CipherSuite::TLS13_AES_128_GCM_SHA256 missing"),
         );
-        let mut quic_config = if let Some(token_key) = self.0.token_key {
-            QuicServerConfig::new(crypto, token_key)
-        } else {
-            QuicServerConfig::with_crypto(crypto)
-        };
+
+        let mut quic_config = quinn::ServerConfig::with_crypto(crypto);
 
         quic_config.transport_config(Arc::new(self.0.transport_config));
         quic_config.migration(self.0.migration);
@@ -555,26 +574,6 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
     /// rebinding. Enabled by default.
     pub fn allow_migration(mut self, value: bool) -> Self {
         self.0.migration = value;
-        self
-    }
-
-    /// Use `Some` to use specific handshake token key instead of a random one.
-    ///
-    /// Allows reloading the configuration without invalidating in-flight retry tokens.
-    #[cfg(feature = "quinn")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
-    pub fn token_key(mut self, value: Option<Arc<dyn quinn::crypto::HandshakeTokenKey>>) -> Self {
-        self.0.token_key = value;
-        self
-    }
-
-    /// Writes key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
-    ///
-    /// Disabled by default.
-    #[cfg(feature = "dangerous-configuration")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
-    pub fn enable_key_log(mut self) -> Self {
-        self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
         self
     }
 }
@@ -635,7 +634,10 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 /// - [`with_custom_transport`](ClientConfigBuilder::with_custom_transport): sets the QUIC
 ///   transport configuration manually (using default TLS).
 /// - [`with_custom_tls_and_transport`](ClientConfigBuilder::with_custom_tls_and_transport): sets both
-///   a custom TLS and QUIC configuration.
+///   a custom TLS and QUIC transport configuration.
+/// - [`build_with_quic_config`](ClientConfigBuilder::build_with_quic_config): directly builds
+///   [`ClientConfig`] providing both TLS and QUIC transport configuration given by
+///   [`quic_config`](QuicClientConfig).
 ///
 /// Only one of these options can be selected during the client configuration process.
 ///
@@ -661,7 +663,6 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 /// - [`max_idle_timeout`](ClientConfigBuilder::max_idle_timeout)
 /// - [`keep_alive_interval`](ClientConfigBuilder::keep_alive_interval)
 /// - [`dns_resolver`](ClientConfigBuilder::dns_resolver)
-/// - [`enable_key_log`](ClientConfigBuilder::enable_key_log)
 ///
 /// #### Examples:
 /// ```
@@ -679,7 +680,7 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
-    pub(crate) quic_config: QuicClientConfig,
+    pub(crate) quic_config: quinn::ClientConfig,
     pub(crate) dns_resolver: Box<dyn DnsResolver + Send + Sync + Unpin>,
 }
 
@@ -689,6 +690,16 @@ impl ClientConfig {
     /// For more information, see the [`ClientConfigBuilder`] documentation.
     pub fn builder() -> ClientConfigBuilder<states::WantsBindAddress> {
         ClientConfigBuilder::default()
+    }
+
+    /// Allows setting a custom [`DnsResolver`] for this configuration.
+    ///
+    /// Default resolver is [`TokioDnsResolver`].
+    pub fn set_dns_resolver<R>(&mut self, dns_resolver: R)
+    where
+        R: DnsResolver + Send + Sync + Unpin + 'static,
+    {
+        self.dns_resolver = Box::new(dns_resolver);
     }
 
     /// Returns a reference to the inner QUIC configuration.
@@ -959,6 +970,20 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         self.with(tls_config, quic_transport_config)
     }
 
+    /// Directly builds [`ClientConfig`] skipping TLS and transport configuration.
+    ///
+    /// Both TLS and transport configuration is given by [`quic_config`](QuicClientConfig).
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn build_with_quic_config(self, quic_config: QuicClientConfig) -> ClientConfig {
+        ClientConfig {
+            bind_address: self.0.bind_address,
+            dual_stack_config: self.0.dual_stack_config,
+            quic_config,
+            dns_resolver: Box::<TokioDnsResolver>::default(),
+        }
+    }
+
     fn with(
         self,
         tls_config: TlsClientConfig,
@@ -984,7 +1009,8 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     pub fn build(self) -> ClientConfig {
         let crypto = quinn::crypto::rustls::QuicClientConfig::try_from(self.0.tls_config)
             .expect("CipherSuite::TLS13_AES_128_GCM_SHA256 missing");
-        let mut quic_config = QuicClientConfig::new(Arc::new(crypto));
+
+        let mut quic_config = quinn::ClientConfig::new(Arc::new(crypto));
         quic_config.transport_config(Arc::new(self.0.transport_config));
 
         ClientConfig {
@@ -1038,16 +1064,6 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
         self.0.dns_resolver = Box::new(dns_resolver);
         self
     }
-
-    /// Writes key material for debugging into file provided by `SSLKEYLOGFILE` environment variable.
-    ///
-    /// Disabled by default.
-    #[cfg(feature = "dangerous-configuration")]
-    #[cfg_attr(docsrs, doc(cfg(feature = "dangerous-configuration")))]
-    pub fn enable_key_log(mut self) -> Self {
-        self.0.tls_config.key_log = Arc::new(rustls::KeyLogFile::new());
-        self
-    }
 }
 
 impl Default for ServerConfigBuilder<states::WantsBindAddress> {
@@ -1086,7 +1102,6 @@ pub mod states {
         pub(super) bind_address: SocketAddr,
         pub(super) dual_stack_config: Ipv6DualStackConfig,
         pub(super) tls_config: TlsServerConfig,
-        pub(super) token_key: Option<Arc<dyn quinn::crypto::HandshakeTokenKey>>,
         pub(super) transport_config: quinn::TransportConfig,
         pub(super) migration: bool,
     }
