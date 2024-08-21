@@ -228,6 +228,7 @@ pub struct InvalidIdleTimeout;
 ///     .build();
 /// # Ok(())
 /// # }
+#[derive(Debug)]
 pub struct ServerConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
@@ -677,6 +678,7 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 ///     .keep_alive_interval(Some(Duration::from_secs(3)))
 ///     .build();
 /// ```
+#[derive(Debug)]
 pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
@@ -1119,7 +1121,7 @@ pub mod states {
 /// A trait for asynchronously resolving domain names to IP addresses using DNS.
 ///
 /// Utilities for working with `DnsResolver` values are provided by [`DnsResolverExt`].
-pub trait DnsResolver {
+pub trait DnsResolver: Debug {
     /// Resolves a domain name to one IP address.
     fn poll_resolve(
         self: Pin<&mut Self>,
@@ -1191,6 +1193,12 @@ impl DnsResolver for TokioDnsResolver {
         });
 
         Future::poll(fut.as_mut(), cx)
+    }
+}
+
+impl Debug for TokioDnsResolver {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TokioDnsResolver").finish()
     }
 }
 
