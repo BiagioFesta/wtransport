@@ -562,6 +562,7 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
     ///
     /// Allows reloading the configuration without invalidating in-flight retry tokens.
     #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
     pub fn token_key(mut self, value: Option<Arc<dyn quinn::crypto::HandshakeTokenKey>>) -> Self {
         self.0.token_key = value;
         self

@@ -87,12 +87,14 @@ impl QuicSendStream {
     }
 
     #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
     #[inline(always)]
     pub fn quic_stream(&self) -> &quinn::SendStream {
         &self.0
     }
 
     #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
     #[inline(always)]
     pub fn quic_stream_mut(&mut self) -> &mut quinn::SendStream {
         &mut self.0
@@ -186,12 +188,14 @@ impl QuicRecvStream {
     }
 
     #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
     #[inline(always)]
     pub fn quic_stream(&self) -> &quinn::RecvStream {
         &self.0
     }
 
     #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
     #[inline(always)]
     pub fn quic_stream_mut(&mut self) -> &mut quinn::RecvStream {
         &mut self.0
