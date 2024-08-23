@@ -47,8 +47,6 @@ use std::net::SocketAddr;
 use std::net::SocketAddrV6;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::task::Context;
-use std::task::Poll;
 use std::time::Duration;
 
 /// Alias of [`crate::tls::rustls::ServerConfig`].
@@ -683,7 +681,7 @@ pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
     pub(crate) quic_config: quinn::ClientConfig,
-    pub(crate) dns_resolver: Box<dyn DnsResolver + Send + Sync + Unpin>,
+    pub(crate) dns_resolver: Box<dyn DnsResolver>,
 }
 
 impl ClientConfig {
@@ -699,7 +697,7 @@ impl ClientConfig {
     /// Default resolver is [`TokioDnsResolver`].
     pub fn set_dns_resolver<R>(&mut self, dns_resolver: R)
     where
-        R: DnsResolver + Send + Sync + Unpin + 'static,
+        R: DnsResolver + 'static,
     {
         self.dns_resolver = Box::new(dns_resolver);
     }
@@ -1061,7 +1059,7 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     /// Default configuration uses [`TokioDnsResolver`].
     pub fn dns_resolver<R>(mut self, dns_resolver: R) -> Self
     where
-        R: DnsResolver + Send + Sync + Unpin + 'static,
+        R: DnsResolver + 'static,
     {
         self.0.dns_resolver = Box::new(dns_resolver);
         self
@@ -1114,85 +1112,34 @@ pub mod states {
         pub(super) dual_stack_config: Ipv6DualStackConfig,
         pub(super) tls_config: TlsClientConfig,
         pub(super) transport_config: quinn::TransportConfig,
-        pub(super) dns_resolver: Box<dyn DnsResolver + Send + Sync + Unpin>,
-    }
-}
-
-/// A trait for asynchronously resolving domain names to IP addresses using DNS.
-///
-/// Utilities for working with `DnsResolver` values are provided by [`DnsResolverExt`].
-pub trait DnsResolver: Debug {
-    /// Resolves a domain name to one IP address.
-    fn poll_resolve(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        host: &str,
-    ) -> Poll<std::io::Result<Option<SocketAddr>>>;
-}
-
-/// Extension trait for [`DnsResolver`].
-pub trait DnsResolverExt: DnsResolver {
-    /// Resolves a domain name to one IP address.
-    fn resolve(&mut self, host: &str) -> Resolve<Self>;
-}
-
-impl<T> DnsResolverExt for T
-where
-    T: DnsResolver + ?Sized,
-{
-    fn resolve(&mut self, host: &str) -> Resolve<Self> {
-        Resolve {
-            resolver: self,
-            host: host.to_string(),
-        }
+        pub(super) dns_resolver: Box<dyn DnsResolver>,
     }
 }
 
 /// Future resolving domain name.
 ///
-/// See [`DnsResolverExt::resolve`].
-#[must_use = "futures do nothing unless you `.await` or poll them"]
-pub struct Resolve<'a, R>
-where
-    R: ?Sized,
-{
-    resolver: &'a mut R,
-    host: String,
-}
+/// See [`DnsResolver::resolve`].
+pub trait DnsLookupFuture: Future<Output = std::io::Result<Option<SocketAddr>>> {}
 
-impl<'a, R> Future for Resolve<'a, R>
-where
-    R: DnsResolver + Unpin + ?Sized,
-{
-    type Output = std::io::Result<Option<SocketAddr>>;
+impl<F> DnsLookupFuture for F where F: Future<Output = std::io::Result<Option<SocketAddr>>> {}
 
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let this = self.get_mut();
-        DnsResolver::poll_resolve(Pin::new(this.resolver), cx, &this.host)
-    }
+/// A trait for asynchronously resolving domain names to IP addresses using DNS.
+pub trait DnsResolver: Debug {
+    /// Resolves a domain name to one IP address.
+    fn resolve(&self, host: &str) -> Pin<Box<dyn DnsLookupFuture>>;
 }
 
 /// A DNS resolver implementation using the *Tokio* asynchronous runtime.
 ///
 /// Internally, it uses [`tokio::net::lookup_host`].
 #[derive(Default)]
-pub struct TokioDnsResolver {
-    #[allow(clippy::type_complexity)]
-    fut: Option<Pin<Box<dyn Future<Output = std::io::Result<Option<SocketAddr>>> + Send + Sync>>>,
-}
+pub struct TokioDnsResolver;
 
 impl DnsResolver for TokioDnsResolver {
-    fn poll_resolve(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        host: &str,
-    ) -> Poll<std::io::Result<Option<SocketAddr>>> {
-        let fut = self.fut.get_or_insert_with(|| {
-            let host = host.to_string();
-            Box::pin(async move { Ok(tokio::net::lookup_host(host).await?.next()) })
-        });
+    fn resolve(&self, host: &str) -> Pin<Box<dyn DnsLookupFuture>> {
+        let host = host.to_string();
 
-        Future::poll(fut.as_mut(), cx)
+        Box::pin(async move { Ok(tokio::net::lookup_host(host).await?.next()) })
     }
 }
 
