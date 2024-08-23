@@ -226,7 +226,7 @@ pub struct InvalidIdleTimeout;
 ///     .build();
 /// # Ok(())
 /// # }
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ServerConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
@@ -676,12 +676,12 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 ///     .keep_alive_interval(Some(Duration::from_secs(3)))
 ///     .build();
 /// ```
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
     pub(crate) quic_config: quinn::ClientConfig,
-    pub(crate) dns_resolver: Box<dyn DnsResolver>,
+    pub(crate) dns_resolver: Arc<dyn DnsResolver>,
 }
 
 impl ClientConfig {
@@ -699,7 +699,7 @@ impl ClientConfig {
     where
         R: DnsResolver + 'static,
     {
-        self.dns_resolver = Box::new(dns_resolver);
+        self.dns_resolver = Arc::new(dns_resolver);
     }
 
     /// Returns a reference to the inner QUIC configuration.
@@ -980,7 +980,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             quic_config,
-            dns_resolver: Box::<TokioDnsResolver>::default(),
+            dns_resolver: Arc::<TokioDnsResolver>::default(),
         }
     }
 
@@ -994,7 +994,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
             transport_config,
-            dns_resolver: Box::<TokioDnsResolver>::default(),
+            dns_resolver: Arc::<TokioDnsResolver>::default(),
         })
     }
 }
@@ -1061,7 +1061,7 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     where
         R: DnsResolver + 'static,
     {
-        self.0.dns_resolver = Box::new(dns_resolver);
+        self.0.dns_resolver = Arc::new(dns_resolver);
         self
     }
 }
@@ -1112,7 +1112,7 @@ pub mod states {
         pub(super) dual_stack_config: Ipv6DualStackConfig,
         pub(super) tls_config: TlsClientConfig,
         pub(super) transport_config: quinn::TransportConfig,
-        pub(super) dns_resolver: Box<dyn DnsResolver>,
+        pub(super) dns_resolver: Arc<dyn DnsResolver>,
     }
 }
 
