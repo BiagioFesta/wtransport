@@ -772,6 +772,11 @@ pub mod client {
                     .signature_verification_algorithms,
             }
         }
+
+        /// Adds a `digest` to the list of accepted certificates.
+        pub fn add(&mut self, digest: Sha256Digest) {
+            self.hashes.insert(digest);
+        }
     }
 
     impl FromIterator<Sha256Digest> for ServerHashVerification {
