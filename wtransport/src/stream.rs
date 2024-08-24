@@ -214,6 +214,26 @@ impl BiStream {
     pub fn split(self) -> (SendStream, RecvStream) {
         self.0
     }
+
+    /// Returns a reference to the inner [`SendStream`].
+    pub fn send(&self) -> &SendStream {
+        &self.0 .0
+    }
+
+    /// Returns a mutable reference to the inner [`SendStream`].
+    pub fn send_mut(&mut self) -> &mut SendStream {
+        &mut self.0 .0
+    }
+
+    /// Returns a reference to the inner [`RecvStream`].
+    pub fn recv(&self) -> &RecvStream {
+        &self.0 .1
+    }
+
+    /// Returns a mutable reference to the inner [`RecvStream`].
+    pub fn recv_mut(&mut self) -> &mut RecvStream {
+        &mut self.0 .1
+    }
 }
 
 impl From<(SendStream, RecvStream)> for BiStream {
