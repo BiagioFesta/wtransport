@@ -774,6 +774,12 @@ pub mod client {
         }
     }
 
+    impl FromIterator<Sha256Digest> for ServerHashVerification {
+        fn from_iter<T: IntoIterator<Item = Sha256Digest>>(iter: T) -> Self {
+            Self::new(iter)
+        }
+    }
+
     impl ServerCertVerifier for ServerHashVerification {
         fn verify_server_cert(
             &self,
