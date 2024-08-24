@@ -111,6 +111,7 @@ impl FrameKind {
 }
 
 /// An HTTP3 frame.
+#[derive(Debug)]
 pub struct Frame<'a> {
     kind: FrameKind,
     payload: Cow<'a, [u8]>,
