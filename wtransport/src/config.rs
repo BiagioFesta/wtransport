@@ -681,7 +681,7 @@ pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
     pub(crate) quic_config: quinn::ClientConfig,
-    pub(crate) dns_resolver: Arc<dyn DnsResolver>,
+    pub(crate) dns_resolver: Arc<dyn DnsResolver + Send + Sync>,
 }
 
 impl ClientConfig {
@@ -697,7 +697,7 @@ impl ClientConfig {
     /// Default resolver is [`TokioDnsResolver`].
     pub fn set_dns_resolver<R>(&mut self, dns_resolver: R)
     where
-        R: DnsResolver + 'static,
+        R: DnsResolver + Send + Sync + 'static,
     {
         self.dns_resolver = Arc::new(dns_resolver);
     }
@@ -1059,7 +1059,7 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     /// Default configuration uses [`TokioDnsResolver`].
     pub fn dns_resolver<R>(mut self, dns_resolver: R) -> Self
     where
-        R: DnsResolver + 'static,
+        R: DnsResolver + Send + Sync + 'static,
     {
         self.0.dns_resolver = Arc::new(dns_resolver);
         self
@@ -1112,7 +1112,7 @@ pub mod states {
         pub(super) dual_stack_config: Ipv6DualStackConfig,
         pub(super) tls_config: TlsClientConfig,
         pub(super) transport_config: quinn::TransportConfig,
-        pub(super) dns_resolver: Arc<dyn DnsResolver>,
+        pub(super) dns_resolver: Arc<dyn DnsResolver + Send + Sync>,
     }
 }
 
