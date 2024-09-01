@@ -1119,9 +1119,9 @@ pub mod states {
 /// Future resolving domain name.
 ///
 /// See [`DnsResolver::resolve`].
-pub trait DnsLookupFuture: Future<Output = std::io::Result<Option<SocketAddr>>> {}
+pub trait DnsLookupFuture: Future<Output = std::io::Result<Option<SocketAddr>>> + Send {}
 
-impl<F> DnsLookupFuture for F where F: Future<Output = std::io::Result<Option<SocketAddr>>> {}
+impl<F> DnsLookupFuture for F where F: Future<Output = std::io::Result<Option<SocketAddr>>> + Send {}
 
 /// A trait for asynchronously resolving domain names to IP addresses using DNS.
 pub trait DnsResolver: Debug {
