@@ -573,10 +573,11 @@ pub fn build_native_cert_store() -> RootCertStore {
 
     let mut root_store = RootCertStore::empty();
 
-    if let Ok(certs) = rustls_native_certs::load_native_certs() {
-        for c in certs {
-            let _ = root_store.add(c);
-        }
+    let rustls_native_certs::CertificateResult { certs, .. } =
+        rustls_native_certs::load_native_certs();
+
+    for c in certs {
+        let _ = root_store.add(c);
     }
 
     root_store
