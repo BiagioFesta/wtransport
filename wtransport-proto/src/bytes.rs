@@ -421,7 +421,7 @@ pub mod r#async {
         fn get_varint(&mut self) -> GetVarint<Self>;
 
         /// Reads the source until `buffer` is completely filled.
-        fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<Self>;
+        fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<'a, Self>;
     }
 
     impl<T> BytesReaderAsync for T
@@ -432,7 +432,7 @@ pub mod r#async {
             GetVarint::new(self)
         }
 
-        fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<Self> {
+        fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<'a, Self> {
             GetBuffer::new(self, buffer)
         }
     }
@@ -445,7 +445,7 @@ pub mod r#async {
             PutVarint::new(self, varint)
         }
 
-        fn put_buffer<'a>(&'a mut self, buffer: &'a [u8]) -> PutBuffer<Self> {
+        fn put_buffer<'a>(&'a mut self, buffer: &'a [u8]) -> PutBuffer<'a, Self> {
             PutBuffer::new(self, buffer)
         }
     }
@@ -458,7 +458,7 @@ pub mod r#async {
         fn put_varint(&mut self, varint: VarInt) -> PutVarint<Self>;
 
         /// Pushes some bytes into the source advancing the buffer’s internal cursor.
-        fn put_buffer<'a>(&'a mut self, buffer: &'a [u8]) -> PutBuffer<Self>;
+        fn put_buffer<'a>(&'a mut self, buffer: &'a [u8]) -> PutBuffer<'a, Self>;
     }
 
     /// [`Future`] for reading a varint.
