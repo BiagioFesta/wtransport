@@ -53,6 +53,16 @@ pub enum ErrorCode {
 }
 
 impl ErrorCode {
+    /// Converts this stream [`ErrorCode`] to HTTP/3 error code.
+    /// <https://ietf-wg-webtrans.github.io/draft-ietf-webtrans-http3/draft-ietf-webtrans-http3.html#section-4.3)>
+    pub fn to_http3(self) -> VarInt {
+        let code = self.to_code();
+        let first: u64 = 0x52e4a40fa8db;
+        let code = u64::from(code);
+        let val = first + code + (code / 0x1e);
+        VarInt::try_from_u64(val).expect("Valid conversion")
+    }
+
     /// Returns the integer representation (code) of the error.
     pub fn to_code(self) -> VarInt {
         match self {
