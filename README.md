@@ -130,7 +130,7 @@ This example initiates an *echo* WebTransport server that can receive messages. 
 Open [a supported web browser](https://caniuse.com/mdn-api_webtransport) and navigate to the page http://127.0.0.1:8080.
 
 ## Examples
-* [Local Examples](wtransport/examples/)
+* [Local Examples](https://github.com/BiagioFesta/wtransport/tree/master/wtransport/examples)
 
 ## Other Languages
 
