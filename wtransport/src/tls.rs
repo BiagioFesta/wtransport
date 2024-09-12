@@ -603,20 +603,19 @@ pub mod server {
     /// # Arguments
     ///
     /// - `identity`: A reference to the identity containing the certificate chain and private key.
-    pub fn build_default_tls_config(identity: &Identity) -> TlsServerConfig {
+    pub fn build_default_tls_config(identity: Identity) -> TlsServerConfig {
         let certificates = identity
-            .certificate_chain()
-            .as_slice()
-            .iter()
-            .map(|cert| rustls_pki_types::CertificateDer::from(cert.der().to_vec()))
+            .certificate_chain
+            .0
+            .into_iter()
+            .map(|cert| cert.0)
             .collect();
 
-        let private_key = identity.private_key();
+        let private_key = identity.private_key.0;
 
-        // TODO: clone key is inefficient; perpaps the key was borrowed from static data?
         let mut tls_config = TlsServerConfig::builder()
             .with_no_client_auth()
-            .with_single_cert(certificates, private_key.0.clone_key())
+            .with_single_cert(certificates, private_key)
             .expect("Certificate and private key should be already validated");
 
         tls_config.alpn_protocols = [WEBTRANSPORT_ALPN.to_vec()].to_vec();

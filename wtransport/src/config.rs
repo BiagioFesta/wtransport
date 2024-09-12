@@ -16,7 +16,7 @@
 //!
 //! let server_config = ServerConfig::builder()
 //!     .with_bind_default(443)
-//!     .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?)
+//!     .with_identity(Identity::load_pemfiles("cert.pem", "key.pem").await?)
 //!     .build();
 //!
 //! # Ok(())
@@ -194,7 +194,7 @@ pub struct InvalidIdleTimeout;
 /// # async fn run() -> Result<()> {
 /// ServerConfig::builder()
 ///     .with_bind_default(443)
-///     .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?);
+///     .with_identity(Identity::load_pemfiles("cert.pem", "key.pem").await?);
 /// # Ok(())
 /// # }
 /// ```
@@ -221,7 +221,7 @@ pub struct InvalidIdleTimeout;
 /// # async fn run() -> Result<()> {
 /// let server_config = ServerConfig::builder()
 ///     .with_bind_default(443)
-///     .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?)
+///     .with_identity(Identity::load_pemfiles("cert.pem", "key.pem").await?)
 ///     .keep_alive_interval(Some(Duration::from_secs(3)))
 ///     .build();
 /// # Ok(())
@@ -269,7 +269,7 @@ impl ServerConfig {
 /// # use wtransport::ServerConfig;
 /// let config = ServerConfig::builder()
 ///     .with_bind_default(4433)
-///     .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?);
+///     .with_identity(Identity::load_pemfiles("cert.pem", "key.pem").await?);
 /// # Ok(())
 /// # }
 /// ```
@@ -348,14 +348,14 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     ///
     /// let server_config = ServerConfig::builder()
     ///     .with_bind_default(4433)
-    ///     .with_identity(&identity)
+    ///     .with_identity(identity)
     ///     .build();
     /// # Ok(())
     /// # }
     /// ```
     pub fn with_identity(
         self,
-        identity: &Identity,
+        identity: Identity,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         use crate::tls::server::build_default_tls_config;
 
@@ -440,14 +440,14 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     /// // Create a ServerConfigBuilder with the custom transport configuration and default TLS settings
     /// let server_config = ServerConfig::builder()
     ///     .with_bind_default(4433)
-    ///     .with_custom_transport(&identity, custom_transport_config)
+    ///     .with_custom_transport(identity, custom_transport_config)
     ///     .build();
     /// ```
     #[cfg(feature = "quinn")]
     #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
     pub fn with_custom_transport(
         self,
-        identity: &Identity,
+        identity: Identity,
         quic_transport_config: QuicTransportConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         use crate::tls::server::build_default_tls_config;

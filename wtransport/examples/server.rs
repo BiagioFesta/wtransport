@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
 
     let config = ServerConfig::builder()
         .with_bind_default(4433)
-        .with_identity(&Identity::self_signed(["localhost"]).unwrap())
+        .with_identity(Identity::self_signed(["localhost"]).unwrap())
         .keep_alive_interval(Some(Duration::from_secs(3)))
         .build();
 

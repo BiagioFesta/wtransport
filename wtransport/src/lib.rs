@@ -52,7 +52,7 @@
 //! async fn main() -> Result<()> {
 //!     let config = ServerConfig::builder()
 //!         .with_bind_default(4433)
-//!         .with_identity(&Identity::load_pemfiles("cert.pem", "key.pem").await?)
+//!         .with_identity(Identity::load_pemfiles("cert.pem", "key.pem").await?)
 //!         .build();
 //!
 //!     let server = Endpoint::server(config)?;
