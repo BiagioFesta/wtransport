@@ -21,7 +21,7 @@ async fn main() -> Result<()> {
     let http_server = HttpServer::new(&cert_digest, webtransport_server.local_port()).await?;
 
     info!(
-        "Open Google Chrome and go to: http://127.0.0.1:{}",
+        "Open the browser and go to: http://127.0.0.1:{}",
         http_server.local_port()
     );
 
