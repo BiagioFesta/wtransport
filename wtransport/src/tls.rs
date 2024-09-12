@@ -314,6 +314,10 @@ impl Identity {
     ///
     /// Identity::self_signed(&["❤️"]).unwrap();
     /// ```
+    ///
+    /// # Features
+    ///
+    /// This function is only available when the `self-signed` feature is enabled.
     #[cfg(feature = "self-signed")]
     #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
     pub fn self_signed<I, S>(subject_alt_names: I) -> Result<Self, error::InvalidSan>
@@ -321,41 +325,41 @@ impl Identity {
         I: IntoIterator<Item = S>,
         S: AsRef<str>,
     {
-        use error::InvalidSan;
-        use rcgen::CertificateParams;
-        use rcgen::DistinguishedName;
-        use rcgen::DnType;
-        use rcgen::KeyPair;
-        use rcgen::PKCS_ECDSA_P256_SHA256;
-        use time::Duration;
-        use time::OffsetDateTime;
+        self_signed::SelfSignedIdentityBuilder::new()
+            .subject_alt_names(subject_alt_names)
+            .from_now_utc()
+            .validity_days(14)
+            .build()
+    }
 
-        let subject_alt_names = subject_alt_names
-            .into_iter()
-            .map(|s| s.as_ref().to_string())
-            .collect::<Vec<_>>();
-
-        let mut dname = DistinguishedName::new();
-        dname.push(DnType::CommonName, "wtransport self-signed");
-
-        let key_pair = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
-            .expect("algorithm for key pair is supported");
-
-        let mut cert_params = CertificateParams::new(subject_alt_names).map_err(|_| InvalidSan)?;
-        cert_params.distinguished_name = dname;
-        cert_params.not_before = OffsetDateTime::now_utc();
-        cert_params.not_after = OffsetDateTime::now_utc()
-            .checked_add(Duration::days(14))
-            .expect("addition does not overflow");
-
-        let cert = cert_params
-            .self_signed(&key_pair)
-            .expect("inner params are valid");
-
-        Ok(Self::new(
-            CertificateChain::single(Certificate(cert.der().clone())),
-            PrivateKey::from_der_pkcs8(key_pair.serialize_der()),
-        ))
+    /// Creates a new [`SelfSignedIdentityBuilder`][1] instance.
+    ///
+    /// This function provides a convenient way to create a self-signed identity
+    /// builder, and thus generate a custom self-signed identity.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use wtransport::Identity;
+    ///
+    /// let identity = Identity::self_signed_builder()
+    ///     .subject_alt_names(&["localhost", "127.0.0.1", "::1"])
+    ///     .from_now_utc()
+    ///     .validity_days(14)
+    ///     .build()
+    ///     .unwrap();
+    /// ```
+    ///
+    /// # Features
+    ///
+    /// This function is only available when the `self-signed` feature is enabled.
+    ///
+    /// [1]: self_signed::SelfSignedIdentityBuilder
+    #[cfg(feature = "self-signed")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+    pub fn self_signed_builder(
+    ) -> self_signed::SelfSignedIdentityBuilder<self_signed::states::WantsSans> {
+        self_signed::SelfSignedIdentityBuilder::new()
     }
 
     /// Returns a reference to the certificate chain associated with the identity.
@@ -937,6 +941,295 @@ pub mod error {
     #[derive(Debug, thiserror::Error)]
     #[error("invalid SANs for the self certificate")]
     pub struct InvalidSan;
+}
+
+/// Module for generating self-signed [`Identity`].
+///
+/// This module provides a builder pattern for constructing self-signed
+/// identities. These certificates are primarily used for local testing or
+/// development where a full certificate authority (CA) infrastructure isn't
+/// necessary.
+///
+/// The feature is enabled when the `self-signed` feature flag is active.
+#[cfg(feature = "self-signed")]
+#[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
+pub mod self_signed {
+    use super::*;
+    use error::InvalidSan;
+    use rcgen::CertificateParams;
+    use rcgen::DistinguishedName;
+    use rcgen::DnType;
+    use rcgen::KeyPair;
+    use rcgen::PKCS_ECDSA_P256_SHA256;
+    use time::OffsetDateTime;
+
+    /// The builder for creating self-signed [`Identity`].
+    ///
+    /// This struct uses state-based typing to enforce that the appropriate methods
+    /// are called in the right order.
+    pub struct SelfSignedIdentityBuilder<State>(State);
+
+    impl SelfSignedIdentityBuilder<states::WantsSans> {
+        /// Creates a new `SelfSignedIdentityBuilder` instance.
+        ///
+        /// The builder starts in the `WantsSans` state, meaning it requires subject
+        /// alternative names (SANs) to be specified before continuing.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use wtransport::tls::self_signed::SelfSignedIdentityBuilder;
+        ///
+        /// let builder = SelfSignedIdentityBuilder::new();
+        /// ```
+        ///
+        /// **Note**: You can conveniently create a new builder with [`Identity::self_signed_builder()`].
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use wtransport::Identity;
+        ///
+        /// let builder = Identity::self_signed_builder();
+        /// ```
+        pub fn new() -> Self {
+            Self(states::WantsSans {})
+        }
+
+        /// Specifies the subject alternative names (SANs) for the certificate.
+        ///
+        /// The SANs can be provided as a collection of strings, such as hostnames or IP addresses.
+        ///
+        /// # Arguments
+        ///
+        /// * `subject_alt_names` - An iterator of strings representing subject alternative names (SANs).
+        ///                         They can be both hostnames or IP addresses.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use wtransport::tls::self_signed::SelfSignedIdentityBuilder;
+        ///
+        /// let builder =
+        ///     SelfSignedIdentityBuilder::new().subject_alt_names(&["localhost", "127.0.0.1", "::1"]);
+        /// ```
+        pub fn subject_alt_names<I, S>(
+            self,
+            subject_alt_names: I,
+        ) -> SelfSignedIdentityBuilder<states::WantsValidityPeriod>
+        where
+            I: IntoIterator<Item = S>,
+            S: AsRef<str>,
+        {
+            let sans = subject_alt_names
+                .into_iter()
+                .map(|s| s.as_ref().to_string())
+                .collect();
+
+            SelfSignedIdentityBuilder(states::WantsValidityPeriod { sans })
+        }
+    }
+
+    impl SelfSignedIdentityBuilder<states::WantsValidityPeriod> {
+        /// Sets the certificate's `not_before` time to the current UTC time.
+        ///
+        /// After this, the builder is in the `WantsNotAfter` state, requiring a `not_after` time to be set.
+        pub fn from_now_utc(self) -> SelfSignedIdentityBuilder<states::WantsNotAfter> {
+            let not_before = OffsetDateTime::now_utc();
+            self.not_before(not_before)
+        }
+
+        /// Sets the `not_before` time of the certificate.
+        ///
+        /// # Parameters
+        ///
+        /// - `not_before`: The starting time of the certificate's validity period.
+        ///
+        /// After this, the builder is in the `WantsNotAfter` state, requiring a `not_after` time to be set.
+        pub fn not_before(
+            self,
+            not_before: OffsetDateTime,
+        ) -> SelfSignedIdentityBuilder<states::WantsNotAfter> {
+            SelfSignedIdentityBuilder(states::WantsNotAfter {
+                sans: self.0.sans,
+                not_before,
+            })
+        }
+
+        /// Specifies the validity period for the certificate.
+        ///
+        /// # Parameters
+        ///
+        /// - `not_before`: The starting time of the certificate's validity period.
+        /// - `not_after`: The ending time of the certificate's validity period.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use wtransport::tls::self_signed::time::OffsetDateTime;
+        /// use wtransport::tls::self_signed::SelfSignedIdentityBuilder;
+        ///
+        /// let builder = SelfSignedIdentityBuilder::new()
+        ///     .subject_alt_names(&["localhost"])
+        ///     .validity_period(
+        ///         OffsetDateTime::now_utc(),
+        ///         OffsetDateTime::now_utc() + time::Duration::days(7),
+        ///     );
+        /// ```
+        pub fn validity_period(
+            self,
+            not_before: OffsetDateTime,
+            not_after: OffsetDateTime,
+        ) -> SelfSignedIdentityBuilder<states::ReadyToBuild> {
+            self.not_before(not_before).not_after(not_after)
+        }
+    }
+
+    impl SelfSignedIdentityBuilder<states::WantsNotAfter> {
+        /// Specifies the `not_after` time of the certificate.
+        ///
+        /// # Parameters
+        ///
+        /// - `not_after`: The ending time of the certificate's validity.
+        pub fn not_after(
+            self,
+            not_after: OffsetDateTime,
+        ) -> SelfSignedIdentityBuilder<states::ReadyToBuild> {
+            SelfSignedIdentityBuilder(states::ReadyToBuild {
+                sans: self.0.sans,
+                not_before: self.0.not_before,
+                not_after,
+            })
+        }
+
+        /// Sets the `not_after` time of the certificate to an offset from the `not_before` time.
+        ///
+        /// # Parameters
+        ///
+        /// - `offset`: A time duration that specifies how far `not_after` should be from `not_before`.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use wtransport::tls::self_signed::time::OffsetDateTime;
+        /// use wtransport::tls::self_signed::SelfSignedIdentityBuilder;
+        ///
+        /// let builder = SelfSignedIdentityBuilder::new()
+        ///     .subject_alt_names(&["localhost"])
+        ///     .not_before(OffsetDateTime::now_utc())
+        ///     .offset_from_not_before(time::Duration::days(7)); // now + 7 days
+        /// ```
+        pub fn offset_from_not_before(
+            self,
+            offset: time::Duration,
+        ) -> SelfSignedIdentityBuilder<states::ReadyToBuild> {
+            let not_after = self.0.not_before + offset;
+            self.not_after(not_after)
+        }
+
+        /// Sets the certificate's validity to a specified number of days from `not_before`.
+        ///
+        /// # Parameters
+        ///
+        /// - `days`: The number of days for which the certificate should be valid.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use wtransport::tls::self_signed::SelfSignedIdentityBuilder;
+        ///
+        /// let builder = SelfSignedIdentityBuilder::new()
+        ///     .subject_alt_names(&["localhost"])
+        ///     .from_now_utc()
+        ///     .validity_days(14);
+        /// ```
+        pub fn validity_days(self, days: u32) -> SelfSignedIdentityBuilder<states::ReadyToBuild> {
+            self.offset_from_not_before(time::Duration::days(days as i64))
+        }
+    }
+
+    impl SelfSignedIdentityBuilder<states::ReadyToBuild> {
+        /// Generates a self-signed certificate and private key for new identity.
+        ///
+        /// # Returns
+        ///
+        /// Returns an [`Identity`] containing the certificate and private key,
+        /// or an error if the SANs are invalid (they are not valid *ASN.1* strings).
+        ///
+        /// # Specifications
+        ///
+        /// The certificate will be conforms to the following specifications:
+        ///
+        /// - The certificate is an *X.509v3* certificate as defined in *RFC5280*.
+        /// - The key used in the Subject Public Key field uses `ECDSA P-256` algorithm.
+        ///
+        /// # Example
+        ///
+        /// ```
+        /// use wtransport::tls::self_signed::SelfSignedIdentityBuilder;
+        ///
+        /// let identity = SelfSignedIdentityBuilder::new()
+        ///     .subject_alt_names(&["localhost", "127.0.0.1"])
+        ///     .from_now_utc()
+        ///     .validity_days(7)
+        ///     .build()
+        ///     .unwrap();
+        /// ```
+        pub fn build(self) -> Result<Identity, error::InvalidSan> {
+            let mut dname = DistinguishedName::new();
+            dname.push(DnType::CommonName, "wtransport self-signed");
+
+            let key_pair = KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
+                .expect("algorithm for key pair is supported");
+
+            let mut cert_params = CertificateParams::new(self.0.sans).map_err(|_| InvalidSan)?;
+            cert_params.distinguished_name = dname;
+            cert_params.not_before = self.0.not_before;
+            cert_params.not_after = self.0.not_after;
+            let cert = cert_params
+                .self_signed(&key_pair)
+                .expect("inner params are valid");
+
+            Ok(Identity::new(
+                CertificateChain::single(Certificate(cert.der().clone())),
+                PrivateKey::from_der_pkcs8(key_pair.serialize_der()),
+            ))
+        }
+    }
+
+    impl Default for SelfSignedIdentityBuilder<states::WantsSans> {
+        fn default() -> Self {
+            Self::new()
+        }
+    }
+
+    /// State-types for [`SelfSignedIdentityBuilder`] builder.
+    pub mod states {
+        use super::*;
+
+        /// Initial state, requiring subject alternative names (SANs).
+        pub struct WantsSans {}
+
+        /// State after SANs have been set, requiring a validity period.
+        pub struct WantsValidityPeriod {
+            pub(super) sans: Vec<String>,
+        }
+
+        /// State after `not_before` is set, requiring `not_after` to be specified.
+        pub struct WantsNotAfter {
+            pub(super) sans: Vec<String>,
+            pub(super) not_before: OffsetDateTime,
+        }
+
+        /// Final state where all data is ready and the certificate can be built.
+        pub struct ReadyToBuild {
+            pub(super) sans: Vec<String>,
+            pub(super) not_before: OffsetDateTime,
+            pub(super) not_after: OffsetDateTime,
+        }
+    }
+
+    pub use time;
 }
 
 pub use rustls;
