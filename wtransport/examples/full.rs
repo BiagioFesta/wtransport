@@ -460,7 +460,7 @@ async function sendData() {
       case 'bidi': {
         let stream = await transport.createBidirectionalStream();
         let number = streamNumber++;
-        readFromIncomingStream(stream, number);
+        readFromIncomingStream(stream.readable, number);
 
         let writer = stream.writable.getWriter();
         await writer.write(data);
