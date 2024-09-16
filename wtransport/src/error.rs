@@ -143,6 +143,11 @@ impl ConnectingError {
     }
 }
 
+/// Error indicating that a stream has been already finished or reset.
+#[derive(thiserror::Error, Debug)]
+#[error("closed stream")]
+pub struct ClosedStream;
+
 /// An error that arise from writing to a stream.
 #[derive(thiserror::Error, Debug, Clone, Eq, PartialEq)]
 pub enum StreamWriteError {

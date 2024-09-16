@@ -3,6 +3,7 @@ use crate::driver::streams::unilocal::StreamUniLocalQuic;
 use crate::driver::streams::ProtoWriteError;
 use crate::driver::streams::QuicRecvStream;
 use crate::driver::streams::QuicSendStream;
+use crate::error::ClosedStream;
 use crate::error::StreamOpeningError;
 use crate::error::StreamReadError;
 use crate::error::StreamReadExactError;
@@ -86,9 +87,9 @@ impl SendStream {
     /// previously transmitted data will no longer be retransmitted if lost. If an attempt has
     /// already been made to finish the stream, the peer may still receive all written data.
     ///
-    /// If called more than once, subsequent calls will result in `StreamWriteError::Closed`.
+    /// If called more than once, subsequent calls will result in [`ClosedStream`] error.
     #[inline(always)]
-    pub fn reset(&mut self, error_code: VarInt) -> Result<(), StreamWriteError> {
+    pub fn reset(&mut self, error_code: VarInt) -> Result<(), ClosedStream> {
         self.0.reset(error_code)
     }
 

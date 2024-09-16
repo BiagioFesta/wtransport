@@ -1,6 +1,7 @@
 use crate::driver::utils::streamid_q2w;
 use crate::driver::utils::varint_q2w;
 use crate::driver::utils::varint_w2q;
+use crate::error::ClosedStream;
 use crate::error::StreamReadError;
 use crate::error::StreamReadExactError;
 use crate::error::StreamWriteError;
@@ -75,10 +76,10 @@ impl QuicSendStream {
     }
 
     #[inline(always)]
-    pub fn reset(&mut self, error_code: VarInt) -> Result<(), StreamWriteError> {
+    pub fn reset(&mut self, error_code: VarInt) -> Result<(), ClosedStream> {
         self.0
             .reset(varint_w2q(error_code))
-            .map_err(|_| StreamWriteError::Closed)
+            .map_err(|_| ClosedStream)
     }
 
     #[inline(always)]
