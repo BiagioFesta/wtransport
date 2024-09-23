@@ -465,6 +465,7 @@ impl Endpoint<endpoint_side::Client> {
 /// # Ok(())
 /// # }
 /// ```
+#[derive(Debug, Clone)]
 pub struct ConnectOptions {
     url: String,
     additional_headers: HashMap<String, String>,
@@ -489,6 +490,16 @@ impl ConnectOptions {
             url: url.to_string(),
             additional_headers: Default::default(),
         }
+    }
+
+    /// Gets the URL which this will connect to.
+    pub fn url(&self) -> &str {
+        &self.url
+    }
+
+    /// Gets the additional headers that will be passed when connecting.
+    pub fn additional_headers(&self) -> &HashMap<String, String> {
+        &self.additional_headers
     }
 }
 
