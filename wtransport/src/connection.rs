@@ -108,15 +108,18 @@ use crate::tls::HandshakeData;
 use crate::SessionId;
 use crate::VarInt;
 use std::net::SocketAddr;
+use std::sync::Arc;
 use std::time::Duration;
 
 /// A WebTransport session connection.
 ///
 /// For more details, see the [module documentation](crate::connection).
-#[derive(Debug)]
+///
+/// May be cloned to obtain another handle to the same connection.
+#[derive(Clone, Debug)]
 pub struct Connection {
     quic_connection: quinn::Connection,
-    driver: Driver,
+    driver: Arc<Driver>,
     session_id: SessionId,
 }
 
@@ -128,7 +131,7 @@ impl Connection {
     ) -> Self {
         Self {
             quic_connection,
-            driver,
+            driver: Arc::new(driver),
             session_id,
         }
     }
