@@ -36,6 +36,7 @@
 
 use crate::tls::build_native_cert_store;
 use crate::tls::Identity;
+use quinn::EndpointConfig;
 use quinn::TransportConfig;
 use std::fmt::Debug;
 use std::fmt::Display;
@@ -230,6 +231,7 @@ pub struct InvalidIdleTimeout;
 pub struct ServerConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
+    pub(crate) endpoint_config: quinn::EndpointConfig,
     pub(crate) quic_config: quinn::ServerConfig,
 }
 
@@ -239,6 +241,20 @@ impl ServerConfig {
     /// For more information, see the [`ServerConfigBuilder`] documentation.
     pub fn builder() -> ServerConfigBuilder<states::WantsBindAddress> {
         ServerConfigBuilder::default()
+    }
+
+    /// Returns a reference to the inner QUIC endpoint configuration.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn quic_endpoint_config(&self) -> &quinn::EndpointConfig {
+        &self.endpoint_config
+    }
+
+    /// Returns a mutable reference to the inner QUIC endpoint configuration.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn quic_endpoint_config_mut(&mut self) -> &mut quinn::EndpointConfig {
+        &mut self.endpoint_config
     }
 
     /// Returns a reference to the inner QUIC configuration.
@@ -360,9 +376,10 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         use crate::tls::server::build_default_tls_config;
 
         let tls_config = build_default_tls_config(identity);
+        let quic_endpoint_config = EndpointConfig::default();
         let quic_transport_config = TransportConfig::default();
 
-        self.with(tls_config, quic_transport_config)
+        self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
 
     /// Allows for manual configuration of a custom TLS setup using a provided
@@ -401,9 +418,10 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         self,
         tls_config: TlsServerConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
+        let quic_endpoint_config = EndpointConfig::default();
         let quic_transport_config = TransportConfig::default();
 
-        self.with(tls_config, quic_transport_config)
+        self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
 
     /// Configures the server with a custom QUIC transport configuration and a default TLS setup
@@ -453,8 +471,9 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         use crate::tls::server::build_default_tls_config;
 
         let tls_config = build_default_tls_config(identity);
+        let quic_endpoint_config = EndpointConfig::default();
 
-        self.with(tls_config, quic_transport_config)
+        self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
 
     /// Configures the server with both a custom TLS configuration and a custom QUIC transport
@@ -478,7 +497,8 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         tls_config: TlsServerConfig,
         quic_transport_config: QuicTransportConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
-        self.with(tls_config, quic_transport_config)
+        let quic_endpoint_config = EndpointConfig::default();
+        self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
 
     /// Directly builds [`ServerConfig`] skipping TLS and transport configuration.
@@ -490,6 +510,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         ServerConfig {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
+            endpoint_config: EndpointConfig::default(),
             quic_config,
         }
     }
@@ -497,12 +518,14 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     fn with(
         self,
         tls_config: TlsServerConfig,
+        endpoint_config: EndpointConfig,
         transport_config: TransportConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         ServerConfigBuilder(states::WantsTransportConfigServer {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
+            endpoint_config,
             transport_config,
             migration: true,
         })
@@ -530,6 +553,7 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
         ServerConfig {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
+            endpoint_config: self.0.endpoint_config,
             quic_config,
         }
     }
@@ -680,6 +704,7 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 pub struct ClientConfig {
     pub(crate) bind_address: SocketAddr,
     pub(crate) dual_stack_config: Ipv6DualStackConfig,
+    pub(crate) endpoint_config: quinn::EndpointConfig,
     pub(crate) quic_config: quinn::ClientConfig,
     pub(crate) dns_resolver: Arc<dyn DnsResolver + Send + Sync>,
 }
@@ -700,6 +725,20 @@ impl ClientConfig {
         R: DnsResolver + Send + Sync + 'static,
     {
         self.dns_resolver = Arc::new(dns_resolver);
+    }
+
+    /// Returns a reference to the inner QUIC endpoint configuration.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn quic_endpoint_config(&self) -> &quinn::EndpointConfig {
+        &self.endpoint_config
+    }
+
+    /// Returns a mutable reference to the inner QUIC endpoint configuration.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn quic_endpoint_config_mut(&mut self) -> &mut quinn::EndpointConfig {
+        &mut self.endpoint_config
     }
 
     /// Returns a reference to the inner QUIC configuration.
@@ -805,9 +844,10 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         use crate::tls::client::build_default_tls_config;
 
         let tls_config = build_default_tls_config(Arc::new(build_native_cert_store()), None);
+        let endpoint_config = EndpointConfig::default();
         let transport_config = TransportConfig::default();
 
-        self.with(tls_config, transport_config)
+        self.with(tls_config, endpoint_config, transport_config)
     }
 
     /// Configures the client to skip server certificate validation, potentially
@@ -845,9 +885,10 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             Some(Arc::new(NoServerVerification::new())),
         );
 
+        let endpoint_config = EndpointConfig::default();
         let transport_config = TransportConfig::default();
 
-        self.with(tls_config, transport_config)
+        self.with(tls_config, endpoint_config, transport_config)
     }
 
     /// Configures the client to skip *some* server certificates validation.
@@ -883,9 +924,10 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             Some(Arc::new(ServerHashVerification::new(hashes))),
         );
 
+        let endpoint_config = EndpointConfig::default();
         let transport_config = TransportConfig::default();
 
-        self.with(tls_config, transport_config)
+        self.with(tls_config, endpoint_config, transport_config)
     }
 
     /// Allows for manual configuration of a custom TLS setup using a provided
@@ -904,9 +946,10 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         self,
         tls_config: TlsClientConfig,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
+        let endpoint_config = EndpointConfig::default();
         let transport_config = TransportConfig::default();
 
-        self.with(tls_config, transport_config)
+        self.with(tls_config, endpoint_config, transport_config)
     }
 
     /// Similar to [`with_native_certs`](Self::with_native_certs), but it allows specifying a custom
@@ -942,8 +985,9 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         use crate::tls::client::build_default_tls_config;
 
         let tls_config = build_default_tls_config(Arc::new(build_native_cert_store()), None);
+        let quic_endpoint_config = EndpointConfig::default();
 
-        self.with(tls_config, quic_transport_config)
+        self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
 
     /// Configures the client with both a custom TLS configuration and a custom QUIC transport
@@ -967,7 +1011,8 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         tls_config: TlsClientConfig,
         quic_transport_config: QuicTransportConfig,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
-        self.with(tls_config, quic_transport_config)
+        let quic_endpoint_config = EndpointConfig::default();
+        self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
 
     /// Directly builds [`ClientConfig`] skipping TLS and transport configuration.
@@ -979,6 +1024,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         ClientConfig {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
+            endpoint_config: EndpointConfig::default(),
             quic_config,
             dns_resolver: Arc::<TokioDnsResolver>::default(),
         }
@@ -987,12 +1033,14 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     fn with(
         self,
         tls_config: TlsClientConfig,
+        endpoint_config: EndpointConfig,
         transport_config: TransportConfig,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         ClientConfigBuilder(states::WantsTransportConfigClient {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
             tls_config,
+            endpoint_config,
             transport_config,
             dns_resolver: Arc::<TokioDnsResolver>::default(),
         })
@@ -1016,6 +1064,7 @@ impl ClientConfigBuilder<states::WantsTransportConfigClient> {
         ClientConfig {
             bind_address: self.0.bind_address,
             dual_stack_config: self.0.dual_stack_config,
+            endpoint_config: self.0.endpoint_config,
             quic_config,
             dns_resolver: self.0.dns_resolver,
         }
@@ -1102,6 +1151,7 @@ pub mod states {
         pub(super) bind_address: SocketAddr,
         pub(super) dual_stack_config: Ipv6DualStackConfig,
         pub(super) tls_config: TlsServerConfig,
+        pub(super) endpoint_config: quinn::EndpointConfig,
         pub(super) transport_config: quinn::TransportConfig,
         pub(super) migration: bool,
     }
@@ -1111,6 +1161,7 @@ pub mod states {
         pub(super) bind_address: SocketAddr,
         pub(super) dual_stack_config: Ipv6DualStackConfig,
         pub(super) tls_config: TlsClientConfig,
+        pub(super) endpoint_config: quinn::EndpointConfig,
         pub(super) transport_config: quinn::TransportConfig,
         pub(super) dns_resolver: Arc<dyn DnsResolver + Send + Sync>,
     }

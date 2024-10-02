@@ -75,6 +75,7 @@ allowed_external_types = [
     "quinn::send_stream::SendStream",
     "quinn::send_stream::WriteError",
     "quinn_proto::config::ClientConfig",
+    "quinn_proto::config::EndpointConfig",
     "quinn_proto::config::ServerConfig",
     "quinn_proto::config::TransportConfig",
     "quinn_proto::connection::ConnectionError",

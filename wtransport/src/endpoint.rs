@@ -153,17 +153,14 @@ impl<Side> Endpoint<Side> {
 impl Endpoint<endpoint_side::Server> {
     /// Constructs a *server* endpoint.
     pub fn server(server_config: ServerConfig) -> std::io::Result<Self> {
+        let endpoint_config = server_config.endpoint_config;
         let quic_config = server_config.quic_config;
         let socket =
             Self::bind_socket(server_config.bind_address, server_config.dual_stack_config)?;
         let runtime = Arc::new(TokioRuntime);
 
-        let endpoint = quinn::Endpoint::new(
-            quinn::EndpointConfig::default(),
-            Some(quic_config),
-            socket.into(),
-            runtime,
-        )?;
+        let endpoint =
+            quinn::Endpoint::new(endpoint_config, Some(quic_config), socket.into(), runtime)?;
 
         Ok(Self {
             endpoint,
@@ -213,17 +210,13 @@ impl Endpoint<endpoint_side::Server> {
 impl Endpoint<endpoint_side::Client> {
     /// Constructs a *client* endpoint.
     pub fn client(client_config: ClientConfig) -> std::io::Result<Self> {
+        let endpoint_config = client_config.endpoint_config;
         let quic_config = client_config.quic_config;
         let socket =
             Self::bind_socket(client_config.bind_address, client_config.dual_stack_config)?;
         let runtime = Arc::new(TokioRuntime);
 
-        let mut endpoint = quinn::Endpoint::new(
-            quinn::EndpointConfig::default(),
-            None,
-            socket.into(),
-            runtime,
-        )?;
+        let mut endpoint = quinn::Endpoint::new(endpoint_config, None, socket.into(), runtime)?;
 
         endpoint.set_default_client_config(quic_config);
 
