@@ -5,6 +5,9 @@
 /// I/O and buffer operations.
 pub mod bytes;
 
+/// HTTP3 capsule protocol.
+pub mod capsule;
+
 /// HTTP3 datagrams.
 pub mod datagram;
 
