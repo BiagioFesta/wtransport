@@ -31,7 +31,8 @@ impl CloseWebTransportSession {
             return Err(ErrorCode::Datagram);
         }
 
-        let error_code = u32::from_be_bytes(payload[..4].try_into().expect("at least 4 bytes"));
+        let error_code =
+            u32::from_be_bytes(payload[..4].try_into().expect("4B to u32 should succeed"));
         let reason = std::str::from_utf8(&payload[4..])
             .map_err(|_| ErrorCode::Datagram)?
             .to_string();
