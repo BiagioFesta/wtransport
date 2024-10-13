@@ -15,9 +15,9 @@ jobs:
       - name: Setup
         run: cargo install cargo-msrv --locked
       - name: Msrv WTransport
-        run: cargo msrv --path wtransport
+        run: cargo msrv --path wtransport find
       - name: Msrv WTransport-Proto
-        run: cargo msrv --path wtransport-proto
+        run: cargo msrv --path wtransport-proto find
       - name: Msrv Check WTransport
         run: cargo msrv --path wtransport --log-level trace verify
       - name: Msrv Check WTransport-Proto
