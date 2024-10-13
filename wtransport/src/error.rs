@@ -47,6 +47,7 @@ impl ConnectionError {
     ) -> Self {
         match driver_error {
             DriverError::Proto(error_code) => Self::local_h3_error(error_code),
+            DriverError::ApplicationClosed(close) => Self::ApplicationClosed(close),
             DriverError::NotConnected => Self::no_connect(quic_connection),
         }
     }
@@ -246,6 +247,11 @@ impl Display for ApplicationClose {
 }
 
 impl ApplicationClose {
+    /// Creates a new application close reason.
+    pub fn new(code: VarInt, reason: Box<[u8]>) -> Self {
+        Self { code, reason }
+    }
+
     /// Application-specific code for close operation.
     pub fn code(&self) -> VarInt {
         self.code

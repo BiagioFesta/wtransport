@@ -9,6 +9,7 @@ use crate::driver::utils::shared_result;
 use crate::driver::utils::SendError;
 use crate::driver::utils::SharedResultGet;
 use crate::driver::utils::SharedResultSet;
+use crate::error::ApplicationClose;
 use crate::error::SendDatagramError;
 use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
@@ -26,9 +27,10 @@ use wtransport_proto::frame::Frame;
 use wtransport_proto::session::SessionRequest;
 use wtransport_proto::settings::Settings;
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum DriverError {
     Proto(ErrorCode),
+    ApplicationClosed(ApplicationClose),
     NotConnected,
 }
 
@@ -248,6 +250,7 @@ mod worker {
     use crate::driver::streams::ProtoReadError;
     use crate::driver::streams::ProtoWriteError;
     use crate::driver::utils::TrySendError;
+    use streams::connect::ConnectStream;
     use utils::varint_w2q;
     use wtransport_proto::frame::FrameKind;
     use wtransport_proto::headers::Headers;
@@ -267,7 +270,7 @@ mod worker {
         remote_settings_stream: RemoteSettingsStream,
         remote_qpack_enc_stream: RemoteQPackEncStream,
         remote_qpack_dec_stream: RemoteQPackDecStream,
-        stream_session: Option<StreamSession>,
+        connect_stream: ConnectStream,
     }
 
     impl Worker {
@@ -292,7 +295,7 @@ mod worker {
                 remote_settings_stream: RemoteSettingsStream::empty(),
                 remote_qpack_enc_stream: RemoteQPackEncStream::empty(),
                 remote_qpack_dec_stream: RemoteQPackDecStream::empty(),
-                stream_session: None,
+                connect_stream: ConnectStream::empty(),
             }
         }
 
@@ -305,6 +308,8 @@ mod worker {
                 .expect_err("Worker must return an error");
 
             debug!("Ended with error: {:?}", error);
+
+            // TODO(ktff): Graceful shutdown on application close
 
             if let DriverError::Proto(error_code) = &error {
                 self.quic_connection
@@ -359,8 +364,8 @@ mod worker {
                     stream_session = self.ready_sessions.recv() => {
                         match stream_session {
                             Some(stream_session) => {
-                                if self.stream_session.is_none() {
-                                    self.stream_session = Some(stream_session);
+                                if self.connect_stream.is_empty() {
+                                    self.connect_stream.set_stream(stream_session);
                                 }
                             }
                             None => return Err(DriverError::NotConnected),
@@ -371,7 +376,7 @@ mod worker {
                                                       &mut self.remote_settings_stream,
                                                       &mut self.remote_qpack_enc_stream,
                                                       &mut self.remote_qpack_dec_stream,
-                                                      &mut self.stream_session) => {
+                                                      &mut self.connect_stream) => {
                         return Err(error);
                     }
 
@@ -634,10 +639,10 @@ mod worker {
             remote_settings: &mut RemoteSettingsStream,
             remote_qpack_enc: &mut RemoteQPackEncStream,
             remote_qpack_dec: &mut RemoteQPackDecStream,
-            _stream_session: &mut Option<StreamSession>,
+            connect_stream: &mut ConnectStream,
         ) -> DriverError {
-            // TODO(biagio): run stream_session
             tokio::select! {
+                error = connect_stream.run() => error,
                 error = local_settings.run() => error,
                 error = remote_settings.run() => error,
                 error = remote_qpack_enc.run() => error,
