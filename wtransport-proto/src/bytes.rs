@@ -295,7 +295,7 @@ pub mod r#async {
         #[error("read operation failed because interrupted")]
         Reset,
 
-        /// Read failed because peer not is not connected, or disconnected (at any point).
+        /// Read failed because peer is not connected, or disconnected (at any point).
         ///
         /// In this case, zero or more bytes might be have read during the operation.
         #[error("read operation failed because not connected")]
