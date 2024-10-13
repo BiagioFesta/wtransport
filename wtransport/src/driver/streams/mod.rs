@@ -516,6 +516,8 @@ pub mod unilocal {
 }
 
 pub mod session {
+    use crate::driver::DriverError;
+
     use super::*;
 
     pub type StreamSession =
@@ -579,5 +581,6 @@ impl From<quinn::ReadError> for StreamReadError {
     }
 }
 
+pub mod connect;
 pub mod qpack;
 pub mod settings;

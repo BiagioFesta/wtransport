@@ -35,7 +35,7 @@ pub fn streamid_q2w(stream_id: quinn::StreamId) -> StreamId {
 
 pub fn shared_result<T>() -> (SharedResultSet<T>, SharedResultGet<T>)
 where
-    T: Copy,
+    T: Clone,
 {
     let set = SharedResultSet::new();
     let get = set.subscribe();
@@ -47,7 +47,7 @@ pub struct SharedResultSet<T>(Arc<watch::Sender<Option<T>>>);
 
 impl<T> SharedResultSet<T>
 where
-    T: Copy,
+    T: Clone,
 {
     #[inline(always)]
     pub fn new() -> Self {
@@ -92,7 +92,7 @@ pub struct SharedResultGet<T>(Mutex<watch::Receiver<Option<T>>>);
 
 impl<T> SharedResultGet<T>
 where
-    T: Copy,
+    T: Clone,
 {
     /// Awaits the shared result is set by any setter.
     ///
@@ -105,7 +105,7 @@ where
         let mut lock = self.0.lock().await;
 
         loop {
-            if let Some(result) = *lock.borrow() {
+            if let Some(result) = lock.borrow().clone() {
                 return Some(result);
             }
 
