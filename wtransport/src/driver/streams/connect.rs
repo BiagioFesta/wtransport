@@ -1,3 +1,4 @@
+use tracing::debug;
 use wtransport_proto::{
     bytes::IoReadError,
     capsule::{self, capsules, Capsule},
@@ -51,7 +52,11 @@ impl ConnectStream {
 
                     let Some(capsule) = Capsule::with_frame(&frame) else {
                         if !matches!(frame.kind(), FrameKind::Exercise(_)) {
-                            return DriverError::Proto(ErrorCode::FrameUnexpected);
+                            debug!("Unexpected frame: {frame:?}");
+                            // TODO: This should be an error but we're ignoring it for now
+                            // TODO: Since Chromium sends an unknown frame after connecting.
+                            // return DriverError::Proto(ErrorCode::FrameUnexpected);
+                            continue;
                         } else {
                             continue;
                         }
