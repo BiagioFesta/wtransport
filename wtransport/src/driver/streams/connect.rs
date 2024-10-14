@@ -87,13 +87,13 @@ impl ConnectStream {
                     // Cleanly terminating a CONNECT stream without a CLOSE_WEBTRANSPORT_SESSION
                     // capsule SHALL be semantically equivalent to terminating it with a
                     // CLOSE_WEBTRANSPORT_SESSION capsule that has an error code of 0 and an empty error string.
-                    IoReadError::ImmediateFin | IoReadError::Reset => {
+                    IoReadError::ImmediateFin  => {
                         DriverError::ApplicationClosed(ApplicationClose::new(
                             VarInt::from_u32(0),
                             Box::new([]),
                         ))
                     }
-                    IoReadError::UnexpectedFin => {
+                    IoReadError::UnexpectedFin | IoReadError::Reset => {
                         DriverError::Proto(ErrorCode::ClosedCriticalStream)
                     }
                     IoReadError::NotConnected => DriverError::NotConnected,
