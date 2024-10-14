@@ -516,8 +516,6 @@ pub mod unilocal {
 }
 
 pub mod session {
-    use crate::driver::DriverError;
-
     use super::*;
 
     pub type StreamSession =
