@@ -28,46 +28,48 @@ impl ConnectStream {
     }
 
     pub async fn run(&mut self) -> DriverError {
+        let stream = match self.stream.as_mut() {
+            Some(stream) => stream,
+            None => pending().await,
+        };
+
         loop {
-            return match self.stream.as_mut() {
-                Some(stream) => match stream.read_frame().await {
-                    Ok(frame) => {
-                        let Some(capsule) = Capsule::with_frame(&frame) else {
-                            debug!("Unknown capsule: {:?}. Dropping.", frame);
-                            continue;
+            return match stream.read_frame().await {
+                Ok(frame) => {
+                    let Some(capsule) = Capsule::with_frame(&frame) else {
+                        debug!("Unexpected frame: {:?}. Dropping.", frame);
+                        continue;
+                    };
+
+                    match capsule.kind() {
+                        capsule::CapsuleKind::CloseWebTransportSession => (),
+                    }
+
+                    let close_session =
+                        match capsules::CloseWebTransportSession::with_capsule(&capsule) {
+                            Ok(close_session) => close_session,
+                            Err(error_code) => return DriverError::Proto(error_code),
                         };
 
-                        match capsule.kind() {
-                            capsule::CapsuleKind::CloseWebTransportSession => (),
-                        }
-
-                        let close_session =
-                            match capsules::CloseWebTransportSession::with_capsule(&capsule) {
-                                Ok(close_session) => close_session,
-                                Err(error_code) => return DriverError::Proto(error_code),
-                            };
-
-                        DriverError::ApplicationClosed(ApplicationClose::new(
-                            close_session.error_code(),
-                            close_session
-                                .reason()
-                                .as_bytes()
-                                .to_vec()
-                                .into_boxed_slice(),
-                        ))
+                    DriverError::ApplicationClosed(ApplicationClose::new(
+                        close_session.error_code(),
+                        close_session
+                            .reason()
+                            .as_bytes()
+                            .to_vec()
+                            .into_boxed_slice(),
+                    ))
+                }
+                Err(ProtoReadError::H3(error_code)) => DriverError::Proto(error_code),
+                Err(ProtoReadError::IO(io_error)) => match io_error {
+                    IoReadError::ImmediateFin => DriverError::ApplicationClosed(
+                        ApplicationClose::new(VarInt::from_u32(0), Box::new([])),
+                    ),
+                    IoReadError::UnexpectedFin | IoReadError::Reset => {
+                        DriverError::Proto(ErrorCode::ClosedCriticalStream)
                     }
-                    Err(ProtoReadError::H3(error_code)) => DriverError::Proto(error_code),
-                    Err(ProtoReadError::IO(io_error)) => match io_error {
-                        IoReadError::ImmediateFin => DriverError::ApplicationClosed(
-                            ApplicationClose::new(VarInt::from_u32(0), Box::new([])),
-                        ),
-                        IoReadError::UnexpectedFin | IoReadError::Reset => {
-                            DriverError::Proto(ErrorCode::ClosedCriticalStream)
-                        }
-                        IoReadError::NotConnected => DriverError::NotConnected,
-                    },
+                    IoReadError::NotConnected => DriverError::NotConnected,
                 },
-                None => pending().await,
             };
         }
     }
