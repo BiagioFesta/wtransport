@@ -1,8 +1,8 @@
-use tracing::debug;
 use wtransport_proto::{
     bytes::IoReadError,
     capsule::{self, capsules, Capsule},
     error::ErrorCode,
+    frame::FrameKind,
     varint::VarInt,
 };
 
@@ -12,11 +12,16 @@ use std::future::pending;
 
 pub struct ConnectStream {
     stream: Option<StreamSession>,
+    /// We've received CLOSE_WEBTRANSPORT_SESSION capsule
+    recv_close_ws: bool,
 }
 
 impl ConnectStream {
     pub fn empty() -> Self {
-        Self { stream: None }
+        Self {
+            stream: None,
+            recv_close_ws: false,
+        }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -36,9 +41,20 @@ impl ConnectStream {
         loop {
             return match stream.read_frame().await {
                 Ok(frame) => {
+                    if self.recv_close_ws {
+                        // If any additional stream data is received on the
+                        // CONNECT stream after receiving a CLOSE_WEBTRANSPORT_SESSION
+                        // capsule, the stream MUST be reset with code H3_MESSAGE_ERROR.
+                        let _ = stream.reset(ErrorCode::Message.to_code());
+                        return DriverError::Proto(ErrorCode::Message);
+                    }
+
                     let Some(capsule) = Capsule::with_frame(&frame) else {
-                        debug!("Unexpected frame: {:?}. Dropping.", frame);
-                        continue;
+                        if !matches!(frame.kind(), FrameKind::Exercise(_)) {
+                            return DriverError::Proto(ErrorCode::FrameUnexpected);
+                        } else {
+                            continue;
+                        }
                     };
 
                     match capsule.kind() {
@@ -51,6 +67,7 @@ impl ConnectStream {
                             Err(error_code) => return DriverError::Proto(error_code),
                         };
 
+                    self.recv_close_ws = true;
                     DriverError::ApplicationClosed(ApplicationClose::new(
                         close_session.error_code(),
                         close_session
@@ -62,10 +79,16 @@ impl ConnectStream {
                 }
                 Err(ProtoReadError::H3(error_code)) => DriverError::Proto(error_code),
                 Err(ProtoReadError::IO(io_error)) => match io_error {
-                    IoReadError::ImmediateFin => DriverError::ApplicationClosed(
-                        ApplicationClose::new(VarInt::from_u32(0), Box::new([])),
-                    ),
-                    IoReadError::UnexpectedFin | IoReadError::Reset => {
+                    // Cleanly terminating a CONNECT stream without a CLOSE_WEBTRANSPORT_SESSION
+                    // capsule SHALL be semantically equivalent to terminating it with a
+                    // CLOSE_WEBTRANSPORT_SESSION capsule that has an error code of 0 and an empty error string.
+                    IoReadError::ImmediateFin | IoReadError::Reset => {
+                        DriverError::ApplicationClosed(ApplicationClose::new(
+                            VarInt::from_u32(0),
+                            Box::new([]),
+                        ))
+                    }
+                    IoReadError::UnexpectedFin => {
                         DriverError::Proto(ErrorCode::ClosedCriticalStream)
                     }
                     IoReadError::NotConnected => DriverError::NotConnected,
