@@ -137,7 +137,7 @@ impl Driver {
 
             stream
                 .into_stream()
-                .stop(ErrorCode::BufferedStreamRejected.to_code())
+                .stop(ErrorCode::BufferedStreamRejected.to_http3())
                 .expect("Stream not already stopped");
         }
     }
@@ -164,7 +164,7 @@ impl Driver {
             stream
                 .into_stream()
                 .1
-                .stop(ErrorCode::BufferedStreamRejected.to_code())
+                .stop(ErrorCode::BufferedStreamRejected.to_http3())
                 .expect("Stream not already stopped");
         }
     }
@@ -308,7 +308,7 @@ mod worker {
 
             if let DriverError::Proto(error_code) = &error {
                 self.quic_connection
-                    .close(varint_w2q(error_code.to_code()), b"");
+                    .close(varint_w2q(error_code.to_http3()), b"");
             }
 
             self.driver_result.set(error);
@@ -595,14 +595,14 @@ mod worker {
                         Ok(session_request) => stream.into_session(session_request),
                         Err(HeadersParseError::MethodNotConnect) => {
                             stream
-                                .stop(ErrorCode::RequestRejected.to_code())
+                                .stop(ErrorCode::RequestRejected.to_http3())
                                 .expect("Stream not already stopped");
                             return Ok(());
                         }
                         // TODO(biagio): we might have more granularity with errors
                         Err(_) => {
                             stream
-                                .stop(ErrorCode::Message.to_code())
+                                .stop(ErrorCode::Message.to_http3())
                                 .expect("Stream not already stopped");
                             return Ok(());
                         }
@@ -613,7 +613,7 @@ mod worker {
                         Err(TrySendError::Full(mut stream)) => {
                             debug!("Discarding session request: sessions queue is full");
                             stream
-                                .stop(ErrorCode::RequestRejected.to_code())
+                                .stop(ErrorCode::RequestRejected.to_http3())
                                 .expect("Stream not already stopped");
                         }
                         Err(TrySendError::Closed(_)) => return Err(DriverError::NotConnected),

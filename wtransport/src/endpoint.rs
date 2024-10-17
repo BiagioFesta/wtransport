@@ -380,7 +380,7 @@ impl Endpoint<endpoint_side::Client> {
             let frame = match stream_session.read_frame().await {
                 Ok(frame) => frame,
                 Err(ProtoReadError::H3(error_code)) => {
-                    quic_connection.close(varint_w2q(error_code.to_code()), b"");
+                    quic_connection.close(varint_w2q(error_code.to_http3()), b"");
                     return Err(ConnectingError::ConnectionError(
                         ConnectionError::local_h3_error(error_code),
                     ));
@@ -397,7 +397,7 @@ impl Endpoint<endpoint_side::Client> {
         };
 
         if !matches!(frame.kind(), FrameKind::Headers) {
-            quic_connection.close(varint_w2q(ErrorCode::FrameUnexpected.to_code()), b"");
+            quic_connection.close(varint_w2q(ErrorCode::FrameUnexpected.to_http3()), b"");
             return Err(ConnectingError::ConnectionError(
                 ConnectionError::local_h3_error(ErrorCode::FrameUnexpected),
             ));
@@ -406,7 +406,7 @@ impl Endpoint<endpoint_side::Client> {
         let headers = match Headers::with_frame(&frame) {
             Ok(headers) => headers,
             Err(error_code) => {
-                quic_connection.close(varint_w2q(error_code.to_code()), b"");
+                quic_connection.close(varint_w2q(error_code.to_http3()), b"");
                 return Err(ConnectingError::ConnectionError(
                     ConnectionError::local_h3_error(error_code),
                 ));
@@ -416,7 +416,7 @@ impl Endpoint<endpoint_side::Client> {
         let session_response = match SessionResponseProto::try_from(headers) {
             Ok(session_response) => session_response,
             Err(_) => {
-                quic_connection.close(varint_w2q(ErrorCode::Message.to_code()), b"");
+                quic_connection.close(varint_w2q(ErrorCode::Message.to_http3()), b"");
                 return Err(ConnectingError::ConnectionError(
                     ConnectionError::local_h3_error(ErrorCode::Message),
                 ));
@@ -763,7 +763,7 @@ impl SessionRequest {
             }
             Err(ProtoWriteError::Stopped) => {
                 self.quic_connection
-                    .close(varint_w2q(ErrorCode::ClosedCriticalStream.to_code()), b"");
+                    .close(varint_w2q(ErrorCode::ClosedCriticalStream.to_http3()), b"");
 
                 Err(ConnectionError::local_h3_error(
                     ErrorCode::ClosedCriticalStream,
