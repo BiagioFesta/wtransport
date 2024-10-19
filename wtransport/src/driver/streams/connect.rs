@@ -31,13 +31,8 @@ impl ConnectStream {
         self.stream = Some(stream);
     }
 
-    pub fn reset(&mut self, error_code: ErrorCode) {
-        if let Some(stream) = self.stream.as_mut() {
-            let _ = stream.reset(error_code.to_code());
-        }
-    }
-
     pub async fn run(&mut self) -> DriverError {
+        assert!(!self.recv_close_ws);
         let stream = match self.stream.as_mut() {
             Some(stream) => stream,
             None => pending().await,
@@ -46,14 +41,6 @@ impl ConnectStream {
         loop {
             return match stream.read_frame().await {
                 Ok(frame) => {
-                    if self.recv_close_ws {
-                        // If any additional stream data is received on the
-                        // CONNECT stream after receiving a CLOSE_WEBTRANSPORT_SESSION
-                        // capsule, the stream MUST be reset with code H3_MESSAGE_ERROR.
-                        let _ = stream.reset(ErrorCode::Message.to_code());
-                        return DriverError::Proto(ErrorCode::Message);
-                    }
-
                     let capsule = match Capsule::with_frame(&frame)
                         .map(|capsule| (capsule.kind(), capsule))
                     {
@@ -92,6 +79,42 @@ impl ConnectStream {
                     IoReadError::NotConnected => DriverError::NotConnected,
                 },
             };
+        }
+    }
+
+    /// Finishes termination process if needed.
+    pub async fn finish(mut self) -> Result<(), DriverError> {
+        let Some(mut stream) = self.stream.take() else {
+            return Ok(());
+        };
+
+        // Handle termination procedure
+        if self.recv_close_ws {
+            // Wait finish from other side
+            match stream.read_frame().await {
+                Ok(_) => {
+                    // If any additional stream data is received on the
+                    // CONNECT stream after receiving a CLOSE_WEBTRANSPORT_SESSION
+                    // capsule, the stream MUST be reset with code H3_MESSAGE_ERROR.
+                    let _ = stream.reset(ErrorCode::Message.to_code());
+                    Err(DriverError::Proto(ErrorCode::Message))
+                }
+                Err(ProtoReadError::H3(error_code)) => Err(DriverError::Proto(error_code)),
+                Err(ProtoReadError::IO(io_error)) => {
+                    match io_error {
+                        IoReadError::ImmediateFin
+                        | IoReadError::UnexpectedFin
+                        | IoReadError::Reset => {
+                            // Finish our side
+                            stream.finish().await;
+                            Ok(())
+                        }
+                        IoReadError::NotConnected => Err(DriverError::NotConnected),
+                    }
+                }
+            }
+        } else {
+            Ok(())
         }
     }
 }
