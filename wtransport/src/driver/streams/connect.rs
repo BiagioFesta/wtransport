@@ -1,9 +1,7 @@
-use tracing::debug;
 use wtransport_proto::{
     bytes::IoReadError,
     capsule::{self, capsules, Capsule},
     error::ErrorCode,
-    frame::FrameKind,
     varint::VarInt,
 };
 
