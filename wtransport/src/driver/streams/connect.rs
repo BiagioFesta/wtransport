@@ -33,6 +33,12 @@ impl ConnectStream {
         self.stream = Some(stream);
     }
 
+    pub fn reset(&mut self, error_code: ErrorCode) {
+        if let Some(stream) = self.stream.as_mut() {
+            let _ = stream.reset(error_code.to_code());
+        }
+    }
+
     pub async fn run(&mut self) -> DriverError {
         let stream = match self.stream.as_mut() {
             Some(stream) => stream,
@@ -53,8 +59,8 @@ impl ConnectStream {
                     let Some(capsule) = Capsule::with_frame(&frame) else {
                         if !matches!(frame.kind(), FrameKind::Exercise(_)) {
                             debug!("Unexpected frame: {frame:?}");
-                            // TODO: This should be an error but we're ignoring it for now
-                            // TODO: Since Chromium sends an unknown frame after connecting.
+                            // TODO(ktff): This should be an error but we're ignoring it for now
+                            // TODO(ktff): Since Chromium sends an unknown frame after connecting.
                             // return DriverError::Proto(ErrorCode::FrameUnexpected);
                             continue;
                         } else {
@@ -87,12 +93,9 @@ impl ConnectStream {
                     // Cleanly terminating a CONNECT stream without a CLOSE_WEBTRANSPORT_SESSION
                     // capsule SHALL be semantically equivalent to terminating it with a
                     // CLOSE_WEBTRANSPORT_SESSION capsule that has an error code of 0 and an empty error string.
-                    IoReadError::ImmediateFin  => {
-                        DriverError::ApplicationClosed(ApplicationClose::new(
-                            VarInt::from_u32(0),
-                            Box::new([]),
-                        ))
-                    }
+                    IoReadError::ImmediateFin => DriverError::ApplicationClosed(
+                        ApplicationClose::new(VarInt::from_u32(0), Box::new([])),
+                    ),
                     IoReadError::UnexpectedFin | IoReadError::Reset => {
                         DriverError::Proto(ErrorCode::ClosedCriticalStream)
                     }
