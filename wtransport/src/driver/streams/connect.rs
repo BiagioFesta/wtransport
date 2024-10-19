@@ -56,21 +56,13 @@ impl ConnectStream {
                         return DriverError::Proto(ErrorCode::Message);
                     }
 
-                    let Some(capsule) = Capsule::with_frame(&frame) else {
-                        if !matches!(frame.kind(), FrameKind::Exercise(_)) {
-                            debug!("Unexpected frame: {frame:?}");
-                            // TODO(ktff): This should be an error but we're ignoring it for now
-                            // TODO(ktff): Since Chromium sends an unknown frame after connecting.
-                            // return DriverError::Proto(ErrorCode::FrameUnexpected);
-                            continue;
-                        } else {
-                            continue;
-                        }
+                    let capsule = match Capsule::with_frame(&frame)
+                        .map(|capsule| (capsule.kind(), capsule))
+                    {
+                        Some((capsule::CapsuleKind::CloseWebTransportSession, capsule)) => capsule,
+                        // Unknown capsule, skip it
+                        _ => continue,
                     };
-
-                    match capsule.kind() {
-                        capsule::CapsuleKind::CloseWebTransportSession => (),
-                    }
 
                     let close_session =
                         match capsules::CloseWebTransportSession::with_capsule(&capsule) {
