@@ -250,6 +250,7 @@ mod worker {
     use crate::driver::streams::ProtoReadError;
     use crate::driver::streams::ProtoWriteError;
     use crate::driver::utils::TrySendError;
+    use mpsc::error;
     use streams::connect::ConnectStream;
     use utils::varint_w2q;
     use wtransport_proto::frame::FrameKind;
@@ -301,6 +302,7 @@ mod worker {
 
         pub async fn run(mut self) {
             debug!("Started");
+            // TODO(ktff):  4.6. Interaction with HTTP/3 GOAWAY frame
 
             let error = self
                 .run_impl()
@@ -309,11 +311,31 @@ mod worker {
 
             debug!("Ended with error: {:?}", error);
 
-            // TODO(ktff): Graceful shutdown on application close
-
-            if let DriverError::Proto(error_code) = &error {
-                self.quic_connection
-                    .close(varint_w2q(error_code.to_code()), b"");
+            match &error {
+                DriverError::ApplicationClosed(_) => {
+                    /*
+                    Upon learning that the session has been terminated,
+                    the endpoint MUST
+                    -[] reset the send side
+                    -[x] abort reading on the receive side of all of the streams associated with
+                    the session (see Section 2.4 of [RFC9000]) using the WEBTRANSPORT_SESSION_GONE
+                    error code
+                    -[x] it MUST NOT send any new datagrams
+                    -[x] it MUST NOT open any new streams
+                     */
+                    // TODO(ktff): Graceful shutdown on application close
+                    // TODO: Open questions
+                    //      -[x] Local streams will return ConnectionError::LocallyClosed. Should this be SessionGone? No.
+                    //      -[ ] Could closing quic connection count as resetting all streams? Or do they ment only connect side.
+                    self.connect_stream.reset(ErrorCode::SessionGone);
+                    self.quic_connection
+                        .close(varint_w2q(ErrorCode::NoError.to_code()), b"");
+                }
+                DriverError::Proto(error_code) => {
+                    self.quic_connection
+                        .close(varint_w2q(error_code.to_code()), b"");
+                }
+                DriverError::NotConnected => (),
             }
 
             self.driver_result.set(error);
