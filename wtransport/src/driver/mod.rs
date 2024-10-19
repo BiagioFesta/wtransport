@@ -302,9 +302,9 @@ mod worker {
 
         pub async fn run(mut self) {
             debug!("Started");
-            // TODO(ktff):  4.6. Interaction with HTTP/3 GOAWAY frame
+            // TODO(ktff): 4.6. Interaction with HTTP/3 GOAWAY frame
 
-            let error = self
+            let mut error = self
                 .run_impl()
                 .await
                 .expect_err("Worker must return an error");
@@ -325,11 +325,20 @@ mod worker {
                      */
                     // TODO(ktff): Graceful shutdown on application close
                     // TODO: Open questions
-                    //      -[x] Local streams will return ConnectionError::LocallyClosed. Should this be SessionGone? No.
+                    //      -[x] Local streams will return ConnectionError::LocallyClosed. Should this be SessionGone? Open question.
                     //      -[ ] Could closing quic connection count as resetting all streams? Or do they ment only connect side.
-                    self.connect_stream.reset(ErrorCode::SessionGone);
-                    self.quic_connection
-                        .close(varint_w2q(ErrorCode::NoError.to_code()), b"");
+                    match self.connect_stream.finish().await {
+                        Ok(()) | Err(DriverError::ApplicationClosed(_)) => {
+                            self.quic_connection
+                                .close(varint_w2q(ErrorCode::NoError.to_code()), b"");
+                        }
+                        Err(DriverError::Proto(error_code)) => {
+                            self.quic_connection
+                                .close(varint_w2q(error_code.to_code()), b"");
+                            error = DriverError::Proto(error_code);
+                        }
+                        Err(DriverError::NotConnected) => (),
+                    }
                 }
                 DriverError::Proto(error_code) => {
                     self.quic_connection
