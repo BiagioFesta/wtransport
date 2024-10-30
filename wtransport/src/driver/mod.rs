@@ -302,7 +302,6 @@ mod worker {
 
         pub async fn run(mut self) {
             debug!("Started");
-            // TODO(ktff): 4.6. Interaction with HTTP/3 GOAWAY frame
 
             let mut error = self
                 .run_impl()
@@ -313,20 +312,11 @@ mod worker {
 
             match &error {
                 DriverError::ApplicationClosed(_) => {
-                    /*
-                    Upon learning that the session has been terminated,
-                    the endpoint MUST
-                    -[] reset the send side
-                    -[x] abort reading on the receive side of all of the streams associated with
-                    the session (see Section 2.4 of [RFC9000]) using the WEBTRANSPORT_SESSION_GONE
-                    error code
-                    -[x] it MUST NOT send any new datagrams
-                    -[x] it MUST NOT open any new streams
-                     */
-                    // TODO(ktff): Graceful shutdown on application close
-                    // TODO: Open questions
-                    //      -[x] Local streams will return ConnectionError::LocallyClosed. Should this be SessionGone? Open question.
-                    //      -[ ] Could closing quic connection count as resetting all streams? Or do they ment only connect side.
+                    // Termination procedure
+                    // TODO: Close all streams with SessionGone:
+                    // TODO  - [ ] Reset send sides of all streams with SessionGone
+                    // TODO  - [ ] Abort reading on the receive side of all streams by returning to app SessionGone
+
                     match self.connect_stream.finish().await {
                         Ok(()) | Err(DriverError::ApplicationClosed(_)) => {
                             self.quic_connection
