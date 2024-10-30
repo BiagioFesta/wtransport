@@ -1,3 +1,4 @@
+use tracing::debug;
 use wtransport_proto::{
     bytes::IoReadError,
     capsule::{self, capsules, Capsule},
@@ -46,7 +47,15 @@ impl ConnectStream {
                     {
                         Some((capsule::CapsuleKind::CloseWebTransportSession, capsule)) => capsule,
                         // Unknown capsule, skip it
-                        _ => continue,
+                        _ => {
+                            debug!(
+                                "Unknown capsule of kind {:?} of {}B",
+                                frame.kind(),
+                                frame.payload().len()
+                            );
+
+                            continue;
+                        }
                     };
 
                     let close_session =
