@@ -16,11 +16,11 @@ WebTransport is a new protocol being developed to enable *low-latency*, *bidirec
 It aims to address the limitations of existing protocols like *HTTP* and *WebSocket* by offering a more *efficient* and *flexible* transport layer.
 
 ### Benefits of WebTransport
-* :rocket: **Low latency**: WebTransport is designed to minimize latency, making it suitable for real-time applications such as gaming, video streaming, and collaborative editing.
-* :arrows_counterclockwise: **Bidirectional communication**: WebTransport allows simultaneous data exchange between the client and server, enabling efficient back-and-forth communication without the need for multiple requests.
-* :twisted_rightwards_arrows: **Multiplexing**: With WebTransport, multiple streams can be multiplexed over a single connection, reducing overhead and improving performance.
-* :lock: **Security**: WebTransport benefits from the security features provided by the web platform, including transport encryption and same-origin policy.
-* :globe_with_meridians: **Native Browser Support**: WebTransport is natively supported in modern web browsers, ensuring seamless integration and enhanced performance for web applications.
+* 🚀 **Low latency**: WebTransport is designed to minimize latency, making it suitable for real-time applications such as gaming, video streaming, and collaborative editing.
+* 🔄 **Bidirectional communication**: WebTransport allows simultaneous data exchange between the client and server, enabling efficient back-and-forth communication without the need for multiple requests.
+* 🔀 **Multiplexing**: With WebTransport, multiple streams can be multiplexed over a single connection, reducing overhead and improving performance.
+* 🔒 **Security**: WebTransport benefits from the security features provided by the web platform, including transport encryption and same-origin policy.
+* 🌐 **Native Browser Support**: WebTransport is natively supported in modern web browsers, ensuring seamless integration and enhanced performance for web applications.
 
  <p align="center">
    <a href="https://docs.rs/wtransport/latest/wtransport/">Check Library Documentation</a>
