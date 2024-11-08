@@ -1,6 +1,5 @@
 use crate::config::ClientConfig;
 use crate::config::DnsResolver;
-use crate::config::Ipv6DualStackConfig;
 use crate::config::ServerConfig;
 use crate::connection::Connection;
 use crate::driver::streams::session::StreamSession;
@@ -12,10 +11,6 @@ use crate::error::ConnectingError;
 use crate::error::ConnectionError;
 use crate::VarInt;
 use quinn::TokioRuntime;
-use socket2::Domain as SocketDomain;
-use socket2::Protocol as SocketProtocol;
-use socket2::Socket;
-use socket2::Type as SocketType;
 use std::collections::HashMap;
 use std::future::Future;
 use std::future::IntoFuture;
@@ -107,28 +102,6 @@ pub struct Endpoint<Side> {
 }
 
 impl<Side> Endpoint<Side> {
-    fn bind_socket(
-        bind_address: SocketAddr,
-        dual_stack_config: Ipv6DualStackConfig,
-    ) -> std::io::Result<Socket> {
-        let domain = match bind_address {
-            SocketAddr::V4(_) => SocketDomain::IPV4,
-            SocketAddr::V6(_) => SocketDomain::IPV6,
-        };
-
-        let socket = Socket::new(domain, SocketType::DGRAM, Some(SocketProtocol::UDP))?;
-
-        match dual_stack_config {
-            Ipv6DualStackConfig::OsDefault => {}
-            Ipv6DualStackConfig::Deny => socket.set_only_v6(true)?,
-            Ipv6DualStackConfig::Allow => socket.set_only_v6(false)?,
-        }
-
-        socket.bind(&bind_address.into())?;
-
-        Ok(socket)
-    }
-
     /// Closes all of this endpoint's connections immediately and cease accepting new connections.
     pub fn close(&self, error_code: VarInt, reason: &[u8]) {
         self.endpoint.close(varint_w2q(error_code), reason);
@@ -155,12 +128,10 @@ impl Endpoint<endpoint_side::Server> {
     pub fn server(server_config: ServerConfig) -> std::io::Result<Self> {
         let endpoint_config = server_config.endpoint_config;
         let quic_config = server_config.quic_config;
-        let socket =
-            Self::bind_socket(server_config.bind_address, server_config.dual_stack_config)?;
+        let socket = server_config.bind_address_config.bind_socket()?;
         let runtime = Arc::new(TokioRuntime);
 
-        let endpoint =
-            quinn::Endpoint::new(endpoint_config, Some(quic_config), socket.into(), runtime)?;
+        let endpoint = quinn::Endpoint::new(endpoint_config, Some(quic_config), socket, runtime)?;
 
         Ok(Self {
             endpoint,
@@ -195,9 +166,8 @@ impl Endpoint<endpoint_side::Server> {
     ///              If `false`, the bind address configuration will be ignored.
     pub fn reload_config(&self, server_config: ServerConfig, rebind: bool) -> std::io::Result<()> {
         if rebind {
-            let socket =
-                Self::bind_socket(server_config.bind_address, server_config.dual_stack_config)?;
-            self.endpoint.rebind(socket.into())?;
+            let socket = server_config.bind_address_config.bind_socket()?;
+            self.endpoint.rebind(socket)?;
         }
 
         let quic_config = server_config.quic_config;
@@ -212,11 +182,10 @@ impl Endpoint<endpoint_side::Client> {
     pub fn client(client_config: ClientConfig) -> std::io::Result<Self> {
         let endpoint_config = client_config.endpoint_config;
         let quic_config = client_config.quic_config;
-        let socket =
-            Self::bind_socket(client_config.bind_address, client_config.dual_stack_config)?;
+        let socket = client_config.bind_address_config.bind_socket()?;
         let runtime = Arc::new(TokioRuntime);
 
-        let mut endpoint = quinn::Endpoint::new(endpoint_config, None, socket.into(), runtime)?;
+        let mut endpoint = quinn::Endpoint::new(endpoint_config, None, socket, runtime)?;
 
         endpoint.set_default_client_config(quic_config);
 
