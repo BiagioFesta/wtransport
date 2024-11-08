@@ -161,9 +161,14 @@ pub struct InvalidIdleTimeout;
 ///   - [`with_bind_default`](ServerConfigBuilder::with_bind_default): the simplest
 ///     configuration where only the port will be specified.
 ///   - [`with_bind_config`](ServerConfigBuilder::with_bind_config): configures
-///     to bind an address determined by a configuration preset.
+///     binding to an address determined by a configuration preset.
 ///   - [`with_bind_address`](ServerConfigBuilder::with_bind_address): configures
-///     to bind a custom specified socket address.
+///     binding to a custom-specified socket address.
+///   - [`with_bind_address_v6`](ServerConfigBuilder::with_bind_address_v6): configures
+///     binding to a custom-specified socket address for *IPv6*, along with the [dual stack
+///     configuration](Ipv6DualStackConfig).
+///   - [`with_bind_socket`](ServerConfigBuilder::with_bind_socket): configures
+///     binding directly to a custom-specified socket.
 ///
 /// Only one of these options can be selected during the client configuration process.
 ///
@@ -632,9 +637,14 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 ///   - [`with_bind_default`](ClientConfigBuilder::with_bind_default): configures to use
 ///     the default bind address. This is generally the *default* choice for a client.
 ///   - [`with_bind_config`](ClientConfigBuilder::with_bind_config): configures
-///     to bind an address determined by a configuration preset.
+///     binding to an address determined by a configuration preset.
 ///   - [`with_bind_address`](ClientConfigBuilder::with_bind_address): configures
-///     to bind a custom specified socket address.
+///     binding to a custom-specified socket address.
+///   - [`with_bind_address_v6`](ClientConfigBuilder::with_bind_address_v6): configures
+///     binding to a custom-specified socket address for *IPv6*, along with the [dual stack
+///     configuration](Ipv6DualStackConfig).
+///   - [`with_bind_socket`](ClientConfigBuilder::with_bind_socket): configures
+///     binding directly to a custom-specified socket.
 ///
 /// Only one of these options can be selected during the client configuration process.
 ///
