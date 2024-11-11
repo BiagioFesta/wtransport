@@ -250,7 +250,6 @@ mod worker {
     use crate::driver::streams::ProtoReadError;
     use crate::driver::streams::ProtoWriteError;
     use crate::driver::utils::TrySendError;
-    use mpsc::error;
     use streams::connect::ConnectStream;
     use utils::varint_w2q;
     use wtransport_proto::frame::FrameKind;
