@@ -536,10 +536,6 @@ pub mod session {
             self.stream.1.stop(error_code)
         }
 
-        pub fn reset(&mut self, error_code: VarInt) -> Result<(), ClosedStream> {
-            self.stream.0.reset(error_code)
-        }
-
         pub fn id(&self) -> StreamId {
             self.stream.0.id()
         }
