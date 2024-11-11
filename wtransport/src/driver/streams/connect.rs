@@ -91,39 +91,16 @@ impl ConnectStream {
         }
     }
 
-    /// Finishes termination process if needed.
-    pub async fn finish(mut self) -> Result<(), DriverError> {
+    /// Finishes termination process.
+    pub async fn finish(mut self) {
         let Some(mut stream) = self.stream.take() else {
-            return Ok(());
+            return;
         };
 
         // Handle termination procedure
         if self.recv_close_ws {
-            // Wait finish from other side
-            match stream.read_frame().await {
-                Ok(_) => {
-                    // If any additional stream data is received on the
-                    // CONNECT stream after receiving a CLOSE_WEBTRANSPORT_SESSION
-                    // capsule, the stream MUST be reset with code H3_MESSAGE_ERROR.
-                    let _ = stream.reset(ErrorCode::Message.to_code());
-                    Err(DriverError::Proto(ErrorCode::Message))
-                }
-                Err(ProtoReadError::H3(error_code)) => Err(DriverError::Proto(error_code)),
-                Err(ProtoReadError::IO(io_error)) => {
-                    match io_error {
-                        IoReadError::ImmediateFin
-                        | IoReadError::UnexpectedFin
-                        | IoReadError::Reset => {
-                            // Finish our side
-                            stream.finish().await;
-                            Ok(())
-                        }
-                        IoReadError::NotConnected => Err(DriverError::NotConnected),
-                    }
-                }
-            }
-        } else {
-            Ok(())
+            // Finish our side
+            stream.finish().await;
         }
     }
 }

@@ -303,7 +303,7 @@ mod worker {
         pub async fn run(mut self) {
             debug!("Started");
 
-            let mut error = self
+            let error = self
                 .run_impl()
                 .await
                 .expect_err("Worker must return an error");
@@ -313,22 +313,10 @@ mod worker {
             match &error {
                 DriverError::ApplicationClosed(_) => {
                     // Termination procedure
-                    // TODO: Close all streams with SessionGone:
-                    // TODO  - [ ] Reset send sides of all streams with SessionGone
-                    // TODO  - [ ] Abort reading on the receive side of all streams by returning to app SessionGone
-
-                    match self.connect_stream.finish().await {
-                        Ok(()) | Err(DriverError::ApplicationClosed(_)) => {
-                            self.quic_connection
-                                .close(varint_w2q(ErrorCode::NoError.to_code()), b"");
-                        }
-                        Err(DriverError::Proto(error_code)) => {
-                            self.quic_connection
-                                .close(varint_w2q(error_code.to_code()), b"");
-                            error = DriverError::Proto(error_code);
-                        }
-                        Err(DriverError::NotConnected) => (),
-                    }
+                    // TODO Reset send sides of all streams with SessionGone error
+                    self.connect_stream.finish().await;
+                    self.quic_connection
+                        .close(varint_w2q(ErrorCode::NoError.to_code()), b"");
                 }
                 DriverError::Proto(error_code) => {
                     self.quic_connection
