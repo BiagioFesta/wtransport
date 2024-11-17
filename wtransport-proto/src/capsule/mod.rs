@@ -68,3 +68,18 @@ pub mod capsules {
 }
 
 mod close_wt_session;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn capsule_close_wt_session() {
+        let frame = Frame::new_data(vec![104, 67, 4, 0, 0, 0, 0u8].into());
+        let capsule = Capsule::with_frame(&frame).unwrap();
+        let close =
+            capsules::CloseWebTransportSession::with_capsule(&capsule).expect("Should parse");
+        assert_eq!(close.error_code(), VarInt::from_u32(0));
+        assert_eq!(close.reason(), "");
+    }
+}
