@@ -151,6 +151,16 @@ impl<'a> Frame<'a> {
         )
     }
 
+    /// Creates a new frame of type [`FrameKind::Data`].
+    ///
+    /// # Panics
+    ///
+    /// Panics if the `payload` size if greater than [`VarInt::MAX`].
+    #[inline(always)]
+    pub fn new_data(payload: Cow<'a, [u8]>) -> Self {
+        Self::new(FrameKind::Data, payload, None)
+    }
+
     /// Creates a new frame of type [`FrameKind::Exercise`].
     ///
     /// # Panics
