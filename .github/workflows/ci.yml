@@ -17,6 +17,14 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+      - name: Install dependencies (windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          choco install ninja nasm -y
+          echo "C:\Program Files\NASM" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Install dependencies (macos)
+        if: matrix.os == 'macos-latest'
+        run: brew install go
       - name: Build
         run: cargo build --all-targets --all-features --verbose
       - name: Run tests

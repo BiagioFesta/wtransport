@@ -587,6 +587,18 @@ pub fn build_native_cert_store() -> RootCertStore {
     root_store
 }
 
+fn default_crypto_provider() -> rustls::crypto::CryptoProvider {
+    #[cfg(feature = "ring")]
+    {
+        rustls::crypto::ring::default_provider()
+    }
+
+    #[cfg(not(feature = "ring"))]
+    {
+        rustls::crypto::aws_lc_rs::default_provider()
+    }
+}
+
 /// TLS configurations and utilities server-side.
 pub mod server {
     use super::*;
@@ -604,6 +616,8 @@ pub mod server {
     ///
     /// - `identity`: A reference to the identity containing the certificate chain and private key.
     pub fn build_default_tls_config(identity: Identity) -> TlsServerConfig {
+        let provider = Arc::new(default_crypto_provider());
+
         let certificates = identity
             .certificate_chain
             .0
@@ -613,7 +627,9 @@ pub mod server {
 
         let private_key = identity.private_key.0;
 
-        let mut tls_config = TlsServerConfig::builder()
+        let mut tls_config = TlsServerConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .expect("valid version")
             .with_no_client_auth()
             .with_single_cert(certificates, private_key)
             .expect("Certificate and private key should be already validated");
@@ -659,7 +675,11 @@ pub mod client {
         root_store: Arc<RootCertStore>,
         custom_verifier: Option<Arc<dyn ServerCertVerifier>>,
     ) -> TlsClientConfig {
-        let mut config = TlsClientConfig::builder()
+        let provider = Arc::new(default_crypto_provider());
+
+        let mut config = TlsClientConfig::builder_with_provider(provider)
+            .with_protocol_versions(&[&rustls::version::TLS13])
+            .expect("valid version")
             .with_root_certificates(root_store)
             .with_no_client_auth();
 
@@ -692,8 +712,7 @@ pub mod client {
         /// Creates a new instance of `NoServerVerification`.
         pub fn new() -> NoServerVerification {
             NoServerVerification {
-                supported_algorithms: rustls::crypto::ring::default_provider()
-                    .signature_verification_algorithms,
+                supported_algorithms: default_crypto_provider().signature_verification_algorithms,
             }
         }
     }
@@ -772,8 +791,7 @@ pub mod client {
 
             Self {
                 hashes: BTreeSet::from_iter(hashes),
-                supported_algorithms: rustls::crypto::ring::default_provider()
-                    .signature_verification_algorithms,
+                supported_algorithms: default_crypto_provider().signature_verification_algorithms,
             }
         }
 
