@@ -12,16 +12,11 @@ use std::future::pending;
 
 pub struct ConnectStream {
     stream: Option<StreamSession>,
-    /// We've received CLOSE_WEBTRANSPORT_SESSION capsule
-    recv_close_ws: bool,
 }
 
 impl ConnectStream {
     pub fn empty() -> Self {
-        Self {
-            stream: None,
-            recv_close_ws: false,
-        }
+        Self { stream: None }
     }
 
     pub fn is_empty(&self) -> bool {
@@ -33,7 +28,6 @@ impl ConnectStream {
     }
 
     pub async fn run(&mut self) -> DriverError {
-        assert!(!self.recv_close_ws);
         let stream = match self.stream.as_mut() {
             Some(stream) => stream,
             None => pending().await,
@@ -64,7 +58,6 @@ impl ConnectStream {
                             Err(error_code) => return DriverError::Proto(error_code),
                         };
 
-                    self.recv_close_ws = true;
                     DriverError::ApplicationClosed(ApplicationClose::new(
                         close_session.error_code(),
                         close_session
@@ -97,10 +90,7 @@ impl ConnectStream {
             return;
         };
 
-        // Handle termination procedure
-        if self.recv_close_ws {
-            // Finish our side
-            stream.finish().await;
-        }
+        // Finish our side
+        stream.finish().await;
     }
 }
