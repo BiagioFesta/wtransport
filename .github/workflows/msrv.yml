@@ -14,11 +14,11 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup
         run: cargo install cargo-msrv --locked
-      - name: Msrv WTransport
-        run: cargo msrv --path wtransport find
       - name: Msrv WTransport-Proto
-        run: cargo msrv --path wtransport-proto find
-      - name: Msrv Check WTransport
-        run: cargo msrv --path wtransport --log-level trace verify
+        run: cargo msrv --path wtransport-proto --output-format json find
+      - name: Msrv WTransport
+        run: cargo msrv --path wtransport --output-format json find
       - name: Msrv Check WTransport-Proto
-        run: cargo msrv --path wtransport-proto --log-level trace verify
+        run: cargo msrv --path wtransport-proto --output-format json --log-level trace verify
+      - name: Msrv Check WTransport
+        run: cargo msrv --path wtransport --output-format json --log-level trace verify
