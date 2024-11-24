@@ -248,7 +248,7 @@ impl Display for ApplicationClose {
 
 impl ApplicationClose {
     /// Creates a new application close reason.
-    pub fn new(code: VarInt, reason: Box<[u8]>) -> Self {
+    pub(crate) fn new(code: VarInt, reason: Box<[u8]>) -> Self {
         Self { code, reason }
     }
 
