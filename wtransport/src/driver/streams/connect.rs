@@ -90,7 +90,7 @@ impl ConnectStream {
             return;
         };
 
-        // Finish our side
+        // Finish our side and wait for confirmation.
         stream.finish().await;
     }
 }
