@@ -853,8 +853,11 @@ impl ClientConfigBuilder<states::WantsBindAddress> {
     ///
     /// This allows the client to use an already created socket, which can be useful in cases
     /// where socket reuse or specific socket configurations are necessary.
-    pub fn with_bind_socket(self, socket: UdpSocket) -> ServerConfigBuilder<states::WantsIdentity> {
-        ServerConfigBuilder(states::WantsIdentity {
+    pub fn with_bind_socket(
+        self,
+        socket: UdpSocket,
+    ) -> ClientConfigBuilder<states::WantsRootStore> {
+        ClientConfigBuilder(states::WantsRootStore {
             bind_address_config: BindAddressConfig::Socket(socket),
         })
     }
