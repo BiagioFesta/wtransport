@@ -171,9 +171,9 @@ pub mod biremote {
         /// See [`Frame::write_async`].
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-        pub async fn write_frame_async<'a, W>(
+        pub async fn write_frame_async<W>(
             &self,
-            frame: Frame<'a>,
+            frame: Frame<'_>,
             writer: &mut W,
         ) -> Result<(), IoWriteError>
         where
@@ -377,9 +377,9 @@ pub mod bilocal {
         /// Panics if [`FrameKind::WebTransport`] (use `upgrade` for that).
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-        pub async fn write_frame_async<'a, W>(
+        pub async fn write_frame_async<W>(
             &mut self,
-            frame: Frame<'a>,
+            frame: Frame<'_>,
             writer: &mut W,
         ) -> Result<(), IoWriteError>
         where
@@ -835,9 +835,9 @@ pub mod unilocal {
         /// Panics if the stream kind is [`StreamKind::WebTransport`]. In that case, use `upgrade` method.
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-        pub async fn write_frame_async<'a, W>(
+        pub async fn write_frame_async<W>(
             &mut self,
-            frame: Frame<'a>,
+            frame: Frame<'_>,
             writer: &mut W,
         ) -> Result<(), IoWriteError>
         where
@@ -1012,9 +1012,9 @@ pub mod session {
         /// See [`Frame::write_async`].
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
-        pub async fn write_frame_async<'a, W>(
+        pub async fn write_frame_async<W>(
             &self,
-            frame: Frame<'a>,
+            frame: Frame<'_>,
             writer: &mut W,
         ) -> Result<(), IoWriteError>
         where

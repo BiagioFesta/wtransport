@@ -1,13 +1,15 @@
 use tracing::debug;
-use wtransport_proto::{
-    bytes::IoReadError,
-    capsule::{self, capsules, Capsule},
-    error::ErrorCode,
-    varint::VarInt,
-};
+use wtransport_proto::bytes::IoReadError;
+use wtransport_proto::capsule::capsules;
+use wtransport_proto::capsule::Capsule;
+use wtransport_proto::capsule::{self};
+use wtransport_proto::error::ErrorCode;
+use wtransport_proto::varint::VarInt;
 
-use super::{session::StreamSession, ProtoReadError};
-use crate::{driver::DriverError, error::ApplicationClose};
+use super::session::StreamSession;
+use super::ProtoReadError;
+use crate::driver::DriverError;
+use crate::error::ApplicationClose;
 use std::future::pending;
 
 pub struct ConnectStream {

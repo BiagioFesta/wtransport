@@ -488,7 +488,7 @@ pub mod unilocal {
     }
 
     impl StreamUniLocalH3 {
-        pub async fn write_frame<'a>(&mut self, frame: Frame<'a>) -> Result<(), ProtoWriteError> {
+        pub async fn write_frame(&mut self, frame: Frame<'_>) -> Result<(), ProtoWriteError> {
             self.proto.write_frame_async(frame, &mut self.stream).await
         }
 
@@ -526,7 +526,7 @@ pub mod session {
             self.proto.read_frame_async(&mut self.stream.1).await
         }
 
-        pub async fn write_frame<'a>(&mut self, frame: Frame<'a>) -> Result<(), ProtoWriteError> {
+        pub async fn write_frame(&mut self, frame: Frame<'_>) -> Result<(), ProtoWriteError> {
             self.proto
                 .write_frame_async(frame, &mut self.stream.0)
                 .await

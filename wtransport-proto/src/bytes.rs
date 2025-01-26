@@ -196,7 +196,7 @@ impl<'a, 'b> BufferReaderChild<'a, 'b> {
     }
 }
 
-impl<'a, 'b> Deref for BufferReaderChild<'a, 'b> {
+impl<'a> Deref for BufferReaderChild<'a, '_> {
     type Target = BufferReader<'a>;
 
     #[inline(always)]
@@ -205,7 +205,7 @@ impl<'a, 'b> Deref for BufferReaderChild<'a, 'b> {
     }
 }
 
-impl<'a, 'b> DerefMut for BufferReaderChild<'a, 'b> {
+impl DerefMut for BufferReaderChild<'_, '_> {
     #[inline(always)]
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.reader
@@ -243,7 +243,7 @@ impl<'a> BufferWriter<'a> {
     }
 }
 
-impl<'a> BytesWriter for BufferWriter<'a> {
+impl BytesWriter for BufferWriter<'_> {
     #[inline(always)]
     fn put_varint(&mut self, varint: VarInt) -> Result<(), EndOfBuffer> {
         self.0
@@ -486,7 +486,7 @@ pub mod r#async {
         }
     }
 
-    impl<'a, R> Future for GetVarint<'a, R>
+    impl<R> Future for GetVarint<'_, R>
     where
         R: AsyncRead + Unpin + ?Sized,
     {
@@ -562,7 +562,7 @@ pub mod r#async {
         }
     }
 
-    impl<'a, R> Future for GetBuffer<'a, R>
+    impl<R> Future for GetBuffer<'_, R>
     where
         R: AsyncRead + Unpin + ?Sized,
     {
@@ -627,7 +627,7 @@ pub mod r#async {
         }
     }
 
-    impl<'a, W> Future for PutVarint<'a, W>
+    impl<W> Future for PutVarint<'_, W>
     where
         W: AsyncWrite + Unpin + ?Sized,
     {
@@ -675,7 +675,7 @@ pub mod r#async {
         }
     }
 
-    impl<'a, W> Future for PutBuffer<'a, W>
+    impl<W> Future for PutBuffer<'_, W>
     where
         W: AsyncWrite + Unpin + ?Sized,
     {
