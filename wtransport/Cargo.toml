@@ -12,6 +12,9 @@ readme = "../README.md"
 workspace = ".."
 rust-version = "1.71.1"
 
+[lib]
+bench = false
+
 [[example]]
 name = "client"
 required-features = ["dangerous-configuration"]
