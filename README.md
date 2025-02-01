@@ -137,3 +137,4 @@ Open [a supported web browser](https://caniuse.com/mdn-api_webtransport) and nav
 WTransport has bindings for the following languages:
 
 - Elixir: [wtransport-elixir](https://github.com/bugnano/wtransport-elixir)
+- Node.js: [node-wtransport](https://github.com/krulod/node-wtransport)
