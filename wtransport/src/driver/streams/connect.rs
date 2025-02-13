@@ -87,12 +87,13 @@ impl ConnectStream {
     }
 
     /// Finishes termination process.
-    pub async fn finish(mut self) {
+    pub fn finish(mut self) {
         let Some(mut stream) = self.stream.take() else {
             return;
         };
 
-        // Finish our side and wait for confirmation.
-        stream.finish().await;
+        // Notify other side.
+        // We can safely ignore error since we already know we are shuting down.
+        let _ = stream.reset(VarInt::from_u32(0));
     }
 }
