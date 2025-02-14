@@ -313,7 +313,6 @@ mod worker {
                 DriverError::ApplicationClosed(_) => {
                     // Termination procedure
                     // TODO Reset send sides of all streams with SessionGone error
-                    self.connect_stream.finish().await;
                     self.quic_connection
                         .close(varint_w2q(ErrorCode::NoError.to_code()), b"");
                 }
