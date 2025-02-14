@@ -551,6 +551,10 @@ pub mod session {
         pub async fn finish(&mut self) {
             let _ = self.stream.0.finish().await;
         }
+
+        pub fn reset(&mut self, error_code: VarInt) {
+            let _ = self.stream.0.reset(error_code);
+        }
     }
 }
 

@@ -60,6 +60,12 @@ impl ConnectStream {
                             Err(error_code) => return DriverError::Proto(error_code),
                         };
 
+                    // reset right away to avoid receiving additional data which requires resetting with ErrorCode::Message.
+                    self.stream
+                        .take()
+                        .unwrap()
+                        .reset(ErrorCode::NoError.to_code());
+
                     DriverError::ApplicationClosed(ApplicationClose::new(
                         close_session.error_code(),
                         close_session
@@ -84,15 +90,5 @@ impl ConnectStream {
                 },
             };
         }
-    }
-
-    /// Finishes termination process.
-    pub async fn finish(mut self) {
-        let Some(mut stream) = self.stream.take() else {
-            return;
-        };
-
-        // Finish our side and wait for confirmation.
-        stream.finish().await;
     }
 }
