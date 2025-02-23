@@ -466,7 +466,7 @@ impl StaticTable {
 mod tests {
     use super::*;
     use rand::random;
-    use rand::thread_rng;
+    use rand::rng;
     use rand::Rng;
 
     #[test]
@@ -505,7 +505,7 @@ mod tests {
             buffer.clear();
 
             let flags = random::<u8>() & ((0x1 << (8 - PREFIX_LEN)) - 1);
-            let value = random();
+            let value = random::<u64>() as usize;
 
             Encoder::encode_integer::<PREFIX_LEN, _>(flags, value, &mut buffer).unwrap();
 
@@ -565,9 +565,9 @@ mod tests {
 
             let flags = random::<u8>() & ((0x1 << (8 - PREFIX_LEN)) - 1);
 
-            let string_len = thread_rng().gen_range(0..1024);
-            let value = thread_rng()
-                .sample_iter(rand::distributions::Alphanumeric)
+            let string_len = rng().random_range(0..1024);
+            let value = rng()
+                .sample_iter(rand::distr::Alphanumeric)
                 .take(string_len)
                 .map(char::from)
                 .collect::<String>();
