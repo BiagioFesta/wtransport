@@ -587,6 +587,18 @@ pub fn build_native_cert_store() -> RootCertStore {
     root_store
 }
 
+fn default_crypto_provider() -> rustls::crypto::CryptoProvider {
+    #[cfg(feature = "ring")]
+    {
+        rustls::crypto::ring::default_provider()
+    }
+
+    #[cfg(not(feature = "ring"))]
+    {
+        rustls::crypto::aws_lc_rs::default_provider()
+    }
+}
+
 /// TLS configurations and utilities server-side.
 pub mod server {
     use super::*;
@@ -692,8 +704,7 @@ pub mod client {
         /// Creates a new instance of `NoServerVerification`.
         pub fn new() -> NoServerVerification {
             NoServerVerification {
-                supported_algorithms: rustls::crypto::ring::default_provider()
-                    .signature_verification_algorithms,
+                supported_algorithms: default_crypto_provider().signature_verification_algorithms,
             }
         }
     }
@@ -772,8 +783,7 @@ pub mod client {
 
             Self {
                 hashes: BTreeSet::from_iter(hashes),
-                supported_algorithms: rustls::crypto::ring::default_provider()
-                    .signature_verification_algorithms,
+                supported_algorithms: default_crypto_provider().signature_verification_algorithms,
             }
         }
 
