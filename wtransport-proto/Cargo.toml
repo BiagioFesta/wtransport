@@ -10,7 +10,7 @@ categories = [ "network-programming", "asynchronous" ]
 edition = "2021"
 readme = "../README.md"
 workspace = ".."
-rust-version = "1.71.1"
+rust-version = "1.81"
 
 [dependencies]
 httlib-huffman = "0.3.4"
