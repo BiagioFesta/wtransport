@@ -26,8 +26,8 @@ pub fn varint_w2q(varint: VarInt) -> quinn::VarInt {
 #[inline(always)]
 pub fn streamid_q2w(stream_id: quinn::StreamId) -> StreamId {
     let varint = unsafe {
-        debug_assert!(stream_id.0 <= VarInt::MAX.into_inner());
-        VarInt::from_u64_unchecked(stream_id.0)
+        debug_assert!(u64::from(stream_id) <= VarInt::MAX.into_inner());
+        VarInt::from_u64_unchecked(u64::from(stream_id))
     };
 
     StreamId::new(varint)
