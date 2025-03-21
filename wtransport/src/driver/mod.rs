@@ -497,18 +497,25 @@ mod worker {
                 async move {
                     let mut stream_h3 = stream_quic.upgrade();
 
-                    let frame = match stream_h3.read_frame().await {
-                        Ok(frame) => frame,
-                        Err(ProtoReadError::H3(error_code)) => {
-                            h3_slot.send(Err(DriverError::Proto(error_code)));
-                            return;
-                        }
-                        Err(ProtoReadError::IO(_)) => {
-                            return;
+                    let frame = loop {
+                        match stream_h3.read_frame().await {
+                            Ok(frame) => {
+                                debug!("Frame kind: {:?}", frame.kind());
+                                if !matches!(frame.kind(), FrameKind::Exercise(_)) {
+                                    break frame;
+                                }
+                            }
+                            Err(ProtoReadError::H3(error_code)) => {
+                                h3_slot.send(Err(DriverError::Proto(error_code)));
+                                return;
+                            }
+                            Err(ProtoReadError::IO(_)) => {
+                                return;
+                            }
                         }
                     };
 
-                    debug!("First frame kind: {:?}", frame.kind());
+                    debug!("First frame: {:?}", frame);
 
                     match frame.session_id() {
                         Some(session_id) => {
