@@ -63,7 +63,7 @@ pub type IoWriteError = bytes::IoWriteError;
 pub type FrameOwned = Frame<'static>;
 
 /// An HTTP3 [`Frame`] type.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum FrameKind {
     /// DATA frame type.
     Data,
