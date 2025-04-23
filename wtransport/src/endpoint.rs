@@ -162,8 +162,8 @@ impl Endpoint<endpoint_side::Server> {
     ///
     /// * `server_config` - The new configuration for the server.
     /// * `rebind` - A boolean indicating whether the server should rebind its socket.
-    ///              If `true`, the server will bind to a new socket with the provided configuration.
-    ///              If `false`, the bind address configuration will be ignored.
+    ///   If `true`, the server will bind to a new socket with the provided configuration.
+    ///   If `false`, the bind address configuration will be ignored.
     pub fn reload_config(&self, server_config: ServerConfig, rebind: bool) -> std::io::Result<()> {
         if rebind {
             let socket = server_config.bind_address_config.bind_socket()?;
@@ -205,12 +205,12 @@ impl Endpoint<endpoint_side::Client> {
     /// # Arguments
     ///
     /// * `options` - Connection options specifying the URL and additional headers.
-    ///               It can be simply an [URL](https://en.wikipedia.org/wiki/URL) string representing
-    ///               the WebTransport endpoint to connect to. It must have an `https` scheme.
-    ///               The URL can specify either an IP address or a hostname.
-    ///               When specifying a hostname, the method will internally perform DNS resolution,
-    ///               configured with
-    ///               [`ClientConfigBuilder::dns_resolver`](crate::config::ClientConfigBuilder::dns_resolver).
+    ///   It can be simply an [URL](https://en.wikipedia.org/wiki/URL) string representing
+    ///   the WebTransport endpoint to connect to. It must have an `https` scheme.
+    ///   The URL can specify either an IP address or a hostname.
+    ///   When specifying a hostname, the method will internally perform DNS resolution,
+    ///   configured with
+    ///   [`ClientConfigBuilder::dns_resolver`](crate::config::ClientConfigBuilder::dns_resolver).
     ///
     /// # Examples
     ///
@@ -439,11 +439,11 @@ impl ConnectOptions {
     /// # Arguments
     ///
     /// * `url` - A [URL](https://en.wikipedia.org/wiki/URL) string representing the WebTransport
-    ///           endpoint to connect to. It must have an `https` scheme.
-    ///           The URL can specify either an IP address or a hostname.
-    ///           When specifying a hostname, the method will internally perform DNS resolution,
-    ///           configured with
-    ///           [`ClientConfigBuilder::dns_resolver`](crate::config::ClientConfigBuilder::dns_resolver).
+    ///   endpoint to connect to. It must have an `https` scheme.
+    ///   The URL can specify either an IP address or a hostname.
+    ///   When specifying a hostname, the method will internally perform DNS resolution,
+    ///   configured with
+    ///   [`ClientConfigBuilder::dns_resolver`](crate::config::ClientConfigBuilder::dns_resolver).
     pub fn builder<S>(url: S) -> ConnectRequestBuilder
     where
         S: ToString,

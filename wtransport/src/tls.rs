@@ -296,8 +296,8 @@ impl Identity {
     /// # Arguments
     ///
     /// * `subject_alt_names` - An iterator of strings representing subject alternative names (SANs).
-    ///                         They can be both hostnames or IP addresses. An error is returned
-    ///                         if DNS are not valid ASN.1 strings.
+    ///   They can be both hostnames or IP addresses. An error is returned
+    ///   if DNS are not valid ASN.1 strings.
     ///
     /// # Examples
     ///
@@ -661,11 +661,11 @@ pub mod client {
     /// # Arguments
     ///
     /// - `root_store`: An `Arc` containing the [`RootCertStore`] with trusted root certificates.
-    ///                 To obtain a `RootCertStore`, one can use the [`build_native_cert_store`]
-    ///                 function, which loads the platform's certificate authorities (CAs).
+    ///   To obtain a `RootCertStore`, one can use the [`build_native_cert_store`]
+    ///   function, which loads the platform's certificate authorities (CAs).
     /// - `custom_verifier`: An optional `Arc` containing a custom implementation of the [`ServerCertVerifier`]
-    ///                      trait for custom certificate verification. If `None` is provided, the default
-    ///                      Web PKI mechanism will be used.
+    ///   trait for custom certificate verification. If `None` is provided, the default
+    ///   Web PKI mechanism will be used.
     ///
     /// # Note
     ///
@@ -782,7 +782,7 @@ pub mod client {
         /// # Arguments
         ///
         /// - `hashes`: An iterator yielding `Sha256Digest` instances representing the
-        ///             accepted certificate hashes.
+        ///   accepted certificate hashes.
         pub fn new<H>(hashes: H) -> Self
         where
             H: IntoIterator<Item = Sha256Digest>,
@@ -1020,7 +1020,7 @@ pub mod self_signed {
         /// # Arguments
         ///
         /// * `subject_alt_names` - An iterator of strings representing subject alternative names (SANs).
-        ///                         They can be both hostnames or IP addresses.
+        ///   They can be both hostnames or IP addresses.
         ///
         /// # Example
         ///

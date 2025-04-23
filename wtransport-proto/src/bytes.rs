@@ -353,9 +353,9 @@ pub mod r#async {
         ///
         /// An implementation SHOULD only generates the following errors:
         ///   * [`std::io::ErrorKind::ConnectionReset`] if the read operation was explicitly truncated
-        ///      by the source.
+        ///     by the source.
         ///   * [`std::io::ErrorKind::NotConnected`] if the read operation aborted at any point because
-        ///      lack of communication with the source.
+        ///     lack of communication with the source.
         fn poll_read(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
@@ -393,9 +393,9 @@ pub mod r#async {
         ///
         /// An implementation SHOULD only generates the following errors:
         ///   * [`std::io::ErrorKind::ConnectionReset`] if the write operation was explicitly stopped
-        ///      by the destination.
+        ///     by the destination.
         ///   * [`std::io::ErrorKind::NotConnected`] if the write operation aborted at any point because
-        ///      lack of communication with the destination.
+        ///     lack of communication with the destination.
         fn poll_write(
             self: Pin<&mut Self>,
             cx: &mut Context<'_>,
