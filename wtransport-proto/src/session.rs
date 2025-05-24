@@ -141,7 +141,7 @@ impl SessionRequest {
         let path = format!(
             "{}{}",
             url.path(),
-            url.query().map(|s| format!("?{}", s)).unwrap_or_default()
+            url.query().map(|s| format!("?{s}")).unwrap_or_default()
         );
 
         let headers = [

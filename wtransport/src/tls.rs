@@ -509,7 +509,7 @@ impl Sha256Digest {
             Sha256DigestFmt::DottedHex => self
                 .0
                 .iter()
-                .map(|byte| format!("{:02x}", byte))
+                .map(|byte| format!("{byte:02x}"))
                 .collect::<Vec<_>>()
                 .join(":"),
         }
