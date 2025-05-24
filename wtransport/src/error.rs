@@ -329,7 +329,7 @@ impl Display for QuicProtoError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let code = self
             .code
-            .map(|code| format!(" (code: {})", code))
+            .map(|code| format!(" (code: {code})"))
             .unwrap_or_default();
 
         f.write_fmt(format_args!("{}{}", self.reason, code))
