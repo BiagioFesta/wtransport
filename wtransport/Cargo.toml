@@ -32,7 +32,7 @@ required-features = ["self-signed"]
 bytes = "1.4.0"
 pem = "3.0.4"
 quinn = { version = "0.11.6", default-features = false, features = ["runtime-tokio"] }
-rcgen = { version = "0.13.1", optional = true }
+rcgen = { version = "0.14.1", optional = true }
 rustls = { version = "0.23.23", default-features = false }
 rustls-native-certs = "0.8.0"
 rustls-pemfile = "2.1.3"
