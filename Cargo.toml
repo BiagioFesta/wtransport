@@ -11,3 +11,4 @@ unused_qualifications = "warn"
 [workspace.lints.clippy]
 manual_is_variant_and = "warn"
 manual_let_else = "warn"
+unnecessary_cast = "deny"
