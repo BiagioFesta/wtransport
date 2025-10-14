@@ -32,7 +32,7 @@ required-features = ["self-signed"]
 bytes = "1.4.0"
 pem = "3.0.4"
 quinn = { version = "0.11.6", default-features = false, features = ["runtime-tokio"] }
-rcgen = { version = "0.13.1", optional = true }
+rcgen = { version = "0.13.1", default-features = false, optional = true }
 rustls = { version = "0.23.23", default-features = false }
 rustls-native-certs = "0.8.0"
 rustls-pemfile = "2.1.3"
@@ -56,13 +56,13 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 
 [features]
 default = ["self-signed", "ring"]
-aws-lc-rs = ["quinn/aws-lc-rs", "quinn/rustls-aws-lc-rs", "rustls/aws-lc-rs"]
-aws-lc-rs-fips = ["quinn/aws-lc-rs-fips", "quinn/rustls-aws-lc-rs-fips", "rustls/fips"]
+aws-lc-rs = ["quinn/aws-lc-rs", "quinn/rustls-aws-lc-rs", "rustls/aws-lc-rs", "rcgen?/aws_lc_rs"]
+aws-lc-rs-fips = ["quinn/aws-lc-rs-fips", "quinn/rustls-aws-lc-rs-fips", "rustls/fips", "rcgen?/fips"]
 dangerous-configuration = []
 fips = ["aws-lc-rs-fips"]
 quinn = []
 quinn-log = ["quinn/log"]
-ring = ["quinn/ring", "quinn/rustls", "rustls/ring"]
+ring = ["quinn/ring", "quinn/rustls", "rustls/ring", "rcgen?/ring"]
 self-signed = ["dep:rcgen"]
 
 [package.metadata.docs.rs]
