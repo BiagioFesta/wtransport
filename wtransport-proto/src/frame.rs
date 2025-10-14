@@ -703,7 +703,7 @@ mod tests {
         }
 
         #[cfg(feature = "async")]
-        pub async fn assert_serde_async(frame: Frame<'_>) -> Frame {
+        pub async fn assert_serde_async(frame: Frame<'_>) -> Frame<'_> {
             let mut buffer = Vec::new();
 
             frame.write_async(&mut buffer).await.unwrap();

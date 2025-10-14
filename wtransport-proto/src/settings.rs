@@ -144,7 +144,7 @@ impl Settings {
     ///
     /// This function allocates heap-memory, producing a [`Frame`] with owned payload.
     /// See [`Self::generate_frame_ref`] for a version without inner memory allocation.
-    pub fn generate_frame(&self) -> Frame {
+    pub fn generate_frame(&self) -> Frame<'_> {
         let mut payload = Vec::new();
 
         for (id, value) in &self.0 {

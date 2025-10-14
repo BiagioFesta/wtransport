@@ -183,7 +183,7 @@ mod tests {
         }
 
         /// This function is for **testing purpose only**; it might produce an invalid `Datagram`!
-        pub fn build_datagram(qstream_id_type: QStreamIdType, payload: &[u8]) -> Datagram {
+        pub fn build_datagram(qstream_id_type: QStreamIdType, payload: &[u8]) -> Datagram<'_> {
             Datagram::new(qstream_id_type.into_session_id(), payload)
         }
     }
