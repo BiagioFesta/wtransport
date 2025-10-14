@@ -1051,6 +1051,7 @@ pub mod self_signed {
         /// Sets the certificate's `not_before` time to the current UTC time.
         ///
         /// After this, the builder is in the `WantsNotAfter` state, requiring a `not_after` time to be set.
+        #[allow(clippy::wrong_self_convention)]
         pub fn from_now_utc(self) -> SelfSignedIdentityBuilder<states::WantsNotAfter> {
             let not_before = OffsetDateTime::now_utc();
             self.not_before(not_before)
