@@ -206,9 +206,8 @@ impl<'a> Frame<'a> {
                 return Err(ParseError::PayloadTooBig);
             }
 
-            let payload = match bytes_reader.get_bytes(payload_len) {
-                Some(payload) => payload,
-                None => return Ok(None),
+            let Some(payload) = bytes_reader.get_bytes(payload_len) else {
+                return Ok(None);
             };
 
             Ok(Some(Self::new(kind, Cow::Borrowed(payload), None)))

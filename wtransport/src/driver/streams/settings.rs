@@ -126,9 +126,8 @@ impl RemoteSettingsStream {
     }
 
     async fn read_frame<'a>(&mut self) -> Result<Frame<'a>, DriverError> {
-        let stream = match self.stream.as_mut() {
-            Some(stream) => stream,
-            None => return pending().await,
+        let Some(stream) = self.stream.as_mut() else {
+            return pending().await;
         };
 
         match stream.read_frame().await {

@@ -38,10 +38,15 @@ impl ConnectStream {
         loop {
             return match stream.read_frame().await {
                 Ok(frame) => {
-                    let capsule = match Capsule::with_frame(&frame)
-                        .map(|capsule| (capsule.kind(), capsule))
-                    {
-                        Some((capsule::CapsuleKind::CloseWebTransportSession, capsule)) => capsule,
+                    let capsule = match Capsule::with_frame(&frame) {
+                        Some(capsule)
+                            if matches!(
+                                capsule.kind(),
+                                capsule::CapsuleKind::CloseWebTransportSession
+                            ) =>
+                        {
+                            capsule
+                        }
                         // Unknown capsule, skip it
                         _ => {
                             debug!(

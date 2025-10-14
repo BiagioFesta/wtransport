@@ -105,9 +105,8 @@ mod webtransport {
                             let mut stream = stream?;
                             info!("Accepted BI stream");
 
-                            let bytes_read = match stream.1.read(&mut buffer).await? {
-                                Some(bytes_read) => bytes_read,
-                                None => continue,
+                            let Some(bytes_read) = stream.1.read(&mut buffer).await? else {
+                                continue;
                             };
 
                             let str_data = std::str::from_utf8(&buffer[..bytes_read])?;
@@ -120,9 +119,8 @@ mod webtransport {
                             let mut stream = stream?;
                             info!("Accepted UNI stream");
 
-                            let bytes_read = match stream.read(&mut buffer).await? {
-                                Some(bytes_read) => bytes_read,
-                                None => continue,
+                            let Some(bytes_read) = stream.read(&mut buffer).await? else {
+                                continue;
                             };
 
                             let str_data = std::str::from_utf8(&buffer[..bytes_read])?;

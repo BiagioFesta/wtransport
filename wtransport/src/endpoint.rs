@@ -382,14 +382,11 @@ impl Endpoint<endpoint_side::Client> {
             }
         };
 
-        let session_response = match SessionResponseProto::try_from(headers) {
-            Ok(session_response) => session_response,
-            Err(_) => {
-                quic_connection.close(varint_w2q(ErrorCode::Message.to_code()), b"");
-                return Err(ConnectingError::ConnectionError(
-                    ConnectionError::local_h3_error(ErrorCode::Message),
-                ));
-            }
+        let Ok(session_response) = SessionResponseProto::try_from(headers) else {
+            quic_connection.close(varint_w2q(ErrorCode::Message.to_code()), b"");
+            return Err(ConnectingError::ConnectionError(
+                ConnectionError::local_h3_error(ErrorCode::Message),
+            ));
         };
 
         if session_response.code().is_successful() {
