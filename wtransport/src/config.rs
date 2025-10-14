@@ -57,10 +57,10 @@ use std::sync::Arc;
 use std::time::Duration;
 
 /// Alias of [`crate::tls::rustls::ServerConfig`].
-pub type TlsServerConfig = crate::tls::rustls::ServerConfig;
+pub type TlsServerConfig = rustls::ServerConfig;
 
 /// Alias of [`crate::tls::rustls::ClientConfig`].
-pub type TlsClientConfig = crate::tls::rustls::ClientConfig;
+pub type TlsClientConfig = rustls::ClientConfig;
 
 /// Alias of [`crate::quinn::TransportConfig`].
 #[cfg(feature = "quinn")]
@@ -241,7 +241,7 @@ pub struct InvalidIdleTimeout;
 #[derive(Debug)]
 pub struct ServerConfig {
     pub(crate) bind_address_config: BindAddressConfig,
-    pub(crate) endpoint_config: quinn::EndpointConfig,
+    pub(crate) endpoint_config: EndpointConfig,
     pub(crate) quic_config: quinn::ServerConfig,
 }
 
@@ -723,7 +723,7 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 #[derive(Debug)]
 pub struct ClientConfig {
     pub(crate) bind_address_config: BindAddressConfig,
-    pub(crate) endpoint_config: quinn::EndpointConfig,
+    pub(crate) endpoint_config: EndpointConfig,
     pub(crate) quic_config: quinn::ClientConfig,
     pub(crate) dns_resolver: Arc<dyn DnsResolver + Send + Sync>,
 }
@@ -1226,8 +1226,8 @@ pub mod states {
     pub struct WantsTransportConfigServer {
         pub(super) bind_address_config: BindAddressConfig,
         pub(super) tls_config: TlsServerConfig,
-        pub(super) endpoint_config: quinn::EndpointConfig,
-        pub(super) transport_config: quinn::TransportConfig,
+        pub(super) endpoint_config: EndpointConfig,
+        pub(super) transport_config: TransportConfig,
         pub(super) migration: bool,
     }
 
@@ -1235,8 +1235,8 @@ pub mod states {
     pub struct WantsTransportConfigClient {
         pub(super) bind_address_config: BindAddressConfig,
         pub(super) tls_config: TlsClientConfig,
-        pub(super) endpoint_config: quinn::EndpointConfig,
-        pub(super) transport_config: quinn::TransportConfig,
+        pub(super) endpoint_config: EndpointConfig,
+        pub(super) transport_config: TransportConfig,
         pub(super) dns_resolver: Arc<dyn DnsResolver + Send + Sync>,
     }
 }

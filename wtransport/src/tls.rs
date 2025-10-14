@@ -24,7 +24,7 @@ pub use wtransport_proto::WEBTRANSPORT_ALPN;
 pub struct Certificate(CertificateDer<'static>);
 
 impl Certificate {
-    pub(crate) fn from_rustls_pki(cert: rustls_pki_types::CertificateDer<'static>) -> Self {
+    pub(crate) fn from_rustls_pki(cert: CertificateDer<'static>) -> Self {
         Self(cert)
     }
 
@@ -720,8 +720,8 @@ pub mod client {
     impl ServerCertVerifier for NoServerVerification {
         fn verify_server_cert(
             &self,
-            _end_entity: &rustls_pki_types::CertificateDer,
-            _intermediates: &[rustls_pki_types::CertificateDer],
+            _end_entity: &CertificateDer,
+            _intermediates: &[CertificateDer],
             _server_name: &rustls_pki_types::ServerName,
             _ocsp_response: &[u8],
             _now: rustls_pki_types::UnixTime,
@@ -810,8 +810,8 @@ pub mod client {
     impl ServerCertVerifier for ServerHashVerification {
         fn verify_server_cert(
             &self,
-            end_entity: &rustls_pki_types::CertificateDer,
-            _intermediates: &[rustls_pki_types::CertificateDer],
+            end_entity: &CertificateDer,
+            _intermediates: &[CertificateDer],
             _server_name: &rustls_pki_types::ServerName,
             _ocsp_response: &[u8],
             now: rustls_pki_types::UnixTime,
@@ -1193,7 +1193,7 @@ pub mod self_signed {
         ///     .build()
         ///     .unwrap();
         /// ```
-        pub fn build(self) -> Result<Identity, error::InvalidSan> {
+        pub fn build(self) -> Result<Identity, InvalidSan> {
             let mut dname = DistinguishedName::new();
             dname.push(DnType::CommonName, "wtransport self-signed");
 
