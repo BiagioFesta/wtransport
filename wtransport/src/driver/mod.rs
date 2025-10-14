@@ -122,9 +122,8 @@ impl Driver {
         let mut lock = self.ready_uni_wt_streams.lock().await;
 
         loop {
-            let stream = match lock.recv().await {
-                Some(stream) => stream,
-                None => return Err(self.result().await),
+            let Some(stream) = lock.recv().await else {
+                return Err(self.result().await);
             };
 
             if stream.session_id() == session_id {
@@ -148,9 +147,8 @@ impl Driver {
         let mut lock = self.ready_bi_wt_streams.lock().await;
 
         loop {
-            let stream = match lock.recv().await {
-                Some(stream) => stream,
-                None => return Err(self.result().await),
+            let Some(stream) = lock.recv().await else {
+                return Err(self.result().await);
             };
 
             if stream.session_id() == session_id {
@@ -175,11 +173,8 @@ impl Driver {
         let mut lock = self.ready_datagrams.lock().await;
 
         loop {
-            let datagram = match lock.recv().await {
-                Some(datagram) => datagram,
-                None => {
-                    return Err(self.result().await);
-                }
+            let Some(datagram) = lock.recv().await else {
+                return Err(self.result().await);
             };
 
             if datagram.session_id() == session_id {
@@ -542,10 +537,10 @@ mod worker {
                 Err(mpsc::error::SendError(_)) => return Err(DriverError::NotConnected),
             };
 
-            let quic_dgram = match quic_connection.read_datagram().await {
-                Ok(quic_dgram) => quic_dgram,
-                Err(_) => return Err(DriverError::NotConnected),
-            };
+            let quic_dgram = quic_connection
+                .read_datagram()
+                .await
+                .map_err(|_| DriverError::NotConnected)?;
 
             let datagram = match Datagram::read(quic_dgram) {
                 Ok(datagram) => datagram,
