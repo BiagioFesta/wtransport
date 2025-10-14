@@ -418,7 +418,7 @@ pub mod r#async {
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub trait BytesReaderAsync {
         /// Reads an unsigned variable-length integer in network byte-order from a source.
-        fn get_varint(&mut self) -> GetVarint<Self>;
+        fn get_varint(&mut self) -> GetVarint<'_, Self>;
 
         /// Reads the source until `buffer` is completely filled.
         fn get_buffer<'a>(&'a mut self, buffer: &'a mut [u8]) -> GetBuffer<'a, Self>;
@@ -428,7 +428,7 @@ pub mod r#async {
     where
         T: AsyncRead + ?Sized,
     {
-        fn get_varint(&mut self) -> GetVarint<Self> {
+        fn get_varint(&mut self) -> GetVarint<'_, Self> {
             GetVarint::new(self)
         }
 
@@ -441,7 +441,7 @@ pub mod r#async {
     where
         T: AsyncWrite + ?Sized,
     {
-        fn put_varint(&mut self, varint: VarInt) -> PutVarint<Self> {
+        fn put_varint(&mut self, varint: VarInt) -> PutVarint<'_, Self> {
             PutVarint::new(self, varint)
         }
 
@@ -455,7 +455,7 @@ pub mod r#async {
     pub trait BytesWriterAsync {
         /// Writes an unsigned variable-length integer in network byte-order to
         /// the source advancing the buffer's internal cursor.
-        fn put_varint(&mut self, varint: VarInt) -> PutVarint<Self>;
+        fn put_varint(&mut self, varint: VarInt) -> PutVarint<'_, Self>;
 
         /// Pushes some bytes into the source advancing the buffer’s internal cursor.
         fn put_buffer<'a>(&'a mut self, buffer: &'a [u8]) -> PutBuffer<'a, Self>;
