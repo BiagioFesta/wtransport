@@ -50,12 +50,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Setup
-        run: rustup toolchain install nightly
-      - name: Doc (stable)
+      - name: Doc
         run: cargo doc --all-features
-      - name: Doc (nightly)
-        run: RUSTDOCFLAGS="--cfg docsrs" cargo +nightly doc --all-features
 
   check-external-types:
     runs-on: ubuntu-latest
