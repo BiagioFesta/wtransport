@@ -591,7 +591,12 @@ impl IncomingSessionFuture {
 
     async fn accept(quic_incoming: quinn::Incoming) -> Result<SessionRequest, ConnectionError> {
         let quic_connection = quic_incoming.await?;
+        Self::accept_from_connection(quic_connection).await
+    }
 
+    pub async fn accept_from_connection(
+        quic_connection: quinn::Connection,
+    ) -> Result<SessionRequest, ConnectionError> {
         let driver = Driver::init(quic_connection.clone());
 
         let _settings = driver.accept_settings().await.map_err(|driver_error| {
