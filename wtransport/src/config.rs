@@ -36,8 +36,6 @@
 
 use crate::tls::build_native_cert_store;
 use crate::tls::Identity;
-use quinn::EndpointConfig;
-use quinn::TransportConfig;
 use socket2::Domain as SocketDomain;
 use socket2::Protocol as SocketProtocol;
 use socket2::Socket;
@@ -65,17 +63,17 @@ pub type TlsClientConfig = rustls::ClientConfig;
 /// Alias of [`crate::quinn::TransportConfig`].
 #[cfg(feature = "quinn")]
 #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
-pub type QuicTransportConfig = crate::quinn::TransportConfig;
+pub type QuicTransportConfig = quinn::TransportConfig;
 
 /// Alias of [`crate::quinn::ServerConfig`].
 #[cfg(feature = "quinn")]
 #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
-pub type QuicServerConfig = crate::quinn::ServerConfig;
+pub type QuicServerConfig = quinn::ServerConfig;
 
 /// Alias of [`crate::quinn::ClientConfig`].
 #[cfg(feature = "quinn")]
 #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
-pub type QuicClientConfig = crate::quinn::ClientConfig;
+pub type QuicClientConfig = quinn::ClientConfig;
 
 /// Configuration for IP address socket bind.
 #[derive(Debug, Copy, Clone)]
@@ -241,7 +239,7 @@ pub struct InvalidIdleTimeout;
 #[derive(Debug)]
 pub struct ServerConfig {
     pub(crate) bind_address_config: BindAddressConfig,
-    pub(crate) endpoint_config: EndpointConfig,
+    pub(crate) endpoint_config: quinn::EndpointConfig,
     pub(crate) quic_config: quinn::ServerConfig,
 }
 
@@ -394,8 +392,8 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         use crate::tls::server::build_default_tls_config;
 
         let tls_config = build_default_tls_config(identity);
-        let quic_endpoint_config = EndpointConfig::default();
-        let quic_transport_config = TransportConfig::default();
+        let quic_endpoint_config = quinn::EndpointConfig::default();
+        let quic_transport_config = quinn::TransportConfig::default();
 
         self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
@@ -436,8 +434,8 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         self,
         tls_config: TlsServerConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
-        let quic_endpoint_config = EndpointConfig::default();
-        let quic_transport_config = TransportConfig::default();
+        let quic_endpoint_config = quinn::EndpointConfig::default();
+        let quic_transport_config = quinn::TransportConfig::default();
 
         self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
@@ -489,7 +487,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         use crate::tls::server::build_default_tls_config;
 
         let tls_config = build_default_tls_config(identity);
-        let quic_endpoint_config = EndpointConfig::default();
+        let quic_endpoint_config = quinn::EndpointConfig::default();
 
         self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
@@ -515,7 +513,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
         tls_config: TlsServerConfig,
         quic_transport_config: QuicTransportConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
-        let quic_endpoint_config = EndpointConfig::default();
+        let quic_endpoint_config = quinn::EndpointConfig::default();
         self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
 
@@ -527,7 +525,7 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     pub fn build_with_quic_config(self, quic_config: QuicServerConfig) -> ServerConfig {
         ServerConfig {
             bind_address_config: self.0.bind_address_config,
-            endpoint_config: EndpointConfig::default(),
+            endpoint_config: quinn::EndpointConfig::default(),
             quic_config,
         }
     }
@@ -535,8 +533,8 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     fn with(
         self,
         tls_config: TlsServerConfig,
-        endpoint_config: EndpointConfig,
-        transport_config: TransportConfig,
+        endpoint_config: quinn::EndpointConfig,
+        transport_config: quinn::TransportConfig,
     ) -> ServerConfigBuilder<states::WantsTransportConfigServer> {
         ServerConfigBuilder(states::WantsTransportConfigServer {
             bind_address_config: self.0.bind_address_config,
@@ -723,7 +721,7 @@ impl ServerConfigBuilder<states::WantsTransportConfigServer> {
 #[derive(Debug)]
 pub struct ClientConfig {
     pub(crate) bind_address_config: BindAddressConfig,
-    pub(crate) endpoint_config: EndpointConfig,
+    pub(crate) endpoint_config: quinn::EndpointConfig,
     pub(crate) quic_config: quinn::ClientConfig,
     pub(crate) dns_resolver: Arc<dyn DnsResolver + Send + Sync>,
 }
@@ -874,8 +872,8 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         use crate::tls::client::build_default_tls_config;
 
         let tls_config = build_default_tls_config(Arc::new(build_native_cert_store()), None);
-        let endpoint_config = EndpointConfig::default();
-        let transport_config = TransportConfig::default();
+        let endpoint_config = quinn::EndpointConfig::default();
+        let transport_config = quinn::TransportConfig::default();
 
         self.with(tls_config, endpoint_config, transport_config)
     }
@@ -915,8 +913,8 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             Some(Arc::new(NoServerVerification::new())),
         );
 
-        let endpoint_config = EndpointConfig::default();
-        let transport_config = TransportConfig::default();
+        let endpoint_config = quinn::EndpointConfig::default();
+        let transport_config = quinn::TransportConfig::default();
 
         self.with(tls_config, endpoint_config, transport_config)
     }
@@ -954,8 +952,8 @@ impl ClientConfigBuilder<states::WantsRootStore> {
             Some(Arc::new(ServerHashVerification::new(hashes))),
         );
 
-        let endpoint_config = EndpointConfig::default();
-        let transport_config = TransportConfig::default();
+        let endpoint_config = quinn::EndpointConfig::default();
+        let transport_config = quinn::TransportConfig::default();
 
         self.with(tls_config, endpoint_config, transport_config)
     }
@@ -976,8 +974,8 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         self,
         tls_config: TlsClientConfig,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
-        let endpoint_config = EndpointConfig::default();
-        let transport_config = TransportConfig::default();
+        let endpoint_config = quinn::EndpointConfig::default();
+        let transport_config = quinn::TransportConfig::default();
 
         self.with(tls_config, endpoint_config, transport_config)
     }
@@ -1015,7 +1013,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         use crate::tls::client::build_default_tls_config;
 
         let tls_config = build_default_tls_config(Arc::new(build_native_cert_store()), None);
-        let quic_endpoint_config = EndpointConfig::default();
+        let quic_endpoint_config = quinn::EndpointConfig::default();
 
         self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
@@ -1041,7 +1039,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
         tls_config: TlsClientConfig,
         quic_transport_config: QuicTransportConfig,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
-        let quic_endpoint_config = EndpointConfig::default();
+        let quic_endpoint_config = quinn::EndpointConfig::default();
         self.with(tls_config, quic_endpoint_config, quic_transport_config)
     }
 
@@ -1053,7 +1051,7 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     pub fn build_with_quic_config(self, quic_config: QuicClientConfig) -> ClientConfig {
         ClientConfig {
             bind_address_config: self.0.bind_address_config,
-            endpoint_config: EndpointConfig::default(),
+            endpoint_config: quinn::EndpointConfig::default(),
             quic_config,
             dns_resolver: Arc::<TokioDnsResolver>::default(),
         }
@@ -1062,8 +1060,8 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     fn with(
         self,
         tls_config: TlsClientConfig,
-        endpoint_config: EndpointConfig,
-        transport_config: TransportConfig,
+        endpoint_config: quinn::EndpointConfig,
+        transport_config: quinn::TransportConfig,
     ) -> ClientConfigBuilder<states::WantsTransportConfigClient> {
         ClientConfigBuilder(states::WantsTransportConfigClient {
             bind_address_config: self.0.bind_address_config,
@@ -1226,8 +1224,8 @@ pub mod states {
     pub struct WantsTransportConfigServer {
         pub(super) bind_address_config: BindAddressConfig,
         pub(super) tls_config: TlsServerConfig,
-        pub(super) endpoint_config: EndpointConfig,
-        pub(super) transport_config: TransportConfig,
+        pub(super) endpoint_config: quinn::EndpointConfig,
+        pub(super) transport_config: quinn::TransportConfig,
         pub(super) migration: bool,
     }
 
@@ -1235,8 +1233,8 @@ pub mod states {
     pub struct WantsTransportConfigClient {
         pub(super) bind_address_config: BindAddressConfig,
         pub(super) tls_config: TlsClientConfig,
-        pub(super) endpoint_config: EndpointConfig,
-        pub(super) transport_config: TransportConfig,
+        pub(super) endpoint_config: quinn::EndpointConfig,
+        pub(super) transport_config: quinn::TransportConfig,
         pub(super) dns_resolver: Arc<dyn DnsResolver + Send + Sync>,
     }
 }
