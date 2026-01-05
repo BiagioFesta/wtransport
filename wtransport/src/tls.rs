@@ -4,6 +4,7 @@ use error::PemLoadError;
 use pem::encode as pem_encode;
 use pem::Pem;
 use rustls::RootCertStore;
+use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::CertificateDer;
 use rustls_pki_types::PrivateKeyDer;
 use rustls_pki_types::PrivatePkcs8KeyDer;
@@ -47,15 +48,23 @@ impl Certificate {
                 error: io_error,
             })?;
 
-        let cert = rustls_pemfile::certs(&mut &*file_data)
-            .next()
-            .ok_or(PemLoadError::NoCertificateSection)?
-            .map_err(|io_error| PemLoadError::FileError {
-                file: filepath.as_ref().to_path_buf(),
-                error: io_error,
-            })?;
+        let der = CertificateDer::from_pem_slice(&file_data).map_err(|error| {
+            if let rustls_pki_types::pem::Error::NoItemsFound = error {
+                PemLoadError::NoCertificateSection
+            } else {
+                PemLoadError::FileError {
+                    file: filepath.as_ref().to_path_buf(),
+                    error: std::io::Error::other(error),
+                }
+            }
+        })?;
 
-        Ok(Self(cert))
+        Self::from_der(der.to_vec()).map_err(|invalid_certificate| {
+            PemLoadError::InvalidCertificateChain {
+                index: 0,
+                error: invalid_certificate,
+            }
+        })
     }
 
     /// Stores the certificate in PEM format into a file asynchronously.
@@ -137,14 +146,18 @@ impl PrivateKey {
                 error: io_error,
             })?;
 
-        let private_key = rustls_pemfile::private_key(&mut &*file_data)
-            .map_err(|io_error| PemLoadError::FileError {
-                file: filepath.as_ref().to_path_buf(),
-                error: io_error,
-            })?
-            .map(Self);
+        let private_key = PrivateKeyDer::from_pem_slice(&file_data).map_err(|error| {
+            if let rustls_pki_types::pem::Error::NoItemsFound = error {
+                PemLoadError::NoPrivateKeySection
+            } else {
+                PemLoadError::FileError {
+                    file: filepath.as_ref().to_path_buf(),
+                    error: std::io::Error::other(error),
+                }
+            }
+        })?;
 
-        private_key.ok_or(PemLoadError::NoPrivateKeySection)
+        Ok(Self(private_key))
     }
 
     /// Stores the private key in PEM format into a file asynchronously.
@@ -206,14 +219,18 @@ impl CertificateChain {
                 error: io_error,
             })?;
 
-        let certificates = rustls_pemfile::certs(&mut &*file_data)
+        let certificates = CertificateDer::pem_slice_iter(&file_data)
             .enumerate()
-            .map(|(index, maybe_cert)| match maybe_cert {
-                Ok(cert) => Certificate::from_der(cert.to_vec())
-                    .map_err(|error| PemLoadError::InvalidCertificateChain { index, error }),
-                Err(io_error) => Err(PemLoadError::FileError {
+            .map(|(index, maybe_der)| match maybe_der {
+                Ok(der) => Certificate::from_der(der.to_vec()).map_err(|invalid_certificate| {
+                    PemLoadError::InvalidCertificateChain {
+                        index,
+                        error: invalid_certificate,
+                    }
+                }),
+                Err(error) => Err(PemLoadError::FileError {
                     file: filepath.as_ref().to_path_buf(),
-                    error: io_error,
+                    error: std::io::Error::other(error),
                 }),
             })
             .collect::<Result<Vec<_>, _>>()?;
