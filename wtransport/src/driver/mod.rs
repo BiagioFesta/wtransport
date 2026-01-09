@@ -547,7 +547,7 @@ mod worker {
                 Err(error_code) => return Err(DriverError::Proto(error_code)),
             };
 
-            debug!(
+            trace!(
                 "New incoming datagram (session_id: {})",
                 datagram.session_id()
             );
