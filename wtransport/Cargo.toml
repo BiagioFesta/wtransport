@@ -37,7 +37,7 @@ rustls = { version = "0.23.23", default-features = false }
 rustls-native-certs = "0.8.0"
 rustls-pki-types = "1.13.2"
 sha2 = "0.10.8"
-socket2 = "0.5.3"
+socket2 = "0.6.2"
 thiserror = "2.0.3"
 time = "0.3.21"
 tokio = { version = "1.28.1", default-features = false, features = ["macros", "fs", "io-util"] }
