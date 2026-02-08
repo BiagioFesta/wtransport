@@ -585,18 +585,40 @@ impl IntoFuture for IncomingSession {
 pub struct IncomingSessionFuture(Pin<Box<DynFutureIncomingSession>>);
 
 impl IncomingSessionFuture {
+    /// Creates a future from [`quinn::Incoming`].
+    ///
+    /// The returned future resolves to a [`SessionRequest`] once the QUIC connection
+    /// is established and the WebTransport session has been accepted.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn with_quic_incoming(quic_incoming: quinn::Incoming) -> Self {
+        Self::new(quic_incoming)
+    }
+
+    /// Creates a future from [`quinn::Connecting`].
+    ///
+    /// This is useful when a [`quinn::Connecting`] is already available and needs to be
+    /// driven to completion to accept an incoming WebTransport session.
+    ///
+    /// The returned future resolves to a [`SessionRequest`] once the QUIC connection
+    /// is established and the WebTransport session has been accepted.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn with_quic_connecting(quic_connecting: quinn::Connecting) -> Self {
+        Self(Box::pin(async move {
+            let quic_connection = quic_connecting.await?;
+            Self::accept(quic_connection).await
+        }))
+    }
+
     fn new(quic_incoming: quinn::Incoming) -> Self {
-        Self(Box::pin(Self::accept(quic_incoming)))
+        Self(Box::pin(async move {
+            let quic_connection = quic_incoming.await?;
+            Self::accept(quic_connection).await
+        }))
     }
 
-    async fn accept(quic_incoming: quinn::Incoming) -> Result<SessionRequest, ConnectionError> {
-        let quic_connection = quic_incoming.await?;
-        Self::accept_from_connection(quic_connection).await
-    }
-
-    pub async fn accept_from_connection(
-        quic_connection: quinn::Connection,
-    ) -> Result<SessionRequest, ConnectionError> {
+    async fn accept(quic_connection: quinn::Connection) -> Result<SessionRequest, ConnectionError> {
         let driver = Driver::init(quic_connection.clone());
 
         let _settings = driver.accept_settings().await.map_err(|driver_error| {
