@@ -44,7 +44,7 @@ tokio = { version = "1.28.1", default-features = false, features = ["macros", "f
 tracing = "0.1.37"
 url = "2.4.0"
 wtransport-proto = { version = "0.7.0", path = "../wtransport-proto", features = ["async"] }
-x509-parser = "0.17.0"
+x509-parser = "0.18.1"
 
 [dev-dependencies]
 anyhow = "1.0.71"
