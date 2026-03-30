@@ -36,7 +36,7 @@ rcgen = { version = "0.14.5", default-features = false, optional = true }
 rustls = { version = "0.23.23", default-features = false }
 rustls-native-certs = "0.8.0"
 rustls-pki-types = "1.13.2"
-sha2 = "0.10.8"
+sha2 = "0.11.0"
 socket2 = "0.6.3"
 thiserror = "2.0.3"
 time = "0.3.21"
