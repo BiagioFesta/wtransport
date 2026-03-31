@@ -701,9 +701,56 @@ impl SessionRequest {
         self.stream_session.request().headers().as_ref()
     }
 
+    /// Accepts the client request with headers.
+    pub async fn accept_with_headers<I, K, V>(
+        self,
+        headers: I,
+    ) -> Result<Connection, ConnectionError>
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        self.accept_impl(Some(
+            headers
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        ))
+        .await
+    }
+
     /// Accepts the client request and it establishes the WebTransport session.
-    pub async fn accept(mut self) -> Result<Connection, ConnectionError> {
-        let response = SessionResponseProto::ok();
+    pub async fn accept(self) -> Result<Connection, ConnectionError> {
+        self.accept_impl(None).await
+    }
+
+    /// Rejects the client request by replying with `403` status code.
+    pub async fn forbidden(self) {
+        self.reject(SessionResponseProto::forbidden()).await;
+    }
+
+    /// Rejects the client request by replying with `404` status code.
+    pub async fn not_found(self) {
+        self.reject(SessionResponseProto::not_found()).await;
+    }
+
+    /// Rejects the client request by replying with `429` status code.
+    pub async fn too_many_requests(self) {
+        self.reject(SessionResponseProto::too_many_requests()).await;
+    }
+
+    async fn accept_impl(
+        mut self,
+        headers: Option<HashMap<String, String>>,
+    ) -> Result<Connection, ConnectionError> {
+        let mut response = SessionResponseProto::ok();
+
+        if let Some(headers) = headers {
+            for (key, value) in headers {
+                response.add(key, value);
+            }
+        }
 
         self.send_response(response).await?;
 
@@ -721,21 +768,6 @@ impl SessionRequest {
             self.driver,
             session_id,
         ))
-    }
-
-    /// Rejects the client request by replying with `403` status code.
-    pub async fn forbidden(self) {
-        self.reject(SessionResponseProto::forbidden()).await;
-    }
-
-    /// Rejects the client request by replying with `404` status code.
-    pub async fn not_found(self) {
-        self.reject(SessionResponseProto::not_found()).await;
-    }
-
-    /// Rejects the client request by replying with `429` status code.
-    pub async fn too_many_requests(self) {
-        self.reject(SessionResponseProto::too_many_requests()).await;
     }
 
     async fn reject(mut self, response: SessionResponseProto) {
