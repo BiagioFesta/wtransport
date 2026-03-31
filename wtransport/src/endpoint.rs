@@ -701,7 +701,7 @@ impl SessionRequest {
         self.stream_session.request().headers().as_ref()
     }
 
-    /// Accepts the client request with some headers and it establishes the WebTransport session.
+    /// Accepts the client request with headers.
     pub async fn accept_with_headers<I, K, V>(
         self,
         headers: I,
@@ -711,7 +711,7 @@ impl SessionRequest {
         K: Into<String>,
         V: Into<String>,
     {
-        self._accept(Some(
+        self.accept_impl(Some(
             headers
                 .into_iter()
                 .map(|(k, v)| (k.into(), v.into()))
@@ -722,7 +722,7 @@ impl SessionRequest {
 
     /// Accepts the client request and it establishes the WebTransport session.
     pub async fn accept(self) -> Result<Connection, ConnectionError> {
-        self._accept(None).await
+        self.accept_impl(None).await
     }
 
     /// Rejects the client request by replying with `403` status code.
@@ -740,7 +740,7 @@ impl SessionRequest {
         self.reject(SessionResponseProto::too_many_requests()).await;
     }
 
-    async fn _accept(
+    async fn accept_impl(
         mut self,
         headers: Option<HashMap<String, String>>,
     ) -> Result<Connection, ConnectionError> {
