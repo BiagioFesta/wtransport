@@ -711,18 +711,18 @@ impl SessionRequest {
         K: Into<String>,
         V: Into<String>,
     {
-        self.accept_impl(Some(
+        self.accept_impl(
             headers
                 .into_iter()
                 .map(|(k, v)| (k.into(), v.into()))
                 .collect(),
-        ))
+        )
         .await
     }
 
     /// Accepts the client request and it establishes the WebTransport session.
     pub async fn accept(self) -> Result<Connection, ConnectionError> {
-        self.accept_impl(None).await
+        self.accept_impl(HashMap::new()).await
     }
 
     /// Rejects the client request by replying with `403` status code.
@@ -742,14 +742,12 @@ impl SessionRequest {
 
     async fn accept_impl(
         mut self,
-        headers: Option<HashMap<String, String>>,
+        headers: HashMap<String, String>,
     ) -> Result<Connection, ConnectionError> {
         let mut response = SessionResponseProto::ok();
 
-        if let Some(headers) = headers {
-            for (key, value) in headers {
-                response.add(key, value);
-            }
+        for (key, value) in headers {
+            response.add(key, value);
         }
 
         self.send_response(response).await?;
