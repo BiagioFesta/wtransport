@@ -25,8 +25,24 @@ impl Headers {
     }
 
     /// Generates a [`Frame`] with these headers.
+    ///
+    /// HTTP/3 requires pseudo-headers (starting with ':') to come before regular headers.
+    /// This method ensures correct ordering during QPACK encoding.
     pub fn generate_frame(&self) -> Frame<'static> {
-        let payload = Encoder::encode(&self.0);
+        // Sort headers: pseudo-headers first, then regular headers alphabetically
+        let mut sorted_headers: Vec<_> = self.0.iter().collect();
+        sorted_headers.sort_by(|(k1, _), (k2, _)| {
+            let k1_pseudo = k1.starts_with(':');
+            let k2_pseudo = k2.starts_with(':');
+            match (k1_pseudo, k2_pseudo) {
+                (true, false) => std::cmp::Ordering::Less,
+                (false, true) => std::cmp::Ordering::Greater,
+                _ => k1.cmp(k2),
+            }
+        });
+        let payload = Encoder::encode(
+            sorted_headers.into_iter().map(|(k, v)| (k.as_str(), v.as_str()))
+        );
         Frame::new_headers(Cow::Owned(payload.to_vec()))
     }
 
