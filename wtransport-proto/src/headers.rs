@@ -26,8 +26,28 @@ impl Headers {
 
     /// Generates a [`Frame`] with these headers.
     pub fn generate_frame(&self) -> Frame<'static> {
-        let payload = Encoder::encode(&self.0);
+        let payload = Encoder::encode(self.ordered_fields());
         Frame::new_headers(Cow::Owned(payload.to_vec()))
+    }
+
+    /// Returns the fields ordered such that pseudo-header fields precede regular ones.
+    ///
+    /// Pseudo-header fields (those whose name starts with `:`) must appear before
+    /// regular header fields in the encoded field section (RFC 9114, Section 4.3).
+    /// The headers are stored in a [`HashMap`], whose iteration order is unspecified,
+    /// so this explicitly orders pseudo-headers first. Otherwise a regular header may
+    /// be serialized ahead of a pseudo-header, and a compliant peer (e.g. quic-go)
+    /// rejects the field section with `H3_MESSAGE_ERROR`.
+    fn ordered_fields(&self) -> Vec<(&str, &str)> {
+        let mut fields = self
+            .0
+            .iter()
+            .map(|(name, value)| (name.as_str(), value.as_str()))
+            .collect::<Vec<_>>();
+
+        // Stable sort: pseudo-headers (`false` < `true`) first, regular fields after.
+        fields.sort_by_key(|(name, _)| !name.starts_with(':'));
+        fields
     }
 
     /// Returns a reference to the value associated with the key.
@@ -110,6 +130,40 @@ mod tests {
         assert_eq!(headers.get("key3"), None);
         headers.insert("key3", "value3");
         assert_eq!(headers.get("key3"), Some("value3"));
+    }
+
+    #[test]
+    fn pseudo_headers_first() {
+        // Mix pseudo-headers and regular headers; insertion order is irrelevant since
+        // the backing store is a `HashMap`. Regardless of hashing, the encoded fields
+        // must place every pseudo-header before any regular header (RFC 9114 §4.3).
+        let mut headers = [
+            (":method", "CONNECT"),
+            (":scheme", "https"),
+            (":protocol", "webtransport"),
+            (":authority", "example.com:443"),
+            (":path", "/"),
+        ]
+        .into_iter()
+        .collect::<Headers>();
+        headers.insert("sec-webtransport-http3-draft02", "1");
+        headers.insert("user-agent", "wtransport");
+
+        let fields = headers.ordered_fields();
+
+        let first_regular = fields
+            .iter()
+            .position(|(name, _)| !name.starts_with(':'))
+            .expect("there are regular fields");
+        let last_pseudo = fields
+            .iter()
+            .rposition(|(name, _)| name.starts_with(':'))
+            .expect("there are pseudo fields");
+
+        assert!(
+            last_pseudo < first_regular,
+            "all pseudo-headers must precede regular headers, got: {fields:?}"
+        );
     }
 
     #[test]
