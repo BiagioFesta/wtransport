@@ -41,7 +41,9 @@ impl Headers {
             }
         });
         let payload = Encoder::encode(
-            sorted_headers.into_iter().map(|(k, v)| (k.as_str(), v.as_str()))
+            sorted_headers
+                .into_iter()
+                .map(|(k, v)| (k.as_str(), v.as_str())),
         );
         Frame::new_headers(Cow::Owned(payload.to_vec()))
     }
