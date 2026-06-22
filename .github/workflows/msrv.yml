@@ -11,7 +11,7 @@ jobs:
   msrv:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - name: Setup
         run: cargo install cargo-msrv --locked
       - name: Msrv WTransport-Proto
