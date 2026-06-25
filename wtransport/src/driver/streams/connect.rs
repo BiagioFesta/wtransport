@@ -4,6 +4,7 @@ use wtransport_proto::capsule::capsules;
 use wtransport_proto::capsule::Capsule;
 use wtransport_proto::capsule::{self};
 use wtransport_proto::error::ErrorCode;
+use wtransport_proto::frame::FrameKind;
 use wtransport_proto::varint::VarInt;
 
 use super::session::StreamSession;
@@ -38,6 +39,11 @@ impl ConnectStream {
         loop {
             return match stream.read_frame().await {
                 Ok(frame) => {
+                    if !matches!(frame.kind(), FrameKind::Data) {
+                        debug!("Skipping non-data frame of kind {:?}", frame.kind());
+                        continue;
+                    }
+
                     let capsule = match Capsule::with_frame(&frame) {
                         Some(capsule)
                             if matches!(
