@@ -26,12 +26,12 @@ impl Headers {
 
     /// Generates a [`Frame`] with these headers.
     pub fn generate_frame(&self) -> Frame<'static> {
-        let payload = Encoder::encode(&self.0);
+        let headers = self.sorted_headers();
+        let payload = Encoder::encode(headers);
         Frame::new_headers(Cow::Owned(payload.to_vec()))
     }
 
     /// Returns a reference to the value associated with the key.
-    #[inline(always)]
     pub fn get<K>(&self, key: K) -> Option<&str>
     where
         K: AsRef<str>,
@@ -42,13 +42,24 @@ impl Headers {
     /// Inserts a field (key, value) in the headers.
     ///
     /// If the headers did have this key present, the value is updated.
-    #[inline(always)]
     pub fn insert<K, V>(&mut self, key: K, value: V)
     where
         K: ToString,
         V: ToString,
     {
         self.0.insert(key.to_string(), value.to_string());
+    }
+
+    fn sorted_headers(&self) -> Vec<(&str, &str)> {
+        let mut headers = self
+            .0
+            .iter()
+            .map(|(k, v)| (k.as_str(), v.as_str()))
+            .collect::<Vec<_>>();
+
+        headers.sort_by_key(|(name, _)| (!name.starts_with(':'), *name));
+
+        headers
     }
 }
 
