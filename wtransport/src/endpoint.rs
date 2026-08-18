@@ -141,6 +141,34 @@ impl Endpoint<endpoint_side::Server> {
         })
     }
 
+    /// Constructs a *server* endpoint on a caller-provided abstract UDP socket.
+    ///
+    /// The bind-address configuration in `server_config` is ignored; the given
+    /// `socket` is used instead. This allows callers to pre-process datagrams
+    /// (e.g. strip PROXY protocol headers) before QUIC sees them.
+    pub fn server_with_socket(
+        server_config: ServerConfig,
+        socket: Arc<dyn quinn::AsyncUdpSocket>,
+    ) -> std::io::Result<Self> {
+        let endpoint_config = server_config.endpoint_config;
+        let quic_config = server_config.quic_config;
+        let runtime = Arc::new(TokioRuntime);
+
+        let endpoint = quinn::Endpoint::new_with_abstract_socket(
+            endpoint_config,
+            Some(quic_config),
+            socket,
+            runtime,
+        )?;
+
+        Ok(Self {
+            endpoint,
+            side: endpoint_side::Server {
+                _marker: PhantomData,
+            },
+        })
+    }
+
     /// Get the next incoming connection attempt from a client.
     pub async fn accept(&self) -> IncomingSession {
         let quic_incoming = self
