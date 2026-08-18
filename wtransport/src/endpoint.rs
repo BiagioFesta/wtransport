@@ -150,15 +150,11 @@ impl Endpoint<endpoint_side::Server> {
         server_config: ServerConfig,
         socket: Arc<dyn quinn::AsyncUdpSocket>,
     ) -> std::io::Result<Self> {
-        let endpoint_config = server_config.endpoint_config;
-        let quic_config = server_config.quic_config;
-        let runtime = Arc::new(TokioRuntime);
-
         let endpoint = quinn::Endpoint::new_with_abstract_socket(
-            endpoint_config,
-            Some(quic_config),
+            server_config.endpoint_config,
+            Some(server_config.quic_config),
             socket,
-            runtime,
+            Arc::new(TokioRuntime),
         )?;
 
         Ok(Self {
