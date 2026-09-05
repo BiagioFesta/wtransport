@@ -839,14 +839,12 @@ mod tests {
         client.set_default_client_config(client_config);
 
         let connecting = client.connect(server_address, "localhost").unwrap();
-        let incoming_session = server.accept().await;
+        let session_request = tokio::spawn(server.accept().await.into_future());
 
-        let (client_connection, session_request) = tokio::join!(
-            connecting,
-            tokio::time::timeout(Duration::from_millis(500), incoming_session)
-        );
-        let client_connection = client_connection.unwrap();
-        assert!(session_request.is_err());
+        let client_connection = connecting.await.unwrap();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        assert!(!session_request.is_finished());
+        session_request.abort();
 
         assert!(
             tokio::time::timeout(Duration::from_secs(5), client_connection.closed())
