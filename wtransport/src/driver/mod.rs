@@ -326,7 +326,12 @@ mod worker {
             let mut ready_uni_h3_streams = mpsc::channel(4);
             let mut ready_bi_h3_streams = mpsc::channel(1);
 
-            self.open_and_send_settings().await?;
+            let driver_result = self.driver_result.clone();
+
+            tokio::select! {
+                result = self.open_and_send_settings() => result?,
+                () = driver_result.closed() => return Err(DriverError::NotConnected),
+            }
 
             loop {
                 tokio::select! {

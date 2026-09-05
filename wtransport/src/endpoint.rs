@@ -795,3 +795,63 @@ impl SessionRequest {
         }
     }
 }
+
+#[cfg(all(test, feature = "self-signed"))]
+mod tests {
+    use super::*;
+    use crate::tls::client::build_default_tls_config;
+    use crate::tls::Identity;
+    use rustls::pki_types::CertificateDer;
+    use rustls::RootCertStore;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn dropping_incoming_session_closes_quic_connection() {
+        let identity = Identity::self_signed(["localhost"]).unwrap();
+
+        let mut root_store = RootCertStore::empty();
+        for certificate in identity.certificate_chain().as_slice() {
+            root_store
+                .add(CertificateDer::from(certificate.der().to_vec()))
+                .unwrap();
+        }
+
+        let server = Endpoint::server(
+            ServerConfig::builder()
+                .with_bind_address(SocketAddr::from(([127, 0, 0, 1], 0)))
+                .with_identity(identity)
+                .build(),
+        )
+        .unwrap();
+        let server_address = server.local_addr().unwrap();
+
+        let mut transport_config = quinn::TransportConfig::default();
+        transport_config.max_concurrent_uni_streams(0u32.into());
+        transport_config.keep_alive_interval(Some(Duration::from_millis(200)));
+
+        let tls_config = build_default_tls_config(Arc::new(root_store), None);
+        let mut client_config = quinn::ClientConfig::new(Arc::new(
+            quinn::crypto::rustls::QuicClientConfig::try_from(tls_config).unwrap(),
+        ));
+        client_config.transport_config(Arc::new(transport_config));
+
+        let mut client = quinn::Endpoint::client(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap();
+        client.set_default_client_config(client_config);
+
+        let connecting = client.connect(server_address, "localhost").unwrap();
+        let incoming_session = server.accept().await;
+
+        let (client_connection, session_request) = tokio::join!(
+            connecting,
+            tokio::time::timeout(Duration::from_millis(500), incoming_session)
+        );
+        let client_connection = client_connection.unwrap();
+        assert!(session_request.is_err());
+
+        assert!(
+            tokio::time::timeout(Duration::from_secs(5), client_connection.closed())
+                .await
+                .is_ok()
+        );
+    }
+}
