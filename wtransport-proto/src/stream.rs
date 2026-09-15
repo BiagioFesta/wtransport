@@ -1230,4 +1230,118 @@ mod tests {
 
         assert!(matches!(frame, Err(ErrorCode::Frame)));
     }
+
+    /// SETTINGS, then GOAWAY (not modelled by this crate), then a GREASE frame.
+    fn control_stream_with_unknown_frame() -> Vec<u8> {
+        let mut buffer = Vec::new();
+
+        crate::settings::Settings::builder()
+            .enable_webtransport()
+            .build()
+            .generate_frame()
+            .write(&mut buffer)
+            .unwrap();
+
+        // GOAWAY (0x07), payload: stream id 0
+        buffer.put_varint(VarInt::from_u32(0x07)).unwrap();
+        buffer.put_varint(VarInt::from_u32(1)).unwrap();
+        buffer.put_varint(VarInt::from_u32(0)).unwrap();
+
+        Frame::new_exercise(VarInt::from_u32(0x21), Cow::Borrowed(b"grease"))
+            .write(&mut buffer)
+            .unwrap();
+
+        buffer
+    }
+
+    #[test]
+    fn uni_remote_skips_unknown_frame() {
+        let mut header = Vec::new();
+        StreamHeader::new_control().write(&mut header).unwrap();
+
+        let mut stream = match Stream::accept_uni()
+            .upgrade(&mut BufferReader::new(&header))
+            .unwrap()
+        {
+            uniremote::MaybeUpgradeH3::H3(stream) => stream,
+            uniremote::MaybeUpgradeH3::Quic(_) => panic!("Header is complete"),
+        };
+
+        let buffer = control_stream_with_unknown_frame();
+        let mut buffer_reader = BufferReader::new(&buffer);
+
+        let frame = stream
+            .read_frame_from_buffer(&mut buffer_reader)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Settings));
+
+        // GOAWAY must be transparently skipped, not turned into a protocol error
+        let frame = stream
+            .read_frame_from_buffer(&mut buffer_reader)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Exercise(_)));
+        assert_eq!(frame.payload(), b"grease");
+
+        assert!(stream
+            .read_frame_from_buffer(&mut buffer_reader)
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn uni_remote_skips_unknown_frame_async() {
+        let mut buffer = Vec::new();
+        StreamHeader::new_control().write(&mut buffer).unwrap();
+        buffer.extend(control_stream_with_unknown_frame());
+
+        let mut reader = buffer.as_slice();
+
+        let mut stream = Stream::accept_uni()
+            .upgrade_async(&mut reader)
+            .await
+            .unwrap();
+
+        let frame = stream.read_frame_async(&mut reader).await.unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Settings));
+
+        // GOAWAY must be transparently skipped, not turned into a protocol error
+        let frame = stream.read_frame_async(&mut reader).await.unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Exercise(_)));
+        assert_eq!(frame.payload(), b"grease");
+
+        assert!(matches!(
+            stream.read_frame_async(&mut reader).await,
+            Err(IoReadError::IO(bytes::IoReadError::ImmediateFin))
+        ));
+    }
+
+    #[test]
+    fn bi_remote_skips_unknown_frame() {
+        let mut buffer = Vec::new();
+
+        // Unknown frame before the WebTransport frame must not break the upgrade
+        buffer.put_varint(VarInt::from_u32(0x0042_4242)).unwrap();
+        buffer.put_varint(VarInt::from_u32(3)).unwrap();
+        buffer.put_bytes(b"abc").unwrap();
+
+        Frame::new_webtransport(SessionId::maybe_invalid(VarInt::from_u32(0)))
+            .write(&mut buffer)
+            .unwrap();
+
+        let mut buffer_reader = BufferReader::new(buffer.as_slice());
+        let mut stream = Stream::accept_bi().upgrade();
+
+        let frame = stream
+            .read_frame_from_buffer(&mut buffer_reader)
+            .unwrap()
+            .unwrap();
+
+        assert!(matches!(frame.kind(), FrameKind::WebTransport));
+        assert_eq!(
+            frame.session_id().unwrap(),
+            SessionId::maybe_invalid(VarInt::from_u32(0))
+        );
+    }
 }
