@@ -806,7 +806,7 @@ mod tests {
     use std::time::Duration;
 
     #[tokio::test]
-    async fn dropping_incoming_session_closes_quic_connection() {
+    async fn dropping_driver_before_settings_closes_quic_connection() {
         let identity = Identity::self_signed(["localhost"]).unwrap();
 
         let mut root_store = RootCertStore::empty();
@@ -839,12 +839,12 @@ mod tests {
         client.set_default_client_config(client_config);
 
         let connecting = client.connect(server_address, "localhost").unwrap();
-        let session_request = tokio::spawn(server.accept().await.into_future());
-
+        let quic_connection = server.accept().await.0.await.unwrap();
         let client_connection = connecting.await.unwrap();
-        tokio::time::sleep(Duration::from_millis(200)).await;
-        assert!(!session_request.is_finished());
-        session_request.abort();
+
+        let driver = Driver::init(quic_connection.clone());
+        drop(driver);
+        drop(quic_connection);
 
         assert!(
             tokio::time::timeout(Duration::from_secs(5), client_connection.closed())
