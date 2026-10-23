@@ -141,6 +141,31 @@ impl Endpoint<endpoint_side::Server> {
         })
     }
 
+    /// Constructs a *server* endpoint on `socket` instead of binding the configured address, for
+    /// a socket that rewrites datagrams on their way in and out (a proxy protocol, for example).
+    ///
+    /// The bind address configuration of `server_config` is ignored.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn server_with_socket(
+        server_config: ServerConfig,
+        socket: Arc<dyn quinn::AsyncUdpSocket>,
+    ) -> std::io::Result<Self> {
+        let endpoint = quinn::Endpoint::new_with_abstract_socket(
+            server_config.endpoint_config,
+            Some(server_config.quic_config),
+            socket,
+            Arc::new(TokioRuntime),
+        )?;
+
+        Ok(Self {
+            endpoint,
+            side: endpoint_side::Server {
+                _marker: PhantomData,
+            },
+        })
+    }
+
     /// Get the next incoming connection attempt from a client.
     pub async fn accept(&self) -> IncomingSession {
         let quic_incoming = self
