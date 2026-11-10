@@ -50,6 +50,9 @@ pub enum ErrorCode {
 
     /// `WEBTRANSPORT_SESSION_GONE`.
     SessionGone,
+
+    /// `WT_REQUIREMENTS_NOT_MET`.
+    RequirementsNotMet,
 }
 
 impl ErrorCode {
@@ -73,6 +76,7 @@ impl ErrorCode {
                 wt_error_codes::WEBTRANSPORT_BUFFERED_STREAM_REJECTED
             }
             ErrorCode::SessionGone => wt_error_codes::WEBTRANSPORT_SESSION_GONE,
+            ErrorCode::RequirementsNotMet => wt_error_codes::WT_REQUIREMENTS_NOT_MET,
         }
     }
 }
@@ -101,6 +105,7 @@ impl Display for ErrorCode {
             ErrorCode::Decompression => write!(f, "DecompressionError"),
             ErrorCode::BufferedStreamRejected => write!(f, "BufferedStreamRejected"),
             ErrorCode::SessionGone => write!(f, "SessionGone"),
+            ErrorCode::RequirementsNotMet => write!(f, "RequirementsNotMet"),
         }
     }
 }
@@ -135,4 +140,5 @@ mod wt_error_codes {
 
     pub const WEBTRANSPORT_BUFFERED_STREAM_REJECTED: VarInt = VarInt::from_u32(0x3994_bd84);
     pub const WEBTRANSPORT_SESSION_GONE: VarInt = VarInt::from_u32(0x170d_7b68);
+    pub const WT_REQUIREMENTS_NOT_MET: VarInt = VarInt::from_u32(0x212c_0d48);
 }

@@ -31,6 +31,8 @@ use wtransport_proto::headers::Headers;
 use wtransport_proto::session::ReservedHeader;
 use wtransport_proto::session::SessionRequest as SessionRequestProto;
 use wtransport_proto::session::SessionResponse as SessionResponseProto;
+use wtransport_proto::settings::SettingId;
+use wtransport_proto::settings::Settings;
 
 /// Helper structure for Endpoint types.
 pub mod endpoint_side {
@@ -303,14 +305,18 @@ impl Endpoint<endpoint_side::Client> {
 
         let driver = Driver::init(quic_connection.clone());
 
-        let _settings = driver.accept_settings().await.map_err(|driver_error| {
+        let settings = driver.accept_settings().await.map_err(|driver_error| {
             ConnectingError::ConnectionError(ConnectionError::with_driver_error(
                 driver_error,
                 &quic_connection,
             ))
         })?;
 
-        // TODO(biagio): validate settings
+        if !server_supports_webtransport(&settings) {
+            return Err(ConnectingError::ConnectionError(requirements_not_met(
+                &quic_connection,
+            )));
+        }
 
         let mut session_request_proto =
             SessionRequestProto::new(url.as_ref()).expect("Url has been already validate");
@@ -621,11 +627,14 @@ impl IncomingSessionFuture {
     async fn accept(quic_connection: quinn::Connection) -> Result<SessionRequest, ConnectionError> {
         let driver = Driver::init(quic_connection.clone());
 
-        let _settings = driver.accept_settings().await.map_err(|driver_error| {
+        let settings = driver.accept_settings().await.map_err(|driver_error| {
             ConnectionError::with_driver_error(driver_error, &quic_connection)
         })?;
 
-        // TODO(biagio): validate settings
+        // Any session would be malformed, and the connection carries nothing else.
+        if !client_supports_webtransport(&settings) {
+            return Err(requirements_not_met(&quic_connection));
+        }
 
         let stream_session = driver.accept_session().await.map_err(|driver_error| {
             ConnectionError::with_driver_error(driver_error, &quic_connection)
@@ -796,6 +805,37 @@ impl SessionRequest {
     }
 }
 
+/// Whether a server's SETTINGS let a client establish a WebTransport session, under
+/// any of the drafts this client can speak.
+fn server_supports_webtransport(settings: &Settings) -> bool {
+    let value = |id| settings.get(id).map_or(0, VarInt::into_inner);
+
+    let enabled = value(SettingId::WtEnabled) > 0 // draft-15 and later
+        || value(SettingId::WtMaxSessions) > 0 // draft-13 and draft-14
+        || value(SettingId::WebTransportMaxSessions) > 0; // draft-07 to draft-12
+    let current = enabled
+        && value(SettingId::EnableConnectProtocol) == 1
+        && value(SettingId::H3Datagram) == 1;
+
+    // SETTINGS_ENABLE_WEBTRANSPORT (draft-02 to draft-06) is enough on its own: up to
+    // draft-04 it implied extended CONNECT, and Chromium still treats it that way.
+    current || value(SettingId::EnableWebTransport) == 1
+}
+
+/// Whether a client's SETTINGS let a server accept its WebTransport session.
+fn client_supports_webtransport(settings: &Settings) -> bool {
+    settings.get(SettingId::H3Datagram) == Some(VarInt::from_u32(1))
+}
+
+/// Closes the connection with `WT_REQUIREMENTS_NOT_MET`, returning the error for it.
+fn requirements_not_met(quic_connection: &quinn::Connection) -> ConnectionError {
+    quic_connection.close(
+        varint_w2q(ErrorCode::RequirementsNotMet.to_code()),
+        b"SETTINGS do not support WebTransport",
+    );
+    ConnectionError::local_h3_error(ErrorCode::RequirementsNotMet)
+}
+
 #[cfg(all(test, feature = "self-signed"))]
 mod tests {
     use super::*;
@@ -804,6 +844,9 @@ mod tests {
     use rustls::pki_types::CertificateDer;
     use rustls::RootCertStore;
     use std::time::Duration;
+    use wtransport_proto::bytes::BytesWriter;
+    use wtransport_proto::frame::Frame;
+    use wtransport_proto::stream_header::StreamHeader;
 
     /// Connects a plain QUIC client to a server [`Endpoint`], returning the server's and
     /// the client's side of the connection.
@@ -860,5 +903,113 @@ mod tests {
                 .await
                 .is_ok()
         );
+    }
+
+    /// Parses SETTINGS made of `(id, value)` pairs.
+    fn settings(pairs: &[(u32, u32)]) -> Settings {
+        let mut payload = Vec::new();
+        for &(id, value) in pairs {
+            payload.put_varint(VarInt::from_u32(id)).unwrap();
+            payload.put_varint(VarInt::from_u32(value)).unwrap();
+        }
+        Settings::with_frame(&Frame::new_settings(payload.into())).unwrap()
+    }
+
+    #[test]
+    fn server_settings_requirements() {
+        const CONNECT: u32 = 0x08;
+        const DATAGRAM: u32 = 0x33;
+
+        // Draft-02 to draft-06.
+        assert!(server_supports_webtransport(&settings(&[(0x2b60_3742, 1)])));
+
+        // Draft-07 to draft-12, draft-13 and draft-14, and draft-15 and later.
+        for id in [0xc671_706a, 0x14e9_cd29, 0x2c7c_f000] {
+            let supports = |pairs: &[(u32, u32)]| server_supports_webtransport(&settings(pairs));
+            assert!(supports(&[(id, 1), (CONNECT, 1), (DATAGRAM, 1)]));
+            assert!(!supports(&[(id, 0), (CONNECT, 1), (DATAGRAM, 1)]));
+            assert!(!supports(&[(id, 1), (DATAGRAM, 1)]));
+            assert!(!supports(&[(id, 1), (CONNECT, 1)]));
+        }
+
+        assert!(!server_supports_webtransport(&settings(&[
+            (CONNECT, 1),
+            (DATAGRAM, 1)
+        ])));
+    }
+
+    #[test]
+    fn client_settings_requirements() {
+        assert!(client_supports_webtransport(&settings(&[(0x33, 1)])));
+        assert!(!client_supports_webtransport(&settings(&[])));
+    }
+
+    #[tokio::test]
+    async fn client_without_datagrams_is_refused() {
+        let (quic_connection, client_connection) =
+            quic_connection_pair(quinn::TransportConfig::default()).await;
+
+        let server = tokio::spawn(IncomingSessionFuture::accept(quic_connection));
+
+        // SETTINGS without SETTINGS_H3_DATAGRAM, then a CONNECT request.
+        let mut control = client_connection.open_uni().await.unwrap();
+        let mut buffer = Vec::new();
+        StreamHeader::new_control().write(&mut buffer).unwrap();
+        Settings::builder()
+            .enable_webtransport()
+            .build()
+            .generate_frame()
+            .write(&mut buffer)
+            .unwrap();
+        control.write_all(&buffer).await.unwrap();
+
+        let (mut request, _response) = client_connection.open_bi().await.unwrap();
+        let mut buffer = Vec::new();
+        SessionRequestProto::new("https://localhost/")
+            .unwrap()
+            .headers()
+            .generate_frame()
+            .write(&mut buffer)
+            .unwrap();
+        request.write_all(&buffer).await.unwrap();
+
+        let reason = tokio::time::timeout(Duration::from_secs(5), client_connection.closed())
+            .await
+            .unwrap();
+        assert!(matches!(
+            reason,
+            quinn::ConnectionError::ApplicationClosed(close)
+                if close.error_code == varint_w2q(ErrorCode::RequirementsNotMet.to_code())
+        ));
+        assert!(server.await.unwrap().is_err());
+    }
+
+    #[tokio::test]
+    async fn client_and_server_accept_each_others_settings() {
+        let identity = Identity::self_signed(["localhost"]).unwrap();
+        let hash = identity.certificate_chain().as_slice()[0].hash();
+
+        let server = Endpoint::server(
+            ServerConfig::builder()
+                .with_bind_address(SocketAddr::from(([127, 0, 0, 1], 0)))
+                .with_identity(identity)
+                .build(),
+        )
+        .unwrap();
+        let url = format!("https://{}/", server.local_addr().unwrap());
+
+        let client = Endpoint::client(
+            ClientConfig::builder()
+                .with_bind_address(SocketAddr::from(([127, 0, 0, 1], 0)))
+                .with_server_certificate_hashes([hash])
+                .build(),
+        )
+        .unwrap();
+
+        let (connection, request) = tokio::join!(client.connect(url), async {
+            server.accept().await.await.unwrap().accept().await
+        });
+        connection.unwrap();
+        request.unwrap();
     }
 }

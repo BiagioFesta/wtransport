@@ -34,11 +34,17 @@ pub enum SettingId {
     /// `SETTINGS_H3_DATAGRAM`.
     H3Datagram,
 
-    /// `SETTINGS_ENABLE_WEBTRANSPORT`.
+    /// `SETTINGS_ENABLE_WEBTRANSPORT` (`0x2b603742`), draft-02 to draft-06.
     EnableWebTransport,
 
-    /// `WEBTRANSPORT_MAX_SESSIONS`.
+    /// `SETTINGS_WT_ENABLED` (`0x2c7cf000`), since draft-15.
+    WtEnabled,
+
+    /// `WEBTRANSPORT_MAX_SESSIONS` (`0xc671706a`), draft-07 to draft-12.
     WebTransportMaxSessions,
+
+    /// `SETTINGS_WT_MAX_SESSIONS` (`0x14e9cd29`), draft-13 and draft-14.
+    WtMaxSessions,
 
     /// Exercise setting.
     Exercise(VarInt),
@@ -60,9 +66,11 @@ impl SettingId {
                 setting_ids::SETTINGS_ENABLE_CONNECT_PROTOCOL => Ok(Self::EnableConnectProtocol),
                 setting_ids::SETTINGS_H3_DATAGRAM => Ok(Self::H3Datagram),
                 setting_ids::SETTINGS_ENABLE_WEBTRANSPORT => Ok(Self::EnableWebTransport),
+                setting_ids::SETTINGS_WT_ENABLED => Ok(Self::WtEnabled),
                 setting_ids::SETTINGS_WEBTRANSPORT_MAX_SESSIONS => {
                     Ok(Self::WebTransportMaxSessions)
                 }
+                setting_ids::SETTINGS_WT_MAX_SESSIONS => Ok(Self::WtMaxSessions),
                 _ => Err(ParseError::UnknownSetting),
             }
         }
@@ -76,7 +84,9 @@ impl SettingId {
             Self::EnableConnectProtocol => setting_ids::SETTINGS_ENABLE_CONNECT_PROTOCOL,
             Self::H3Datagram => setting_ids::SETTINGS_H3_DATAGRAM,
             Self::EnableWebTransport => setting_ids::SETTINGS_ENABLE_WEBTRANSPORT,
+            Self::WtEnabled => setting_ids::SETTINGS_WT_ENABLED,
             Self::WebTransportMaxSessions => setting_ids::SETTINGS_WEBTRANSPORT_MAX_SESSIONS,
+            Self::WtMaxSessions => setting_ids::SETTINGS_WT_MAX_SESSIONS,
             Self::Exercise(id) => id,
         }
     }
@@ -245,5 +255,7 @@ mod setting_ids {
     pub const SETTINGS_ENABLE_CONNECT_PROTOCOL: VarInt = VarInt::from_u32(0x08);
     pub const SETTINGS_H3_DATAGRAM: VarInt = VarInt::from_u32(0x33);
     pub const SETTINGS_ENABLE_WEBTRANSPORT: VarInt = VarInt::from_u32(0x2b60_3742);
+    pub const SETTINGS_WT_ENABLED: VarInt = VarInt::from_u32(0x2c7c_f000);
     pub const SETTINGS_WEBTRANSPORT_MAX_SESSIONS: VarInt = VarInt::from_u32(0xc671_706a);
+    pub const SETTINGS_WT_MAX_SESSIONS: VarInt = VarInt::from_u32(0x14e9_cd29);
 }
