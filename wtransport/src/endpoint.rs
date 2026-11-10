@@ -1049,4 +1049,42 @@ mod tests {
             Some(VarInt::from_u32(0))
         );
     }
+
+    #[tokio::test]
+    async fn dropping_driver_with_incomplete_stream_closes_quic_connection() {
+        let mut transport_config = quinn::TransportConfig::default();
+        transport_config.keep_alive_interval(Some(Duration::from_millis(200)));
+        let (quic_connection, client_connection) = quic_connection_pair(transport_config).await;
+
+        let driver = Driver::init(quic_connection.clone());
+
+        // A stream whose type never completes: 0x40 starts a two-byte varint. A
+        // bidirectional stream whose first frame never completes is handled the same way,
+        // but only unidirectional streams can be ordered against the control stream below.
+        // Both streams stay open: finishing either lets the driver's tasks end on their own.
+        let mut incomplete = client_connection.open_uni().await.unwrap();
+        incomplete.write_all(&[0x40]).await.unwrap();
+
+        // The control stream comes after it, so once the driver has its settings, it has
+        // also accepted the incomplete stream.
+        let mut control = client_connection.open_uni().await.unwrap();
+        let mut buffer = Vec::new();
+        StreamHeader::new_control().write(&mut buffer).unwrap();
+        Settings::builder()
+            .build()
+            .generate_frame()
+            .write(&mut buffer)
+            .unwrap();
+        control.write_all(&buffer).await.unwrap();
+        driver.accept_settings().await.unwrap();
+
+        drop(driver);
+        drop(quic_connection);
+
+        assert!(
+            tokio::time::timeout(Duration::from_secs(5), client_connection.closed())
+                .await
+                .is_ok()
+        );
+    }
 }
