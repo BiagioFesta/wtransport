@@ -17,6 +17,12 @@ use crate::bytes::AsyncWrite;
 #[cfg(feature = "async")]
 use crate::bytes;
 
+#[cfg(feature = "async")]
+use std::pin::Pin;
+
+#[cfg(feature = "async")]
+use std::task::{ready, Context, Poll};
+
 /// Error frame parsing.
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
@@ -226,55 +232,17 @@ impl<'a> Frame<'a> {
     /// Reads a [`Frame`] from a `reader`.
     ///
     /// An unknown frame is consumed whole before [`ParseError::UnknownFrame`] is returned,
-    /// so the next frame can be read right after it. Its payload is limited in size like
-    /// that of any other frame.
+    /// so the next frame can be read right after it. Its payload is skipped as it arrives,
+    /// without being buffered, so unlike that of a known frame its size is not limited.
+    ///
+    /// Not cancel-safe: see [`FrameReader`] for a version that is.
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn read_async<R>(reader: &mut R) -> Result<Frame<'a>, IoReadError>
     where
         R: AsyncRead + Unpin + ?Sized,
     {
-        use crate::bytes::BytesReaderAsync;
-
-        let kind = FrameKind::parse(reader.get_varint().await?);
-
-        if matches!(kind, Some(FrameKind::WebTransport)) {
-            let session_id =
-                SessionId::try_from_varint(reader.get_varint().await.map_err(|e| match e {
-                    bytes::IoReadError::ImmediateFin => bytes::IoReadError::UnexpectedFin,
-                    _ => e,
-                })?)
-                .map_err(|InvalidSessionId| IoReadError::Parse(ParseError::InvalidSessionId))?;
-
-            Ok(Self::new_webtransport(session_id))
-        } else {
-            let payload_len = reader
-                .get_varint()
-                .await
-                .map_err(|e| match e {
-                    bytes::IoReadError::ImmediateFin => bytes::IoReadError::UnexpectedFin,
-                    _ => e,
-                })?
-                .into_inner() as usize;
-
-            if payload_len > Self::MAX_PARSE_PAYLOAD_ALLOWED {
-                return Err(IoReadError::Parse(ParseError::PayloadTooBig));
-            }
-
-            let mut payload = vec![0; payload_len];
-
-            reader.get_buffer(&mut payload).await.map_err(|e| match e {
-                bytes::IoReadError::ImmediateFin => bytes::IoReadError::UnexpectedFin,
-                _ => e,
-            })?;
-
-            // Unknown frames are discarded only once their payload is consumed (RFC 9114 §9).
-            let kind = kind.ok_or(IoReadError::Parse(ParseError::UnknownFrame))?;
-
-            payload.shrink_to_fit();
-
-            Ok(Self::new(kind, Cow::Owned(payload), None))
-        }
+        FrameReader::default().read_async(reader).await
     }
 
     /// Reads a [`Frame`] from a [`BufferReader`].
@@ -472,6 +440,168 @@ impl<'a> Frame<'a> {
         .unwrap();
 
         buffer
+    }
+}
+
+/// Reads [`Frame`]s from a stream, keeping its progress through the current frame.
+///
+/// [`Frame::read_async`] keeps that progress in its future, so dropping the future part
+/// way through a frame loses the bytes it has consumed and leaves the stream mid-frame.
+/// Here it lives in the `FrameReader`, so [`Self::read_async`] is cancel-safe: a read
+/// dropped part way through a frame resumes where it stopped when called again.
+#[cfg(feature = "async")]
+#[cfg_attr(docsrs, doc(cfg(feature = "async")))]
+#[derive(Debug, Default)]
+pub struct FrameReader {
+    /// The frame type, then the payload length or, for a WebTransport frame, the session ID.
+    header: [u8; 2 * VarInt::MAX_SIZE],
+    header_len: usize,
+    /// The payload of a known frame, allocated once its length is known.
+    payload: Vec<u8>,
+    /// How much of the payload has been read, or skipped for an unknown frame.
+    payload_read: u64,
+}
+
+#[cfg(feature = "async")]
+impl FrameReader {
+    /// Reads the next frame from `reader`, which must be the stream this reader was
+    /// reading if a previous call was dropped part way through a frame.
+    ///
+    /// Cancel-safe. Otherwise behaves as [`Frame::read_async`].
+    pub async fn read_async<R>(&mut self, reader: &mut R) -> Result<Frame<'static>, IoReadError>
+    where
+        R: AsyncRead + Unpin + ?Sized,
+    {
+        std::future::poll_fn(|cx| self.poll_read(cx, reader)).await
+    }
+
+    fn poll_read<R>(
+        &mut self,
+        cx: &mut Context<'_>,
+        reader: &mut R,
+    ) -> Poll<Result<Frame<'static>, IoReadError>>
+    where
+        R: AsyncRead + Unpin + ?Sized,
+    {
+        let result = ready!(self.poll_frame(cx, reader));
+
+        // The frame is over, read in full or failed.
+        self.header_len = 0;
+        self.payload = Vec::new();
+        self.payload_read = 0;
+
+        Poll::Ready(result)
+    }
+
+    fn poll_frame<R>(
+        &mut self,
+        cx: &mut Context<'_>,
+        reader: &mut R,
+    ) -> Poll<Result<Frame<'static>, IoReadError>>
+    where
+        R: AsyncRead + Unpin + ?Sized,
+    {
+        // Each varint's first byte gives its size.
+        ready!(self.poll_header(cx, reader, 1))?;
+        let kind_end = VarInt::parse_size(self.header[0]);
+        ready!(self.poll_header(cx, reader, kind_end + 1))?;
+        let header_end = kind_end + VarInt::parse_size(self.header[kind_end]);
+        ready!(self.poll_header(cx, reader, header_end))?;
+
+        let mut header = BufferReader::new(&self.header[..header_end]);
+        let kind_id = header.get_varint().expect("Header is complete");
+        let value = header.get_varint().expect("Header is complete");
+
+        match FrameKind::parse(kind_id) {
+            Some(FrameKind::WebTransport) => {
+                let session_id = SessionId::try_from_varint(value)
+                    .map_err(|InvalidSessionId| IoReadError::Parse(ParseError::InvalidSessionId))?;
+
+                Poll::Ready(Ok(Frame::new_webtransport(session_id)))
+            }
+            Some(kind) => {
+                if value.into_inner() > Frame::MAX_PARSE_PAYLOAD_ALLOWED as u64 {
+                    return Poll::Ready(Err(IoReadError::Parse(ParseError::PayloadTooBig)));
+                }
+
+                // Does nothing once the payload is allocated.
+                self.payload.resize(value.into_inner() as usize, 0);
+
+                while self.payload_read < value.into_inner() {
+                    let read = ready!(Self::poll_read_some(
+                        cx,
+                        reader,
+                        &mut self.payload[self.payload_read as usize..]
+                    ))?;
+                    self.payload_read += read as u64;
+                }
+
+                let payload = std::mem::take(&mut self.payload);
+                Poll::Ready(Ok(Frame::new(kind, Cow::Owned(payload), None)))
+            }
+            None => {
+                // Unknown frames are discarded (RFC 9114 §9), so the payload is skipped
+                // rather than buffered.
+                let mut discard = [0; 256];
+
+                while self.payload_read < value.into_inner() {
+                    let remaining = value.into_inner() - self.payload_read;
+                    let len = remaining.min(discard.len() as u64) as usize;
+                    let read = ready!(Self::poll_read_some(cx, reader, &mut discard[..len]))?;
+                    self.payload_read += read as u64;
+                }
+
+                Poll::Ready(Err(IoReadError::Parse(ParseError::UnknownFrame)))
+            }
+        }
+    }
+
+    /// Reads into the header until it holds `end` bytes.
+    fn poll_header<R>(
+        &mut self,
+        cx: &mut Context<'_>,
+        reader: &mut R,
+        end: usize,
+    ) -> Poll<Result<(), IoReadError>>
+    where
+        R: AsyncRead + Unpin + ?Sized,
+    {
+        while self.header_len < end {
+            match ready!(Self::poll_read_some(
+                cx,
+                reader,
+                &mut self.header[self.header_len..end]
+            )) {
+                Ok(read) => self.header_len += read,
+                // A stream that ends between frames ends cleanly.
+                Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin)) if self.header_len == 0 => {
+                    return Poll::Ready(Err(IoReadError::IO(bytes::IoReadError::ImmediateFin)));
+                }
+                Err(error) => return Poll::Ready(Err(error)),
+            }
+        }
+
+        Poll::Ready(Ok(()))
+    }
+
+    /// Reads at least one byte into `buffer`, which must not be empty.
+    fn poll_read_some<R>(
+        cx: &mut Context<'_>,
+        reader: &mut R,
+        buffer: &mut [u8],
+    ) -> Poll<Result<usize, IoReadError>>
+    where
+        R: AsyncRead + Unpin + ?Sized,
+    {
+        let read =
+            ready!(Pin::new(reader).poll_read(cx, buffer)).map_err(bytes::IoReadError::from)?;
+
+        if read == 0 {
+            // Only ever called mid-frame, except as handled by `poll_header`.
+            return Poll::Ready(Err(IoReadError::IO(bytes::IoReadError::UnexpectedFin)));
+        }
+
+        Poll::Ready(Ok(read))
     }
 }
 
@@ -758,19 +888,90 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn unknown_frame_payload_too_big_async() {
-        let mut buffer = Vec::new();
-        buffer.put_varint(VarInt::from_u32(0x0042_4242)).unwrap();
-        buffer
-            .put_varint(VarInt::from_u32(
-                Frame::MAX_PARSE_PAYLOAD_ALLOWED as u32 + 1,
-            ))
-            .unwrap();
+    async fn unknown_frame_large_async() {
+        // Skipped as it arrives, so not limited in size like the payload of a known frame.
+        let payload = vec![0; Frame::MAX_PARSE_PAYLOAD_ALLOWED * 4];
+        let mut buffer = Frame::serialize_any(VarInt::from_u32(0x0042_4242), &payload);
+        buffer.extend(Frame::serialize_any(FrameKind::Data.id(), b"next"));
+        let mut reader = buffer.as_slice();
+        let mut frame_reader = FrameReader::default();
 
         assert!(matches!(
-            Frame::read_async(&mut &*buffer).await,
-            Err(IoReadError::Parse(ParseError::PayloadTooBig)),
+            frame_reader.read_async(&mut reader).await,
+            Err(IoReadError::Parse(ParseError::UnknownFrame))
         ));
+        let frame = frame_reader.read_async(&mut reader).await.unwrap();
+        assert_eq!(frame.payload(), b"next");
+        assert!(reader.is_empty());
+    }
+
+    /// Hands out its data only as far as `released`, and is pending beyond that.
+    struct Trickle {
+        data: Vec<u8>,
+        read: usize,
+        released: usize,
+    }
+
+    impl AsyncRead for Trickle {
+        fn poll_read(
+            mut self: Pin<&mut Self>,
+            _cx: &mut Context<'_>,
+            buf: &mut [u8],
+        ) -> Poll<std::io::Result<usize>> {
+            if self.read == self.released {
+                return Poll::Pending;
+            }
+
+            let len = buf.len().min(self.released - self.read);
+            buf[..len].copy_from_slice(&self.data[self.read..self.read + len]);
+            self.read += len;
+            Poll::Ready(Ok(len))
+        }
+    }
+
+    #[test]
+    fn frame_reader_resumes_cancelled_reads() {
+        use std::future::Future;
+
+        let mut data = Frame::serialize_any(FrameKind::Data.id(), b"first");
+        data.extend(Frame::serialize_any(
+            VarInt::from_u32(0x0042_4242),
+            b"unknown",
+        ));
+        data.extend(Frame::serialize_webtransport(SessionId::maybe_invalid(
+            VarInt::from_u32(0),
+        )));
+        data.extend(Frame::serialize_any(FrameKind::Data.id(), b"last"));
+
+        let mut source = Trickle {
+            released: 0,
+            read: 0,
+            data,
+        };
+        let mut frame_reader = FrameReader::default();
+        let mut cx = Context::from_waker(std::task::Waker::noop());
+        let mut results = Vec::new();
+
+        // One more byte at a time, each read dropped as soon as it has to wait for more.
+        while source.released < source.data.len() {
+            source.released += 1;
+            let mut read = std::pin::pin!(frame_reader.read_async(&mut source));
+            if let Poll::Ready(result) = read.as_mut().poll(&mut cx) {
+                results.push(result);
+            }
+        }
+
+        let [first, unknown, webtransport, last] = results.try_into().unwrap();
+        assert_eq!(first.unwrap().payload(), b"first");
+        assert!(matches!(
+            unknown,
+            Err(IoReadError::Parse(ParseError::UnknownFrame))
+        ));
+        assert!(matches!(
+            webtransport.unwrap().kind(),
+            FrameKind::WebTransport
+        ));
+        assert_eq!(last.unwrap().payload(), b"last");
     }
 
     mod utils {

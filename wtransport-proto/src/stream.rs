@@ -122,7 +122,7 @@ pub mod biremote {
             R: AsyncRead + Unpin + ?Sized,
         {
             loop {
-                match Frame::read_async(reader).await {
+                match self.stage.frame_reader.read_async(reader).await {
                     Ok(frame) => {
                         return self.validate_frame(frame).map_err(IoReadError::H3);
                     }
@@ -308,14 +308,14 @@ pub mod bilocal {
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
         pub async fn read_frame_async<'a, R>(
-            &self,
+            &mut self,
             reader: &mut R,
         ) -> Result<Frame<'a>, IoReadError>
         where
             R: AsyncRead + Unpin + ?Sized,
         {
             loop {
-                match Frame::read_async(reader).await {
+                match self.stage.frame_reader.read_async(reader).await {
                     Ok(frame) => {
                         return self.validate_frame(frame).map_err(IoReadError::H3);
                     }
@@ -639,7 +639,7 @@ pub mod uniremote {
             assert!(!matches!(self.kind(), StreamKind::WebTransport));
 
             loop {
-                match Frame::read_async(reader).await {
+                match self.stage.frame_reader.read_async(reader).await {
                     Ok(frame) => {
                         return self.validate_frame(frame).map_err(IoReadError::H3);
                     }
@@ -958,14 +958,14 @@ pub mod session {
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
         pub async fn read_frame_async<'a, R>(
-            &self,
+            &mut self,
             reader: &mut R,
         ) -> Result<Frame<'a>, IoReadError>
         where
             R: AsyncRead + Unpin + ?Sized,
         {
             loop {
-                match Frame::read_async(reader).await {
+                match self.stage.frame_reader.read_async(reader).await {
                     Ok(frame) => {
                         return self.validate_frame(frame).map_err(IoReadError::H3);
                     }
@@ -1065,6 +1065,9 @@ pub mod types {
     pub struct H3 {
         stream_header: Option<StreamHeader>,
         first_frame_done: bool,
+        /// Progress through the frame being read, kept across cancelled reads.
+        #[cfg(feature = "async")]
+        pub(super) frame_reader: frame::FrameReader,
     }
 
     impl H3 {
@@ -1073,6 +1076,8 @@ pub mod types {
             Self {
                 stream_header,
                 first_frame_done: false,
+                #[cfg(feature = "async")]
+                frame_reader: Default::default(),
             }
         }
 
@@ -1111,12 +1116,19 @@ pub mod types {
     #[derive(Debug)]
     pub struct Session {
         session_request: SessionRequest,
+        /// Progress through the frame being read, kept across cancelled reads.
+        #[cfg(feature = "async")]
+        pub(super) frame_reader: frame::FrameReader,
     }
 
     impl Session {
         #[inline(always)]
         pub(super) fn new(session_request: SessionRequest) -> Self {
-            Self { session_request }
+            Self {
+                session_request,
+                #[cfg(feature = "async")]
+                frame_reader: Default::default(),
+            }
         }
 
         #[inline(always)]

@@ -1012,4 +1012,41 @@ mod tests {
         connection.unwrap();
         request.unwrap();
     }
+
+    #[tokio::test]
+    async fn settings_frame_split_by_another_stream() {
+        let (quic_connection, client_connection) =
+            quic_connection_pair(quinn::TransportConfig::default()).await;
+
+        let driver = Driver::init(quic_connection.clone());
+
+        let settings = Settings::builder()
+            .qpack_max_table_capacity(VarInt::from_u32(0))
+            .build();
+        let frame = settings.generate_frame();
+        let mut buffer = Vec::new();
+        StreamHeader::new_control().write(&mut buffer).unwrap();
+        frame.write(&mut buffer).unwrap();
+        let (head, payload) = buffer.split_at(buffer.len() - frame.payload().len());
+
+        // The frame's type and length, then a new stream while the driver waits for the
+        // payload. Should the driver drop its read of the frame to handle the new stream,
+        // the type and length are lost, and the payload is read as a HEADERS frame.
+        let mut control = client_connection.open_uni().await.unwrap();
+        control.write_all(head).await.unwrap();
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let mut reserved = client_connection.open_uni().await.unwrap();
+        reserved.write_all(&[0x21]).await.unwrap(); // A reserved stream type, ignored.
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        control.write_all(payload).await.unwrap();
+
+        let settings = tokio::time::timeout(Duration::from_secs(5), driver.accept_settings())
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            settings.get(SettingId::QPackMaxTableCapacity),
+            Some(VarInt::from_u32(0))
+        );
+    }
 }
