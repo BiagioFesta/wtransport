@@ -21,6 +21,8 @@ use crate::bytes;
 #[derive(Debug, thiserror::Error)]
 pub enum ParseError {
     /// Error for unknown frame ID.
+    ///
+    /// The whole frame has been consumed, so the next frame can be read right after it.
     #[error("cannot parse HTTP3 frame as ID is unknown")]
     UnknownFrame,
 
@@ -178,17 +180,21 @@ impl<'a> Frame<'a> {
     /// It returns [`None`] if the `bytes_reader` does not contain enough bytes
     /// to parse an entire frame.
     ///
+    /// An unknown frame is consumed whole before [`ParseError::UnknownFrame`] is returned,
+    /// so the next frame can be read right after it. Its payload is limited in size like
+    /// that of any other frame.
+    ///
     /// In case [`None`] or [`Err`], `bytes_reader` might be partially read.
     pub fn read<R>(bytes_reader: &mut R) -> Result<Option<Self>, ParseError>
     where
         R: BytesReader<'a>,
     {
         let kind = match bytes_reader.get_varint() {
-            Some(kind_id) => FrameKind::parse(kind_id).ok_or(ParseError::UnknownFrame)?,
+            Some(kind_id) => FrameKind::parse(kind_id),
             None => return Ok(None),
         };
 
-        if matches!(kind, FrameKind::WebTransport) {
+        if matches!(kind, Some(FrameKind::WebTransport)) {
             let session_id = match bytes_reader.get_varint() {
                 Some(session_id) => SessionId::try_from_varint(session_id)
                     .map_err(|InvalidSessionId| ParseError::InvalidSessionId)?,
@@ -210,11 +216,18 @@ impl<'a> Frame<'a> {
                 return Ok(None);
             };
 
+            // Unknown frames are discarded only once their payload is consumed (RFC 9114 §9).
+            let kind = kind.ok_or(ParseError::UnknownFrame)?;
+
             Ok(Some(Self::new(kind, Cow::Borrowed(payload), None)))
         }
     }
 
     /// Reads a [`Frame`] from a `reader`.
+    ///
+    /// An unknown frame is consumed whole before [`ParseError::UnknownFrame`] is returned,
+    /// so the next frame can be read right after it. Its payload is limited in size like
+    /// that of any other frame.
     #[cfg(feature = "async")]
     #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
     pub async fn read_async<R>(reader: &mut R) -> Result<Frame<'a>, IoReadError>
@@ -223,10 +236,9 @@ impl<'a> Frame<'a> {
     {
         use crate::bytes::BytesReaderAsync;
 
-        let kind_id = reader.get_varint().await?;
-        let kind = FrameKind::parse(kind_id).ok_or(IoReadError::Parse(ParseError::UnknownFrame))?;
+        let kind = FrameKind::parse(reader.get_varint().await?);
 
-        if matches!(kind, FrameKind::WebTransport) {
+        if matches!(kind, Some(FrameKind::WebTransport)) {
             let session_id =
                 SessionId::try_from_varint(reader.get_varint().await.map_err(|e| match e {
                     bytes::IoReadError::ImmediateFin => bytes::IoReadError::UnexpectedFin,
@@ -256,6 +268,9 @@ impl<'a> Frame<'a> {
                 _ => e,
             })?;
 
+            // Unknown frames are discarded only once their payload is consumed (RFC 9114 §9).
+            let kind = kind.ok_or(IoReadError::Parse(ParseError::UnknownFrame))?;
+
             payload.shrink_to_fit();
 
             Ok(Self::new(kind, Cow::Owned(payload), None))
@@ -267,18 +282,23 @@ impl<'a> Frame<'a> {
     /// It returns [`None`] if the `buffer_reader` does not contain enough bytes
     /// to parse an entire frame.
     ///
-    /// In case [`None`] or [`Err`], `buffer_reader` offset if not advanced.
+    /// In case [`None`] or [`Err`], `buffer_reader` offset is not advanced, except
+    /// for [`ParseError::UnknownFrame`], which advances it past the discarded frame.
     pub fn read_from_buffer(
         buffer_reader: &mut BufferReader<'a>,
     ) -> Result<Option<Self>, ParseError> {
         let mut buffer_reader_child = buffer_reader.child();
 
-        match Self::read(&mut *buffer_reader_child)? {
-            Some(frame) => {
+        match Self::read(&mut *buffer_reader_child) {
+            Ok(Some(frame)) => {
                 buffer_reader_child.commit();
                 Ok(Some(frame))
             }
-            None => Ok(None),
+            Err(ParseError::UnknownFrame) => {
+                buffer_reader_child.commit();
+                Err(ParseError::UnknownFrame)
+            }
+            result => result,
         }
     }
 
@@ -613,22 +633,58 @@ mod tests {
 
     #[test]
     fn unknown_frame() {
-        let buffer = Frame::serialize_any(VarInt::from_u32(0x0042_4242), b"This is a test payload");
+        let mut buffer =
+            Frame::serialize_any(VarInt::from_u32(0x0042_4242), b"This is a test payload");
+        buffer.extend(Frame::serialize_any(FrameKind::Data.id(), b"next"));
+        let mut reader = buffer.as_slice();
 
         assert!(matches!(
-            Frame::read(&mut buffer.as_slice()),
+            Frame::read(&mut reader),
             Err(ParseError::UnknownFrame)
         ));
+
+        let frame = Frame::read(&mut reader).unwrap().unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Data));
+        assert_eq!(frame.payload(), b"next");
+        assert!(reader.is_empty());
     }
 
     #[tokio::test]
     async fn unknown_frame_async() {
-        let buffer = Frame::serialize_any(VarInt::from_u32(0x0042_4242), b"This is a test payload");
+        let mut buffer =
+            Frame::serialize_any(VarInt::from_u32(0x0042_4242), b"This is a test payload");
+        buffer.extend(Frame::serialize_any(FrameKind::Data.id(), b"next"));
+        let mut reader = buffer.as_slice();
 
         assert!(matches!(
-            Frame::read_async(&mut buffer.as_slice()).await,
+            Frame::read_async(&mut reader).await,
             Err(IoReadError::Parse(ParseError::UnknownFrame))
         ));
+
+        let frame = Frame::read_async(&mut reader).await.unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Data));
+        assert_eq!(frame.payload(), b"next");
+        assert!(reader.is_empty());
+    }
+
+    #[test]
+    fn unknown_frame_from_buffer() {
+        let buffer = Frame::serialize_any(VarInt::from_u32(0x0042_4242), b"This is a test payload");
+
+        for len in 0..buffer.len() {
+            let mut buffer_reader = BufferReader::new(&buffer[..len]);
+            assert!(Frame::read_from_buffer(&mut buffer_reader)
+                .unwrap()
+                .is_none());
+            assert_eq!(buffer_reader.offset(), 0);
+        }
+
+        let mut buffer_reader = BufferReader::new(&buffer);
+        assert!(matches!(
+            Frame::read_from_buffer(&mut buffer_reader),
+            Err(ParseError::UnknownFrame)
+        ));
+        assert_eq!(buffer_reader.offset(), buffer.len());
     }
 
     #[test]
@@ -673,6 +729,38 @@ mod tests {
     async fn payload_too_big_async() {
         let mut buffer = Vec::new();
         buffer.put_varint(FrameKind::Data.id()).unwrap();
+        buffer
+            .put_varint(VarInt::from_u32(
+                Frame::MAX_PARSE_PAYLOAD_ALLOWED as u32 + 1,
+            ))
+            .unwrap();
+
+        assert!(matches!(
+            Frame::read_async(&mut &*buffer).await,
+            Err(IoReadError::Parse(ParseError::PayloadTooBig)),
+        ));
+    }
+
+    #[test]
+    fn unknown_frame_payload_too_big() {
+        let mut buffer = Vec::new();
+        buffer.put_varint(VarInt::from_u32(0x0042_4242)).unwrap();
+        buffer
+            .put_varint(VarInt::from_u32(
+                Frame::MAX_PARSE_PAYLOAD_ALLOWED as u32 + 1,
+            ))
+            .unwrap();
+
+        assert!(matches!(
+            Frame::read_from_buffer(&mut BufferReader::new(&buffer)),
+            Err(ParseError::PayloadTooBig)
+        ));
+    }
+
+    #[tokio::test]
+    async fn unknown_frame_payload_too_big_async() {
+        let mut buffer = Vec::new();
+        buffer.put_varint(VarInt::from_u32(0x0042_4242)).unwrap();
         buffer
             .put_varint(VarInt::from_u32(
                 Frame::MAX_PARSE_PAYLOAD_ALLOWED as u32 + 1,

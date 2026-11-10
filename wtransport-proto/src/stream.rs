@@ -97,6 +97,8 @@ pub mod biremote {
                         return Ok(None);
                     }
                     Err(frame::ParseError::UnknownFrame) => {
+                        // A WebTransport frame after it is no longer first.
+                        self.stage.set_first_frame();
                         continue;
                     }
                     Err(frame::ParseError::InvalidSessionId) => {
@@ -125,6 +127,8 @@ pub mod biremote {
                         return self.validate_frame(frame).map_err(IoReadError::H3);
                     }
                     Err(frame::IoReadError::Parse(frame::ParseError::UnknownFrame)) => {
+                        // A WebTransport frame after it is no longer first.
+                        self.stage.set_first_frame();
                         continue;
                     }
                     Err(frame::IoReadError::Parse(frame::ParseError::InvalidSessionId)) => {
@@ -1229,5 +1233,81 @@ mod tests {
         let frame = stream.read_frame_from_buffer(&mut buffer_reader);
 
         assert!(matches!(frame, Err(ErrorCode::Frame)));
+    }
+
+    #[test]
+    fn bi_remote_webtransport_after_unknown_frame() {
+        let mut buffer = Vec::new();
+        buffer.extend([0x07, 0x01, 0x00]); // GOAWAY, a frame this crate does not know.
+        Frame::new_webtransport(SessionId::maybe_invalid(VarInt::from_u32(0)))
+            .write(&mut buffer)
+            .unwrap();
+
+        let mut buffer_reader = BufferReader::new(buffer.as_slice());
+        let mut stream = Stream::accept_bi().upgrade();
+        let frame = stream.read_frame_from_buffer(&mut buffer_reader);
+
+        assert!(matches!(frame, Err(ErrorCode::Frame)));
+    }
+
+    /// A control stream carrying SETTINGS, GOAWAY (a frame this crate does not know), then GREASE.
+    fn control_stream_with_unknown_frame() -> Vec<u8> {
+        let mut buffer = Vec::new();
+        StreamHeader::new_control().write(&mut buffer).unwrap();
+        crate::settings::Settings::builder()
+            .build()
+            .generate_frame()
+            .write(&mut buffer)
+            .unwrap();
+        // GOAWAY with stream ID 0: type 0x07, length 1, payload 0x00. Unless its length and
+        // payload are skipped, 0x01 is read as a HEADERS frame, unexpected on a control stream.
+        buffer.extend([0x07, 0x01, 0x00]);
+        Frame::new_exercise(VarInt::from_u32(0x21), Cow::Borrowed(b"grease"))
+            .write(&mut buffer)
+            .unwrap();
+        buffer
+    }
+
+    #[test]
+    fn uni_remote_skips_unknown_frame() {
+        let buffer = control_stream_with_unknown_frame();
+        let mut buffer_reader = BufferReader::new(&buffer);
+
+        let uniremote::MaybeUpgradeH3::H3(mut stream) =
+            Stream::accept_uni().upgrade(&mut buffer_reader).unwrap()
+        else {
+            panic!("stream header is complete");
+        };
+
+        let frame = stream
+            .read_frame_from_buffer(&mut buffer_reader)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Settings));
+
+        let frame = stream
+            .read_frame_from_buffer(&mut buffer_reader)
+            .unwrap()
+            .unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Exercise(_)));
+        assert_eq!(frame.payload(), b"grease");
+    }
+
+    #[tokio::test]
+    async fn uni_remote_skips_unknown_frame_async() {
+        let buffer = control_stream_with_unknown_frame();
+        let mut reader = buffer.as_slice();
+
+        let mut stream = Stream::accept_uni()
+            .upgrade_async(&mut reader)
+            .await
+            .unwrap();
+
+        let frame = stream.read_frame_async(&mut reader).await.unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Settings));
+
+        let frame = stream.read_frame_async(&mut reader).await.unwrap();
+        assert!(matches!(frame.kind(), FrameKind::Exercise(_)));
+        assert_eq!(frame.payload(), b"grease");
     }
 }
