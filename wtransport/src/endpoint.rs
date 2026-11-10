@@ -805,8 +805,11 @@ mod tests {
     use rustls::RootCertStore;
     use std::time::Duration;
 
-    #[tokio::test]
-    async fn dropping_driver_before_settings_closes_quic_connection() {
+    /// Connects a plain QUIC client to a server [`Endpoint`], returning the server's and
+    /// the client's side of the connection.
+    async fn quic_connection_pair(
+        transport_config: quinn::TransportConfig,
+    ) -> (quinn::Connection, quinn::Connection) {
         let identity = Identity::self_signed(["localhost"]).unwrap();
 
         let mut root_store = RootCertStore::empty();
@@ -825,10 +828,6 @@ mod tests {
         .unwrap();
         let server_address = server.local_addr().unwrap();
 
-        let mut transport_config = quinn::TransportConfig::default();
-        transport_config.max_concurrent_uni_streams(0u32.into());
-        transport_config.keep_alive_interval(Some(Duration::from_millis(200)));
-
         let tls_config = build_default_tls_config(Arc::new(root_store), None);
         let mut client_config = quinn::ClientConfig::new(Arc::new(
             quinn::crypto::rustls::QuicClientConfig::try_from(tls_config).unwrap(),
@@ -841,6 +840,16 @@ mod tests {
         let connecting = client.connect(server_address, "localhost").unwrap();
         let quic_connection = server.accept().await.0.await.unwrap();
         let client_connection = connecting.await.unwrap();
+
+        (quic_connection, client_connection)
+    }
+
+    #[tokio::test]
+    async fn dropping_driver_before_settings_closes_quic_connection() {
+        let mut transport_config = quinn::TransportConfig::default();
+        transport_config.max_concurrent_uni_streams(0u32.into());
+        transport_config.keep_alive_interval(Some(Duration::from_millis(200)));
+        let (quic_connection, client_connection) = quic_connection_pair(transport_config).await;
 
         let driver = Driver::init(quic_connection.clone());
         drop(driver);
