@@ -245,7 +245,9 @@ mod worker {
     use crate::driver::streams::ProtoReadError;
     use crate::driver::streams::ProtoWriteError;
     use crate::driver::utils::TrySendError;
+    use std::future::Future;
     use streams::connect::ConnectStream;
+    use tokio::task::JoinSet;
     use utils::varint_w2q;
     use wtransport_proto::frame::FrameKind;
     use wtransport_proto::headers::Headers;
@@ -266,6 +268,10 @@ mod worker {
         remote_qpack_enc_stream: RemoteQPackEncStream,
         remote_qpack_dec_stream: RemoteQPackDecStream,
         connect_stream: ConnectStream,
+        /// Tasks reading the first bytes of incoming streams. Owned by the worker, so
+        /// they are aborted with it: otherwise a peer that never completes those bytes
+        /// leaves a task holding the stream, and so the QUIC connection, open forever.
+        stream_tasks: JoinSet<()>,
     }
 
     impl Worker {
@@ -291,6 +297,7 @@ mod worker {
                 remote_qpack_enc_stream: RemoteQPackEncStream::empty(),
                 remote_qpack_dec_stream: RemoteQPackDecStream::empty(),
                 connect_stream: ConnectStream::empty(),
+                stream_tasks: JoinSet::new(),
             }
         }
 
@@ -338,14 +345,18 @@ mod worker {
                     result = Self::accept_uni(&self.quic_connection,
                                               &ready_uni_h3_streams.0,
                                               &self.ready_uni_wt_streams) => {
-                        result?;
+                        self.stream_tasks.spawn(result?);
                     }
 
                     result = Self::accept_bi(&self.quic_connection,
                                              &ready_bi_h3_streams.0,
                                              &self.ready_bi_wt_streams) => {
-                        result?;
+                        self.stream_tasks.spawn(result?);
                     }
+
+                    // Reaps finished tasks. A panic in one concerns only its own stream, so
+                    // it is ignored.
+                    Some(_) = self.stream_tasks.join_next() => {}
 
                     result = Self::accept_datagram(&self.quic_connection,
                                                    &self.ready_datagrams) => {
@@ -414,11 +425,13 @@ mod worker {
             self.local_settings_stream.send_settings().await
         }
 
+        /// Accepts a unidirectional stream, returning a future, for the caller to spawn,
+        /// that reads its header.
         async fn accept_uni(
             quic_connection: &quinn::Connection,
             ready_uni_h3_streams: &mpsc::Sender<Result<StreamUniRemoteH3, DriverError>>,
             ready_uni_wt_streams: &mpsc::Sender<StreamUniRemoteWT>,
-        ) -> Result<(), DriverError> {
+        ) -> Result<impl Future<Output = ()> + Send + 'static, DriverError> {
             trace!("H3 uni queue capacity: {}", ready_uni_h3_streams.capacity());
             let h3_slot = ready_uni_h3_streams
                 .clone()
@@ -438,42 +451,44 @@ mod worker {
             let stream_id = stream_quic.id();
             debug!("New incoming uni stream ({})", stream_id);
 
-            tokio::spawn(
-                async move {
-                    let stream_h3 = match stream_quic.upgrade().await {
-                        Ok(stream_h3) => stream_h3,
-                        Err(ProtoReadError::H3(error_code)) => {
-                            h3_slot.send(Err(DriverError::Proto(error_code)));
-                            return;
-                        }
-                        Err(ProtoReadError::IO(_)) => {
-                            return;
-                        }
-                    };
-
-                    let stream_kind = stream_h3.kind();
-                    debug!("Type: {:?}", stream_kind);
-
-                    if matches!(stream_kind, StreamKind::WebTransport) {
-                        let stream_wt = stream_h3.upgrade();
-                        wt_slot.send(stream_wt);
-                    } else {
-                        h3_slot.send(Ok(stream_h3));
+            Ok(async move {
+                let stream_h3 = match stream_quic.upgrade().await {
+                    Ok(Some(stream_h3)) => stream_h3,
+                    Ok(None) => {
+                        debug!("Unknown type: ignored");
+                        return;
                     }
-                }
-                .instrument(debug_span!("Stream", "id={}", stream_id)),
-            );
+                    Err(ProtoReadError::H3(error_code)) => {
+                        h3_slot.send(Err(DriverError::Proto(error_code)));
+                        return;
+                    }
+                    Err(ProtoReadError::IO(_)) => {
+                        return;
+                    }
+                };
 
-            Ok(())
+                let stream_kind = stream_h3.kind();
+                debug!("Type: {:?}", stream_kind);
+
+                if matches!(stream_kind, StreamKind::WebTransport) {
+                    let stream_wt = stream_h3.upgrade();
+                    wt_slot.send(stream_wt);
+                } else {
+                    h3_slot.send(Ok(stream_h3));
+                }
+            }
+            .instrument(debug_span!("Stream", "id={}", stream_id)))
         }
 
+        /// Accepts a bidirectional stream, returning a future, for the caller to spawn,
+        /// that reads its first frame.
         async fn accept_bi(
             quic_connection: &quinn::Connection,
             ready_bi_h3_streams: &mpsc::Sender<
                 Result<(StreamBiRemoteH3, Frame<'static>), DriverError>,
             >,
             ready_bi_wt_streams: &mpsc::Sender<StreamBiRemoteWT>,
-        ) -> Result<(), DriverError> {
+        ) -> Result<impl Future<Output = ()> + Send + 'static, DriverError> {
             trace!("H3 bi queue capacity: {}", ready_bi_h3_streams.capacity());
             let h3_slot = ready_bi_h3_streams
                 .clone()
@@ -493,44 +508,40 @@ mod worker {
             let stream_id = stream_quic.id();
             debug!("New incoming bi stream ({})", stream_id);
 
-            tokio::spawn(
-                async move {
-                    let mut stream_h3 = stream_quic.upgrade();
+            Ok(async move {
+                let mut stream_h3 = stream_quic.upgrade();
 
-                    let frame = loop {
-                        match stream_h3.read_frame().await {
-                            Ok(frame) => {
-                                debug!("Frame kind: {:?}", frame.kind());
-                                if !matches!(frame.kind(), FrameKind::Exercise(_)) {
-                                    break frame;
-                                }
-                            }
-                            Err(ProtoReadError::H3(error_code)) => {
-                                h3_slot.send(Err(DriverError::Proto(error_code)));
-                                return;
-                            }
-                            Err(ProtoReadError::IO(_)) => {
-                                return;
+                let frame = loop {
+                    match stream_h3.read_frame().await {
+                        Ok(frame) => {
+                            debug!("Frame kind: {:?}", frame.kind());
+                            if !matches!(frame.kind(), FrameKind::Exercise(_)) {
+                                break frame;
                             }
                         }
-                    };
-
-                    debug!("First frame: {:?}", frame);
-
-                    match frame.session_id() {
-                        Some(session_id) => {
-                            let stream_wt = stream_h3.upgrade(session_id);
-                            wt_slot.send(stream_wt);
+                        Err(ProtoReadError::H3(error_code)) => {
+                            h3_slot.send(Err(DriverError::Proto(error_code)));
+                            return;
                         }
-                        None => {
-                            h3_slot.send(Ok((stream_h3, frame)));
+                        Err(ProtoReadError::IO(_)) => {
+                            return;
                         }
                     }
-                }
-                .instrument(debug_span!("Stream", "id={}", stream_id)),
-            );
+                };
 
-            Ok(())
+                debug!("First frame: {:?}", frame);
+
+                match frame.session_id() {
+                    Some(session_id) => {
+                        let stream_wt = stream_h3.upgrade(session_id);
+                        wt_slot.send(stream_wt);
+                    }
+                    None => {
+                        h3_slot.send(Ok((stream_h3, frame)));
+                    }
+                }
+            }
+            .instrument(debug_span!("Stream", "id={}", stream_id)))
         }
 
         async fn accept_datagram(

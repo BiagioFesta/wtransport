@@ -13,6 +13,7 @@ use std::task::ready;
 use std::task::Context;
 use std::task::Poll;
 use tokio::io::ReadBuf;
+use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::Frame;
 use wtransport_proto::session::SessionRequest;
 use wtransport_proto::stream as stream_proto;
@@ -399,12 +400,25 @@ pub mod uniremote {
             })
         }
 
-        pub async fn upgrade(mut self) -> Result<StreamUniRemoteH3, ProtoReadError> {
-            let proto = self.proto.upgrade_async(&mut self.stream).await?;
-            Ok(StreamUniRemoteH3 {
-                stream: self.stream,
-                proto,
-            })
+        /// Reads the stream type, returning [`None`] if it is unknown.
+        ///
+        /// An unknown stream type is not an error (RFC 9114 §6.2): the stream is stopped
+        /// with `H3_STREAM_CREATION_ERROR` and otherwise ignored.
+        pub async fn upgrade(mut self) -> Result<Option<StreamUniRemoteH3>, ProtoReadError> {
+            match self.proto.upgrade_async(&mut self.stream).await {
+                Ok(proto) => Ok(Some(StreamUniRemoteH3 {
+                    stream: self.stream,
+                    proto,
+                })),
+                // How wtransport-proto reports an unknown stream type. Push streams count
+                // as unknown too: wtransport never allows pushes, so a compliant peer sends
+                // none, and ignoring one is as safe as ignoring any other stream.
+                Err(ProtoReadError::H3(ErrorCode::StreamCreation)) => {
+                    let _ = self.stream.stop(ErrorCode::StreamCreation.to_code());
+                    Ok(None)
+                }
+                Err(error) => Err(error),
+            }
         }
 
         #[inline(always)]
