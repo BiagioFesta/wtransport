@@ -551,6 +551,9 @@ pub mod uniremote {
         }
 
         /// Upgrades to an HTTP3 stream.
+        ///
+        /// If the stream type is unknown [`ErrorCode::StreamCreation`] is returned.
+        /// In that case, MUST NOT consider unknown stream types to be a connection error of any kind.
         #[cfg(feature = "async")]
         #[cfg_attr(docsrs, doc(cfg(feature = "async")))]
         pub async fn upgrade_async<R>(

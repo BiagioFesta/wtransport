@@ -1087,4 +1087,36 @@ mod tests {
                 .is_ok()
         );
     }
+
+    #[tokio::test]
+    async fn unknown_uni_stream_is_stopped() {
+        let (quic_connection, client_connection) =
+            quic_connection_pair(quinn::TransportConfig::default()).await;
+
+        let driver = Driver::init(quic_connection);
+
+        // 0x3f is neither a stream type this crate knows nor a reserved one.
+        let mut unknown = client_connection.open_uni().await.unwrap();
+        unknown.write_all(&[0x3f]).await.unwrap();
+
+        let stopped = tokio::time::timeout(Duration::from_secs(5), unknown.stopped())
+            .await
+            .unwrap();
+        assert_eq!(
+            stopped,
+            Ok(Some(varint_w2q(ErrorCode::StreamCreation.to_code())))
+        );
+
+        // The connection carries on.
+        let mut control = client_connection.open_uni().await.unwrap();
+        let mut buffer = Vec::new();
+        StreamHeader::new_control().write(&mut buffer).unwrap();
+        Settings::builder()
+            .build()
+            .generate_frame()
+            .write(&mut buffer)
+            .unwrap();
+        control.write_all(&buffer).await.unwrap();
+        driver.accept_settings().await.unwrap();
+    }
 }

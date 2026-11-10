@@ -453,7 +453,11 @@ mod worker {
 
             Ok(async move {
                 let stream_h3 = match stream_quic.upgrade().await {
-                    Ok(stream_h3) => stream_h3,
+                    Ok(Some(stream_h3)) => stream_h3,
+                    Ok(None) => {
+                        debug!("Unknown type: ignored");
+                        return;
+                    }
                     Err(ProtoReadError::H3(error_code)) => {
                         h3_slot.send(Err(DriverError::Proto(error_code)));
                         return;
