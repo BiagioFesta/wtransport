@@ -43,6 +43,7 @@ pub struct Driver {
     ready_bi_wt_streams: Mutex<mpsc::Receiver<StreamBiRemoteWT>>,
     ready_datagrams: Mutex<mpsc::Receiver<Datagram>>,
     driver_result: SharedResultGet<DriverError>,
+    close_requests: mpsc::Sender<(u32, Box<[u8]>)>,
 }
 
 impl Driver {
@@ -53,6 +54,7 @@ impl Driver {
         let ready_bi_wt_streams = mpsc::channel(1);
         let ready_datagrams = mpsc::channel(1);
         let driver_result = shared_result();
+        let close_requests = mpsc::channel(1);
 
         tokio::spawn(
             worker::Worker::new(
@@ -63,6 +65,7 @@ impl Driver {
                 ready_bi_wt_streams.0,
                 ready_datagrams.0,
                 driver_result.0,
+                close_requests.1,
             )
             .run()
             .instrument(debug_span!("Driver", quic_id = quic_connection.stable_id())),
@@ -76,6 +79,16 @@ impl Driver {
             ready_bi_wt_streams: Mutex::new(ready_bi_wt_streams.1),
             ready_datagrams: Mutex::new(ready_datagrams.1),
             driver_result: driver_result.1,
+            close_requests: close_requests.0,
+        }
+    }
+
+    /// Asks the worker to close the session with a `CLOSE_WEBTRANSPORT_SESSION` capsule.
+    /// Returns `false` when the worker is gone, so the caller closes the connection itself.
+    pub fn close_session(&self, error_code: u32, reason: &[u8]) -> bool {
+        match self.close_requests.try_send((error_code, reason.into())) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => true,
+            Err(mpsc::error::TrySendError::Closed(_)) => false,
         }
     }
 
@@ -252,6 +265,7 @@ mod worker {
     use wtransport_proto::session::HeadersParseError;
     use wtransport_proto::stream_header::StreamHeader;
     use wtransport_proto::stream_header::StreamKind;
+    use wtransport_proto::varint::VarInt;
 
     pub struct Worker {
         quic_connection: quinn::Connection,
@@ -266,9 +280,11 @@ mod worker {
         remote_qpack_enc_stream: RemoteQPackEncStream,
         remote_qpack_dec_stream: RemoteQPackDecStream,
         connect_stream: ConnectStream,
+        close_requests: mpsc::Receiver<(u32, Box<[u8]>)>,
     }
 
     impl Worker {
+        #[allow(clippy::too_many_arguments)]
         pub fn new(
             quic_connection: quinn::Connection,
             ready_settings: mpsc::Sender<Settings>,
@@ -277,6 +293,7 @@ mod worker {
             ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
             ready_datagrams: mpsc::Sender<Datagram>,
             driver_result: SharedResultSet<DriverError>,
+            close_requests: mpsc::Receiver<(u32, Box<[u8]>)>,
         ) -> Self {
             Self {
                 quic_connection,
@@ -291,6 +308,7 @@ mod worker {
                 remote_qpack_enc_stream: RemoteQPackEncStream::empty(),
                 remote_qpack_dec_stream: RemoteQPackDecStream::empty(),
                 connect_stream: ConnectStream::empty(),
+                close_requests,
             }
         }
 
@@ -385,6 +403,14 @@ mod worker {
                                                       &mut self.remote_qpack_dec_stream,
                                                       &mut self.connect_stream) => {
                         return Err(error);
+                    }
+
+                    Some((error_code, reason)) = self.close_requests.recv() => {
+                        self.connect_stream.close(error_code, &reason).await;
+                        return Err(DriverError::ApplicationClosed(ApplicationClose::new(
+                            VarInt::from_u32(error_code),
+                            reason,
+                        )));
                     }
 
                     () = self.driver_result.closed() => {

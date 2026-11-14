@@ -306,6 +306,15 @@ impl Connection {
         self.quic_connection.close(varint_w2q(error_code), reason);
     }
 
+    /// Closes the WebTransport session: the peer receives `error_code` and `reason` in a
+    /// `CLOSE_WEBTRANSPORT_SESSION` capsule, then the QUIC connection closes once the
+    /// capsule is acknowledged. Unlike [`Connection::close`], a browser peer sees the code.
+    pub fn close_session(&self, error_code: u32, reason: &[u8]) {
+        if !self.driver.close_session(error_code, reason) {
+            self.close(VarInt::from_u32(error_code), reason);
+        }
+    }
+
     /// Waits for the connection to be closed for any reason.
     pub async fn closed(&self) -> ConnectionError {
         self.quic_connection.closed().await.into()

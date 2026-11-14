@@ -852,4 +852,55 @@ mod tests {
                 .is_ok()
         );
     }
+
+    #[tokio::test]
+    async fn close_session_sends_code_and_reason_in_capsule() {
+        let identity = Identity::self_signed(["localhost"]).unwrap();
+        let certificate_hash = identity.certificate_chain().as_slice()[0].hash();
+
+        let server = Endpoint::server(
+            ServerConfig::builder()
+                .with_bind_address(SocketAddr::from(([127, 0, 0, 1], 0)))
+                .with_identity(identity)
+                .build(),
+        )
+        .unwrap();
+        let server_address = server.local_addr().unwrap();
+        let server_session = tokio::spawn(async move {
+            let session_request = server.accept().await.await.unwrap();
+            session_request.accept().await.unwrap()
+        });
+
+        let client = Endpoint::client(
+            ClientConfig::builder()
+                .with_bind_default()
+                .with_server_certificate_hashes([certificate_hash])
+                .build(),
+        )
+        .unwrap()
+        .connect(format!("https://{server_address}"))
+        .await
+        .unwrap();
+        let server_session = server_session.await.unwrap();
+
+        server_session.close_session(42, b"bye");
+
+        match client.accept_bi().await {
+            Err(ConnectionError::ApplicationClosed(close)) => {
+                assert_eq!(close.code(), VarInt::from_u32(42));
+                assert_eq!(close.reason(), b"bye");
+            }
+            other => panic!("expected the session close, got {other:?}"),
+        }
+
+        // The code travels in the capsule only: the QUIC connection is closed
+        // with H3_NO_ERROR, by whichever side does it first.
+        match client.closed().await {
+            ConnectionError::LocallyClosed => {}
+            ConnectionError::ApplicationClosed(close) => {
+                assert_eq!(close.code(), ErrorCode::NoError.to_code());
+            }
+            other => panic!("expected an H3_NO_ERROR close, got {other:?}"),
+        }
+    }
 }

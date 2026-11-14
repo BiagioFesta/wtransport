@@ -40,7 +40,7 @@ sha2 = "0.11.0"
 socket2 = "0.6.3"
 thiserror = "2.0.3"
 time = "0.3.21"
-tokio = { version = "1.28.1", default-features = false, features = ["macros", "fs", "io-util"] }
+tokio = { version = "1.28.1", default-features = false, features = ["macros", "fs", "io-util", "time"] }
 tracing = "0.1.37"
 url = "2.4.0"
 wtransport-proto = { version = "0.7.2", path = "../wtransport-proto", features = ["async"] }
