@@ -239,11 +239,12 @@ impl TryFrom<Headers> for SessionRequest {
             return Err(HeadersParseError::SchemeNotHttps);
         }
 
-        if headers
+        // `webtransport-h3` is the value since draft-15; earlier drafts and
+        // browsers today send `webtransport`.
+        let protocol = headers
             .get(":protocol")
-            .ok_or(HeadersParseError::MissingProtocol)?
-            != "webtransport"
-        {
+            .ok_or(HeadersParseError::MissingProtocol)?;
+        if protocol != "webtransport" && protocol != "webtransport-h3" {
             return Err(HeadersParseError::ProtocolNotWebTransport);
         }
 
@@ -380,6 +381,40 @@ mod tests {
             .collect::<Headers>()
         )
         .is_ok());
+    }
+
+    #[test]
+    fn parse_headers_current_draft_protocol() {
+        assert!(SessionRequest::try_from(
+            [
+                (":method", "CONNECT"),
+                (":scheme", "https"),
+                (":protocol", "webtransport-h3"),
+                (":authority", "localhost:4433"),
+                (":path", "/")
+            ]
+            .into_iter()
+            .collect::<Headers>()
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn parse_headers_error_protocol() {
+        assert!(matches!(
+            SessionRequest::try_from(
+                [
+                    (":method", "CONNECT"),
+                    (":scheme", "https"),
+                    (":protocol", "connect-udp"),
+                    (":authority", "localhost:4433"),
+                    (":path", "/")
+                ]
+                .into_iter()
+                .collect::<Headers>()
+            ),
+            Err(HeadersParseError::ProtocolNotWebTransport),
+        ));
     }
 
     #[test]

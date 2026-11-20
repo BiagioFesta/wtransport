@@ -468,6 +468,7 @@ mod frame_kind_ids {
 mod tests {
     use super::*;
     use crate::headers::Headers;
+    use crate::settings::SettingId;
     use crate::settings::Settings;
 
     #[test]
@@ -485,7 +486,15 @@ mod tests {
         assert!(matches!(frame.kind(), FrameKind::Settings));
 
         let frame = utils::assert_serde(frame);
-        Settings::with_frame(&frame).unwrap();
+        let parsed = Settings::with_frame(&frame).unwrap();
+        assert_eq!(
+            parsed.get(SettingId::EnableWebTransport),
+            Some(VarInt::from_u32(1))
+        );
+        assert_eq!(
+            parsed.get(SettingId::WebTransportEnabled),
+            Some(VarInt::from_u32(1))
+        );
     }
 
     #[tokio::test]
