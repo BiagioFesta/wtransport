@@ -34,8 +34,11 @@ pub enum SettingId {
     /// `SETTINGS_H3_DATAGRAM`.
     H3Datagram,
 
-    /// `SETTINGS_ENABLE_WEBTRANSPORT`.
+    /// `SETTINGS_ENABLE_WEBTRANSPORT` (draft-02 to draft-06).
     EnableWebTransport,
+
+    /// `SETTINGS_WT_ENABLED` (current drafts).
+    WebTransportEnabled,
 
     /// `WEBTRANSPORT_MAX_SESSIONS`.
     WebTransportMaxSessions,
@@ -60,6 +63,7 @@ impl SettingId {
                 setting_ids::SETTINGS_ENABLE_CONNECT_PROTOCOL => Ok(Self::EnableConnectProtocol),
                 setting_ids::SETTINGS_H3_DATAGRAM => Ok(Self::H3Datagram),
                 setting_ids::SETTINGS_ENABLE_WEBTRANSPORT => Ok(Self::EnableWebTransport),
+                setting_ids::SETTINGS_WT_ENABLED => Ok(Self::WebTransportEnabled),
                 setting_ids::SETTINGS_WEBTRANSPORT_MAX_SESSIONS => {
                     Ok(Self::WebTransportMaxSessions)
                 }
@@ -76,6 +80,7 @@ impl SettingId {
             Self::EnableConnectProtocol => setting_ids::SETTINGS_ENABLE_CONNECT_PROTOCOL,
             Self::H3Datagram => setting_ids::SETTINGS_H3_DATAGRAM,
             Self::EnableWebTransport => setting_ids::SETTINGS_ENABLE_WEBTRANSPORT,
+            Self::WebTransportEnabled => setting_ids::SETTINGS_WT_ENABLED,
             Self::WebTransportMaxSessions => setting_ids::SETTINGS_WEBTRANSPORT_MAX_SESSIONS,
             Self::Exercise(id) => id,
         }
@@ -211,10 +216,17 @@ impl SettingsBuilder {
     }
 
     /// Enables *WebTransport* support.
+    ///
+    /// Both codepoints are announced: `SETTINGS_ENABLE_WEBTRANSPORT`, which
+    /// draft-02 peers (and browsers today) look for, and `SETTINGS_WT_ENABLED`,
+    /// which peers on current drafts require.
     pub fn enable_webtransport(mut self) -> Self {
         self.0
              .0
             .insert(SettingId::EnableWebTransport, VarInt::from_u32(1));
+        self.0
+             .0
+            .insert(SettingId::WebTransportEnabled, VarInt::from_u32(1));
         self
     }
 
@@ -245,5 +257,6 @@ mod setting_ids {
     pub const SETTINGS_ENABLE_CONNECT_PROTOCOL: VarInt = VarInt::from_u32(0x08);
     pub const SETTINGS_H3_DATAGRAM: VarInt = VarInt::from_u32(0x33);
     pub const SETTINGS_ENABLE_WEBTRANSPORT: VarInt = VarInt::from_u32(0x2b60_3742);
+    pub const SETTINGS_WT_ENABLED: VarInt = VarInt::from_u32(0x2c7c_f000);
     pub const SETTINGS_WEBTRANSPORT_MAX_SESSIONS: VarInt = VarInt::from_u32(0xc671_706a);
 }
