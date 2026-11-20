@@ -4,9 +4,7 @@ use crate::driver::streams::biremote::StreamBiRemoteWT;
 use crate::driver::streams::session::StreamSession;
 use crate::driver::streams::uniremote::StreamUniRemoteWT;
 use crate::driver::streams::Stream;
-use crate::driver::utils::bichannel;
 use crate::driver::utils::shared_result;
-use crate::driver::utils::SendError;
 use crate::driver::utils::SharedResultGet;
 use crate::driver::utils::SharedResultSet;
 use crate::error::ApplicationClose;
@@ -15,13 +13,13 @@ use crate::stream::OpeningBiStream;
 use crate::stream::OpeningUniStream;
 use crate::SessionId;
 use tokio::sync::mpsc;
+use tokio::sync::oneshot;
 use tokio::sync::Mutex;
 use tracing::debug;
 use tracing::debug_span;
 use tracing::instrument;
 use tracing::trace;
 use tracing::Instrument;
-use utils::BiChannelEndpoint;
 use wtransport_proto::error::ErrorCode;
 use wtransport_proto::frame::Frame;
 use wtransport_proto::session::SessionRequest;
@@ -34,21 +32,33 @@ pub enum DriverError {
     NotConnected,
 }
 
+/// The driver of a connection and the channels to its worker.
+///
+/// A tokio `mpsc` channel allocates the first block of its list (32 slots of
+/// its message type, whatever its capacity) when the channel is created, and
+/// keeps it for the channel's whole life. These channels hold at most four
+/// messages at a time, and most carry one message in a connection's life or
+/// none, so their messages are boxed: a slot is then a pointer. The values
+/// passed only once (the peer's settings
+/// and the session registered with the worker) go through `oneshot` channels,
+/// which are freed once the value has been passed.
 #[derive(Debug)]
 pub struct Driver {
     quic_connection: quinn::Connection,
-    ready_settings: Mutex<mpsc::Receiver<Settings>>,
-    ready_sessions: BiChannelEndpoint<StreamSession>,
-    ready_uni_wt_streams: Mutex<mpsc::Receiver<StreamUniRemoteWT>>,
-    ready_bi_wt_streams: Mutex<mpsc::Receiver<StreamBiRemoteWT>>,
-    ready_datagrams: Mutex<mpsc::Receiver<Datagram>>,
+    ready_settings: Mutex<Option<oneshot::Receiver<Settings>>>,
+    ready_sessions: Mutex<mpsc::Receiver<Box<StreamSession>>>,
+    register_session: Mutex<Option<oneshot::Sender<StreamSession>>>,
+    ready_uni_wt_streams: Mutex<mpsc::Receiver<Box<StreamUniRemoteWT>>>,
+    ready_bi_wt_streams: Mutex<mpsc::Receiver<Box<StreamBiRemoteWT>>>,
+    ready_datagrams: Mutex<mpsc::Receiver<Box<Datagram>>>,
     driver_result: SharedResultGet<DriverError>,
 }
 
 impl Driver {
     pub fn init(quic_connection: quinn::Connection) -> Self {
-        let ready_settings = mpsc::channel(1);
-        let ready_sessions = bichannel(1);
+        let ready_settings = oneshot::channel();
+        let ready_sessions = mpsc::channel(1);
+        let register_session = oneshot::channel();
         let ready_uni_wt_streams = mpsc::channel(4);
         let ready_bi_wt_streams = mpsc::channel(1);
         let ready_datagrams = mpsc::channel(1);
@@ -59,6 +69,7 @@ impl Driver {
                 quic_connection.clone(),
                 ready_settings.0,
                 ready_sessions.0,
+                register_session.1,
                 ready_uni_wt_streams.0,
                 ready_bi_wt_streams.0,
                 ready_datagrams.0,
@@ -70,8 +81,9 @@ impl Driver {
 
         Self {
             quic_connection,
-            ready_settings: Mutex::new(ready_settings.1),
-            ready_sessions: ready_sessions.1,
+            ready_settings: Mutex::new(Some(ready_settings.1)),
+            ready_sessions: Mutex::new(ready_sessions.1),
+            register_session: Mutex::new(Some(register_session.0)),
             ready_uni_wt_streams: Mutex::new(ready_uni_wt_streams.1),
             ready_bi_wt_streams: Mutex::new(ready_bi_wt_streams.1),
             ready_datagrams: Mutex::new(ready_datagrams.1),
@@ -82,15 +94,26 @@ impl Driver {
     pub async fn accept_settings(&self) -> Result<Settings, DriverError> {
         let mut lock = self.ready_settings.lock().await;
 
-        match lock.recv().await {
-            Some(settings) => Ok(settings),
-            None => Err(self.result().await),
+        // The peer sends its settings once: after they have been taken,
+        // nothing else comes until the worker ends.
+        let Some(receiver) = lock.as_mut() else {
+            return Err(self.result().await);
+        };
+
+        let received = receiver.await;
+        *lock = None;
+
+        match received {
+            Ok(settings) => Ok(settings),
+            Err(_) => Err(self.result().await),
         }
     }
 
     pub async fn accept_session(&self) -> Result<StreamSession, DriverError> {
-        match self.ready_sessions.recv().await {
-            Some(session) => Ok(session),
+        let session = self.ready_sessions.lock().await.recv().await;
+
+        match session {
+            Some(session) => Ok(*session),
             None => Err(self.result().await),
         }
     }
@@ -109,9 +132,15 @@ impl Driver {
     }
 
     pub async fn register_session(&self, stream_session: StreamSession) -> Result<(), DriverError> {
-        match self.ready_sessions.send(stream_session).await {
+        // The worker drives only the first session registered; as before, a
+        // later one is dropped.
+        let Some(sender) = self.register_session.lock().await.take() else {
+            return Ok(());
+        };
+
+        match sender.send(stream_session) {
             Ok(()) => Ok(()),
-            Err(SendError) => Err(self.result().await),
+            Err(_) => Err(self.result().await),
         }
     }
 
@@ -125,6 +154,7 @@ impl Driver {
             let Some(stream) = lock.recv().await else {
                 return Err(self.result().await);
             };
+            let stream = *stream;
 
             if stream.session_id() == session_id {
                 return Ok(stream);
@@ -150,6 +180,7 @@ impl Driver {
             let Some(stream) = lock.recv().await else {
                 return Err(self.result().await);
             };
+            let stream = *stream;
 
             if stream.session_id() == session_id {
                 return Ok(stream);
@@ -178,7 +209,7 @@ impl Driver {
             };
 
             if datagram.session_id() == session_id {
-                return Ok(datagram);
+                return Ok(*datagram);
             }
 
             debug!(
@@ -244,7 +275,7 @@ mod worker {
     use crate::driver::streams::uniremote::StreamUniRemoteH3;
     use crate::driver::streams::ProtoReadError;
     use crate::driver::streams::ProtoWriteError;
-    use crate::driver::utils::TrySendError;
+    use std::future::pending;
     use streams::connect::ConnectStream;
     use utils::varint_w2q;
     use wtransport_proto::frame::FrameKind;
@@ -253,13 +284,18 @@ mod worker {
     use wtransport_proto::stream_header::StreamHeader;
     use wtransport_proto::stream_header::StreamKind;
 
+    // Incoming H3 streams once their first bytes are read (boxed, see `Driver`).
+    type ReadyUniH3 = Box<Result<StreamUniRemoteH3, DriverError>>;
+    type ReadyBiH3 = Box<Result<(StreamBiRemoteH3, Frame<'static>), DriverError>>;
+
     pub struct Worker {
         quic_connection: quinn::Connection,
-        ready_settings: mpsc::Sender<Settings>,
-        ready_sessions: BiChannelEndpoint<StreamSession>,
-        ready_uni_wt_streams: mpsc::Sender<StreamUniRemoteWT>,
-        ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
-        ready_datagrams: mpsc::Sender<Datagram>,
+        ready_settings: Option<oneshot::Sender<Settings>>,
+        ready_sessions: mpsc::Sender<Box<StreamSession>>,
+        register_session: Option<oneshot::Receiver<StreamSession>>,
+        ready_uni_wt_streams: mpsc::Sender<Box<StreamUniRemoteWT>>,
+        ready_bi_wt_streams: mpsc::Sender<Box<StreamBiRemoteWT>>,
+        ready_datagrams: mpsc::Sender<Box<Datagram>>,
         driver_result: SharedResultSet<DriverError>,
         local_settings_stream: LocalSettingsStream,
         remote_settings_stream: RemoteSettingsStream,
@@ -269,19 +305,22 @@ mod worker {
     }
 
     impl Worker {
+        #[allow(clippy::too_many_arguments)]
         pub fn new(
             quic_connection: quinn::Connection,
-            ready_settings: mpsc::Sender<Settings>,
-            ready_sessions: BiChannelEndpoint<StreamSession>,
-            ready_uni_wt_streams: mpsc::Sender<StreamUniRemoteWT>,
-            ready_bi_wt_streams: mpsc::Sender<StreamBiRemoteWT>,
-            ready_datagrams: mpsc::Sender<Datagram>,
+            ready_settings: oneshot::Sender<Settings>,
+            ready_sessions: mpsc::Sender<Box<StreamSession>>,
+            register_session: oneshot::Receiver<StreamSession>,
+            ready_uni_wt_streams: mpsc::Sender<Box<StreamUniRemoteWT>>,
+            ready_bi_wt_streams: mpsc::Sender<Box<StreamBiRemoteWT>>,
+            ready_datagrams: mpsc::Sender<Box<Datagram>>,
             driver_result: SharedResultSet<DriverError>,
         ) -> Self {
             Self {
                 quic_connection,
-                ready_settings,
+                ready_settings: Some(ready_settings),
                 ready_sessions,
+                register_session: Some(register_session),
                 ready_uni_wt_streams,
                 ready_bi_wt_streams,
                 ready_datagrams,
@@ -323,8 +362,8 @@ mod worker {
 
         async fn run_impl(&mut self) -> Result<(), DriverError> {
             let mut remote_settings_watcher = self.remote_settings_stream.subscribe();
-            let mut ready_uni_h3_streams = mpsc::channel(4);
-            let mut ready_bi_h3_streams = mpsc::channel(1);
+            let mut ready_uni_h3_streams = mpsc::channel::<ReadyUniH3>(4);
+            let mut ready_bi_h3_streams = mpsc::channel::<ReadyBiH3>(1);
 
             let driver_result = self.driver_result.clone();
 
@@ -353,12 +392,12 @@ mod worker {
                     }
 
                     uni_h3_stream = ready_uni_h3_streams.1.recv() => {
-                        let uni_h3_stream = uni_h3_stream.expect("Sender cannot be dropped")?;
+                        let uni_h3_stream = (*uni_h3_stream.expect("Sender cannot be dropped"))?;
                         self.handle_uni_h3_stream(uni_h3_stream)?;
                     }
 
                     bi_h3_stream = ready_bi_h3_streams.1.recv() => {
-                        let (bi_h3_stream, first_frame) = bi_h3_stream.expect("Sender cannot be dropped")?;
+                        let (bi_h3_stream, first_frame) = (*bi_h3_stream.expect("Sender cannot be dropped"))?;
                         self.handle_bi_h3_stream(bi_h3_stream, first_frame)?;
                     }
 
@@ -368,14 +407,11 @@ mod worker {
                         self.handle_remote_settings(settings)?;
                     }
 
-                    stream_session = self.ready_sessions.recv() => {
+                    stream_session = Self::registered_session(&mut self.register_session) => {
+                        self.register_session = None;
                         match stream_session {
-                            Some(stream_session) => {
-                                if self.connect_stream.is_empty() {
-                                    self.connect_stream.set_stream(stream_session);
-                                }
-                            }
-                            None => return Err(DriverError::NotConnected),
+                            Ok(stream_session) => self.connect_stream.set_stream(stream_session),
+                            Err(_) => return Err(DriverError::NotConnected),
                         };
                     }
 
@@ -414,10 +450,20 @@ mod worker {
             self.local_settings_stream.send_settings().await
         }
 
+        /// The session the endpoint registers; it comes once, and never after.
+        async fn registered_session(
+            register_session: &mut Option<oneshot::Receiver<StreamSession>>,
+        ) -> Result<StreamSession, oneshot::error::RecvError> {
+            match register_session {
+                Some(receiver) => receiver.await,
+                None => pending().await,
+            }
+        }
+
         async fn accept_uni(
             quic_connection: &quinn::Connection,
-            ready_uni_h3_streams: &mpsc::Sender<Result<StreamUniRemoteH3, DriverError>>,
-            ready_uni_wt_streams: &mpsc::Sender<StreamUniRemoteWT>,
+            ready_uni_h3_streams: &mpsc::Sender<ReadyUniH3>,
+            ready_uni_wt_streams: &mpsc::Sender<Box<StreamUniRemoteWT>>,
         ) -> Result<(), DriverError> {
             trace!("H3 uni queue capacity: {}", ready_uni_h3_streams.capacity());
             let h3_slot = ready_uni_h3_streams
@@ -443,7 +489,7 @@ mod worker {
                     let stream_h3 = match stream_quic.upgrade().await {
                         Ok(stream_h3) => stream_h3,
                         Err(ProtoReadError::H3(error_code)) => {
-                            h3_slot.send(Err(DriverError::Proto(error_code)));
+                            h3_slot.send(Box::new(Err(DriverError::Proto(error_code))));
                             return;
                         }
                         Err(ProtoReadError::IO(_)) => {
@@ -456,9 +502,9 @@ mod worker {
 
                     if matches!(stream_kind, StreamKind::WebTransport) {
                         let stream_wt = stream_h3.upgrade();
-                        wt_slot.send(stream_wt);
+                        wt_slot.send(Box::new(stream_wt));
                     } else {
-                        h3_slot.send(Ok(stream_h3));
+                        h3_slot.send(Box::new(Ok(stream_h3)));
                     }
                 }
                 .instrument(debug_span!("Stream", "id={}", stream_id)),
@@ -469,10 +515,8 @@ mod worker {
 
         async fn accept_bi(
             quic_connection: &quinn::Connection,
-            ready_bi_h3_streams: &mpsc::Sender<
-                Result<(StreamBiRemoteH3, Frame<'static>), DriverError>,
-            >,
-            ready_bi_wt_streams: &mpsc::Sender<StreamBiRemoteWT>,
+            ready_bi_h3_streams: &mpsc::Sender<ReadyBiH3>,
+            ready_bi_wt_streams: &mpsc::Sender<Box<StreamBiRemoteWT>>,
         ) -> Result<(), DriverError> {
             trace!("H3 bi queue capacity: {}", ready_bi_h3_streams.capacity());
             let h3_slot = ready_bi_h3_streams
@@ -506,7 +550,7 @@ mod worker {
                                 }
                             }
                             Err(ProtoReadError::H3(error_code)) => {
-                                h3_slot.send(Err(DriverError::Proto(error_code)));
+                                h3_slot.send(Box::new(Err(DriverError::Proto(error_code))));
                                 return;
                             }
                             Err(ProtoReadError::IO(_)) => {
@@ -520,10 +564,10 @@ mod worker {
                     match frame.session_id() {
                         Some(session_id) => {
                             let stream_wt = stream_h3.upgrade(session_id);
-                            wt_slot.send(stream_wt);
+                            wt_slot.send(Box::new(stream_wt));
                         }
                         None => {
-                            h3_slot.send(Ok((stream_h3, frame)));
+                            h3_slot.send(Box::new(Ok((stream_h3, frame))));
                         }
                     }
                 }
@@ -535,7 +579,7 @@ mod worker {
 
         async fn accept_datagram(
             quic_connection: &quinn::Connection,
-            ready_datagrams: &mpsc::Sender<Datagram>,
+            ready_datagrams: &mpsc::Sender<Box<Datagram>>,
         ) -> Result<(), DriverError> {
             let slot = match ready_datagrams.reserve().await {
                 Ok(slot) => slot,
@@ -557,7 +601,7 @@ mod worker {
                 datagram.session_id()
             );
 
-            slot.send(datagram);
+            slot.send(Box::new(datagram));
 
             Ok(())
         }
@@ -627,15 +671,17 @@ mod worker {
                         }
                     };
 
-                    match self.ready_sessions.try_send(stream_session) {
+                    match self.ready_sessions.try_send(Box::new(stream_session)) {
                         Ok(()) => {}
-                        Err(TrySendError::Full(mut stream)) => {
+                        Err(mpsc::error::TrySendError::Full(mut stream)) => {
                             debug!("Discarding session request: sessions queue is full");
                             stream
                                 .stop(ErrorCode::RequestRejected.to_code())
                                 .expect("Stream not already stopped");
                         }
-                        Err(TrySendError::Closed(_)) => return Err(DriverError::NotConnected),
+                        Err(mpsc::error::TrySendError::Closed(_)) => {
+                            return Err(DriverError::NotConnected)
+                        }
                     }
                 }
                 FrameKind::Settings => {
@@ -667,12 +713,13 @@ mod worker {
         fn handle_remote_settings(&mut self, settings: Settings) -> Result<(), DriverError> {
             debug!("Received: {:?}", settings);
 
-            match self.ready_settings.try_send(settings) {
+            let Some(ready_settings) = self.ready_settings.take() else {
+                unreachable!("No more than 1 setting frame can be processed")
+            };
+
+            match ready_settings.send(settings) {
                 Ok(()) => Ok(()),
-                Err(mpsc::error::TrySendError::Closed(_)) => Err(DriverError::NotConnected),
-                Err(mpsc::error::TrySendError::Full(_)) => {
-                    unreachable!("No more than 1 setting frame can be processed")
-                }
+                Err(_) => Err(DriverError::NotConnected),
             }
         }
     }

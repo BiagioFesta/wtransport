@@ -22,10 +22,6 @@ impl ConnectStream {
         Self { stream: None }
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.stream.is_none()
-    }
-
     pub fn set_stream(&mut self, stream: StreamSession) {
         self.stream = Some(stream);
     }
