@@ -56,7 +56,7 @@ tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 [features]
 default = ["self-signed", "ring"]
 aws-lc-rs = ["quinn/aws-lc-rs", "quinn/rustls-aws-lc-rs", "rustls/aws-lc-rs", "rcgen?/aws_lc_rs"]
-aws-lc-rs-fips = ["quinn/aws-lc-rs-fips", "quinn/rustls-aws-lc-rs-fips", "rustls/fips", "rcgen?/fips"]
+aws-lc-rs-fips = ["aws-lc-rs", "quinn/aws-lc-rs-fips", "quinn/rustls-aws-lc-rs-fips", "rustls/fips", "rcgen?/fips"]
 dangerous-configuration = []
 fips = ["aws-lc-rs-fips"]
 quinn = []

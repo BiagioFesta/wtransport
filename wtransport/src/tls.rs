@@ -14,6 +14,7 @@ use std::fmt::Debug;
 use std::fmt::Display;
 use std::path::Path;
 use std::str::FromStr;
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 use std::sync::Arc;
 use x509_parser::certificate::X509Certificate;
 use x509_parser::prelude::FromDer;
@@ -335,6 +336,8 @@ impl Identity {
     /// # Features
     ///
     /// This function is only available when the `self-signed` feature is enabled.
+    #[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
     #[cfg(feature = "self-signed")]
     #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
     pub fn self_signed<I, S>(subject_alt_names: I) -> Result<Self, error::InvalidSan>
@@ -372,6 +375,8 @@ impl Identity {
     /// This function is only available when the `self-signed` feature is enabled.
     ///
     /// [1]: self_signed::SelfSignedIdentityBuilder
+    #[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
     #[cfg(feature = "self-signed")]
     #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
     pub fn self_signed_builder(
@@ -604,6 +609,7 @@ pub fn build_native_cert_store() -> RootCertStore {
     root_store
 }
 
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 fn default_crypto_provider() -> rustls::crypto::CryptoProvider {
     #[cfg(feature = "ring")]
     {
@@ -617,6 +623,8 @@ fn default_crypto_provider() -> rustls::crypto::CryptoProvider {
 }
 
 /// TLS configurations and utilities server-side.
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
 pub mod server {
     use super::*;
     use rustls::ServerConfig as TlsServerConfig;
@@ -658,6 +666,8 @@ pub mod server {
 }
 
 /// TLS configurations and utilities client-side.
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
 pub mod client {
     use super::*;
     use rustls::client::danger::ServerCertVerified;
@@ -985,6 +995,8 @@ pub mod error {
 /// necessary.
 ///
 /// The feature is enabled when the `self-signed` feature flag is active.
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
 #[cfg(feature = "self-signed")]
 #[cfg_attr(docsrs, doc(cfg(feature = "self-signed")))]
 pub mod self_signed {

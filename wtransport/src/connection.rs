@@ -104,6 +104,7 @@ use crate::stream::RecvStream;
 use crate::stream::SendStream;
 use crate::tls::Certificate;
 use crate::tls::CertificateChain;
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 use crate::tls::HandshakeData;
 use crate::SessionId;
 use crate::VarInt;
@@ -394,6 +395,8 @@ impl Connection {
     }
 
     /// Retrieves handshake data associated with the connection.
+    #[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
     pub fn handshake_data(&self) -> HandshakeData {
         let hd = self
             .quic_connection
