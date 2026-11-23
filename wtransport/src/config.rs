@@ -34,7 +34,9 @@
 //!     .build();
 //! ```
 
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 use crate::tls::build_native_cert_store;
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 use crate::tls::Identity;
 use socket2::Domain as SocketDomain;
 use socket2::Protocol as SocketProtocol;
@@ -52,6 +54,7 @@ use std::net::SocketAddrV6;
 use std::net::UdpSocket;
 use std::pin::Pin;
 use std::sync::Arc;
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 use std::time::Duration;
 
 /// Alias of [`crate::tls::rustls::ServerConfig`].
@@ -366,6 +369,8 @@ impl ServerConfigBuilder<states::WantsBindAddress> {
     }
 }
 
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
 impl ServerConfigBuilder<states::WantsIdentity> {
     /// Configures TLS with safe defaults and a TLS [`Identity`].
     ///
@@ -546,6 +551,27 @@ impl ServerConfigBuilder<states::WantsIdentity> {
     }
 }
 
+impl ServerConfigBuilder<states::WantsIdentity> {
+    /// Directly builds [`ServerConfig`] skipping TLS and transport configuration.
+    ///
+    /// Both TLS and transport configuration is given by [`quic_config`](QuicServerConfig),
+    /// and endpoint configuration, with its stateless reset key, by `quic_endpoint_config`.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn build_with_quic_endpoint_config(
+        self,
+        quic_endpoint_config: quinn::EndpointConfig,
+        quic_config: QuicServerConfig,
+    ) -> ServerConfig {
+        ServerConfig {
+            bind_address_config: self.0.bind_address_config,
+            endpoint_config: quic_endpoint_config,
+            quic_config,
+        }
+    }
+}
+
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 impl ServerConfigBuilder<states::WantsTransportConfigServer> {
     /// Completes configuration process.
     ///
@@ -773,6 +799,7 @@ impl ClientConfig {
     }
 }
 
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 impl Default for ClientConfig {
     fn default() -> Self {
         ClientConfig::builder()
@@ -861,6 +888,8 @@ impl ClientConfigBuilder<states::WantsBindAddress> {
     }
 }
 
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+#[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
 impl ClientConfigBuilder<states::WantsRootStore> {
     /// Configures the client to use native (local) root certificates for server validation.
     ///
@@ -1073,6 +1102,28 @@ impl ClientConfigBuilder<states::WantsRootStore> {
     }
 }
 
+impl ClientConfigBuilder<states::WantsRootStore> {
+    /// Directly builds [`ClientConfig`] skipping TLS and transport configuration.
+    ///
+    /// Both TLS and transport configuration is given by [`quic_config`](QuicClientConfig),
+    /// and endpoint configuration, with its stateless reset key, by `quic_endpoint_config`.
+    #[cfg(feature = "quinn")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "quinn")))]
+    pub fn build_with_quic_endpoint_config(
+        self,
+        quic_endpoint_config: quinn::EndpointConfig,
+        quic_config: QuicClientConfig,
+    ) -> ClientConfig {
+        ClientConfig {
+            bind_address_config: self.0.bind_address_config,
+            endpoint_config: quic_endpoint_config,
+            quic_config,
+            dns_resolver: Arc::<TokioDnsResolver>::default(),
+        }
+    }
+}
+
+#[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
 impl ClientConfigBuilder<states::WantsTransportConfigClient> {
     /// Completes configuration process.
     ///
@@ -1221,6 +1272,8 @@ pub mod states {
     }
 
     /// Config builder state where transport properties can be set.
+    #[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
     pub struct WantsTransportConfigServer {
         pub(super) bind_address_config: BindAddressConfig,
         pub(super) tls_config: TlsServerConfig,
@@ -1230,6 +1283,8 @@ pub mod states {
     }
 
     /// Config builder state where transport properties can be set.
+    #[cfg(any(feature = "ring", feature = "aws-lc-rs"))]
+    #[cfg_attr(docsrs, doc(cfg(any(feature = "ring", feature = "aws-lc-rs"))))]
     pub struct WantsTransportConfigClient {
         pub(super) bind_address_config: BindAddressConfig,
         pub(super) tls_config: TlsClientConfig,
