@@ -107,20 +107,34 @@ use crate::tls::CertificateChain;
 use crate::tls::HandshakeData;
 use crate::SessionId;
 use crate::VarInt;
+use std::collections::HashMap;
+use std::fmt;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use wtransport_proto::session::SessionResponse;
 
 /// A WebTransport session connection.
 ///
 /// For more details, see the [module documentation](crate::connection).
 ///
 /// May be cloned to obtain another handle to the same connection.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Connection {
     quic_connection: quinn::Connection,
     driver: Arc<Driver>,
     session_id: SessionId,
+    session_response: Option<Arc<SessionResponse>>,
+}
+
+impl fmt::Debug for Connection {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Connection")
+            .field("quic_connection", &self.quic_connection)
+            .field("driver", &self.driver)
+            .field("session_id", &self.session_id)
+            .finish()
+    }
 }
 
 impl Connection {
@@ -128,12 +142,23 @@ impl Connection {
         quic_connection: quinn::Connection,
         driver: Driver,
         session_id: SessionId,
+        session_response: Option<SessionResponse>,
     ) -> Self {
         Self {
             quic_connection,
             driver: Arc::new(driver),
             session_id,
+            session_response: session_response.map(Arc::new),
         }
+    }
+
+    /// Returns the CONNECT response headers received by a client connection.
+    ///
+    /// The headers include `:status`. Server-side connections return `None`.
+    pub fn response_headers(&self) -> Option<&HashMap<String, String>> {
+        self.session_response
+            .as_deref()
+            .map(|response| response.headers().as_ref())
     }
 
     /// Asynchronously accepts a unidirectional stream.
