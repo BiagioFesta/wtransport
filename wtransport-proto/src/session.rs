@@ -337,19 +337,30 @@ impl TryFrom<Headers> for SessionResponse {
     type Error = HeadersParseError;
 
     fn try_from(headers: Headers) -> Result<Self, Self::Error> {
-        let status_code = headers
+        headers
             .get(":status")
             .ok_or(HeadersParseError::MissingStatusCode)?
-            .parse()
+            .parse::<StatusCode>()
             .map_err(|InvalidStatusCode| HeadersParseError::InvalidStatusCode)?;
 
-        Ok(Self::with_status_code(status_code))
+        Ok(Self(headers))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parse_session_response_retains_headers() {
+        let headers: Headers = [(":status", "200"), ("x-session-id", "example")]
+            .into_iter()
+            .collect();
+        let response = SessionResponse::try_from(headers).unwrap();
+
+        assert_eq!(response.code(), StatusCode::OK);
+        assert_eq!(response.headers().get("x-session-id"), Some("example"));
+    }
 
     #[test]
     fn parse_url() {

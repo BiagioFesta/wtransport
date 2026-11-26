@@ -402,7 +402,12 @@ impl Endpoint<endpoint_side::Client> {
             return Err(ConnectingError::SessionRejected);
         }
 
-        Ok(Connection::new(quic_connection, driver, session_id))
+        Ok(Connection::new(
+            quic_connection,
+            driver,
+            session_id,
+            Some(session_response),
+        ))
     }
 }
 
@@ -765,6 +770,7 @@ impl SessionRequest {
             self.quic_connection,
             self.driver,
             session_id,
+            None,
         ))
     }
 
@@ -804,6 +810,50 @@ mod tests {
     use rustls::pki_types::CertificateDer;
     use rustls::RootCertStore;
     use std::time::Duration;
+
+    #[tokio::test]
+    async fn client_can_read_connect_response_headers() {
+        let identity = Identity::self_signed(["localhost"]).unwrap();
+        let hash = identity.certificate_chain().as_slice()[0].hash();
+        let loopback = SocketAddr::from(([127, 0, 0, 1], 0));
+        let server = Endpoint::server(
+            ServerConfig::builder()
+                .with_bind_address(loopback)
+                .with_identity(identity)
+                .build(),
+        )
+        .unwrap();
+        let client = Endpoint::client(
+            ClientConfig::builder()
+                .with_bind_address(loopback)
+                .with_server_certificate_hashes([hash])
+                .build(),
+        )
+        .unwrap();
+        let url = format!("https://{}", server.local_addr().unwrap());
+
+        for expected in [Some("example"), None] {
+            let accept = async {
+                let request = server.accept().await.await.unwrap();
+                match expected {
+                    Some(value) => request.accept_with_headers([("x-session-id", value)]).await,
+                    None => request.accept().await,
+                }
+            };
+            let (server_connection, client_connection) =
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    tokio::join!(accept, client.connect(url.as_str()))
+                })
+                .await
+                .unwrap();
+
+            assert!(server_connection.unwrap().response_headers().is_none());
+            let client_connection = client_connection.unwrap();
+            let headers = client_connection.response_headers().unwrap();
+            assert_eq!(headers.get(":status").map(String::as_str), Some("200"));
+            assert_eq!(headers.get("x-session-id").map(String::as_str), expected);
+        }
+    }
 
     #[tokio::test]
     async fn dropping_driver_before_settings_closes_quic_connection() {
